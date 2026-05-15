@@ -11,7 +11,7 @@ const int cy[9] = {0, 0, 1, 0, -1, 1, 1, -1, -1};
 // Opposite directions for bounce-back
 const int opp[9] = {0, 3, 4, 1, 2, 7, 8, 5, 6};
 
-__device__ float equilibrium(float rho, float u, float v, int i) {
+__device__ __host__ float equilibrium(float rho, float u, float v, int i) {
     float cu = cx[i] * u + cy[i] * v;
     float u2 = u * u + v * v;
     return w[i] * rho * (1.0f + 3.0f * cu + 4.5f * cu * cu - 1.5f * u2);
@@ -110,26 +110,24 @@ extern "C" void lbm_step(float* d_f, float* d_rho, float* d_u, float* d_v,
     cudaDeviceSynchronize();
 }
 
+__global__ void initialize_kernel(float* f, float rho, float u, float v, 
+                                   int width, int height) {
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
+    
+    if (x >= width || y >= height) return;
+    
+    for (int i = 0; i < Q; i++) {
+        int f_idx = (i * height + y) * width + x;
+        f[f_idx] = equilibrium(rho, u, v, i);
+    }
+}
+
 extern "C" void lbm_initialize(float* d_f, float rho, float u, float v,
                                int width, int height) {
     dim3 block(16, 16);
     dim3 grid((width + 15) / 16, (height + 15) / 16);
     
-    // Initialize with equilibrium distribution
-    for (int i = 0; i < Q; i++) {
-        float feq = equilibrium(rho, u, v, i);
-        
-        // Simple kernel to initialize
-        auto init_kernel = [=] __device__ () {
-            int x = blockIdx.x * blockDim.x + threadIdx.x;
-            int y = blockIdx.y * blockDim.y + threadIdx.y;
-            if (x < width && y < height) {
-                int f_idx = (i * height + y) * width + x;
-                d_f[f_idx] = feq;
-            }
-        };
-        
-        // Launch kernel (simplified - would need proper kernel definition)
-        // For now, we'll do this in Python bindings
-    }
+    initialize_kernel<<<grid, block>>>(d_f, rho, u, v, width, height);
+    cudaDeviceSynchronize();
 }

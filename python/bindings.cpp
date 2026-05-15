@@ -47,27 +47,7 @@ public:
     }
     
     void initialize(float rho, float u, float v) {
-        // Initialize with equilibrium distribution
-        const float w[9] = {4.0f/9.0f, 1.0f/9.0f, 1.0f/9.0f, 1.0f/9.0f, 1.0f/9.0f, 
-                           1.0f/36.0f, 1.0f/36.0f, 1.0f/36.0f, 1.0f/36.0f};
-        const int cx[9] = {0, 1, 0, -1, 0, 1, -1, -1, 1};
-        const int cy[9] = {0, 0, 1, 0, -1, 1, 1, -1, -1};
-        
-        float* h_f = new float[9 * height * width];
-        
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                float u2 = u * u + v * v;
-                for (int i = 0; i < 9; i++) {
-                    float cu = cx[i] * u + cy[i] * v;
-                    float feq = w[i] * rho * (1.0f + 3.0f * cu + 4.5f * cu * cu - 1.5f * u2);
-                    h_f[(i * height + y) * width + x] = feq;
-                }
-            }
-        }
-        
-        cudaMemcpy(d_f, h_f, 9 * height * width * sizeof(float), cudaMemcpyHostToDevice);
-        delete[] h_f;
+        lbm_initialize(d_f, rho, u, v, width, height);
     }
     
     void set_obstacles(py::array_t<bool> obstacles) {
