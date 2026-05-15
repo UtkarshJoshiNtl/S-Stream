@@ -94,6 +94,7 @@ class CuFlodaPanel(Panel):
         layout.operator("cufloda.run_simulation")
         layout.operator("cufloda.realtime_preview")
         layout.operator("cufloda.export_particles")
+        layout.operator("cufloda.export_mesh")
 
 class CuFlodaInitializeSimulation(Operator):
     bl_idname = "cufloda.initialize_simulation"
@@ -236,6 +237,73 @@ class CuFlodaExportParticles(Operator):
         self.report({'INFO'}, f"Exported {len(verts)} particles")
         return {'FINISHED'}
 
+class CuFlodaExportMesh(Operator):
+    bl_idname = "cufloda.export_mesh"
+    bl_label = "Export to Mesh"
+    
+    def execute(self, context):
+        sim = getattr(context.scene, 'cufloda_simulation', None)
+        if sim is None:
+            self.report({'ERROR'}, "No active simulation. Initialize first.")
+            return {'CANCELLED'}
+        
+        density = sim.get_density()
+        velocity = sim.get_velocity()
+        
+        import numpy as np
+        
+        # Create mesh from density field using marching squares-like approach
+        threshold = 1.0
+        height, width = density.shape
+        
+        # Create vertices for density above threshold
+        verts = []
+        faces = []
+        
+        # Simple grid-based mesh generation
+        for y in range(height - 1):
+            for x in range(width - 1):
+                # Check if this cell has significant density
+                avg_density = (density[y, x] + density[y+1, x] + 
+                              density[y, x+1] + density[y+1, x+1]) / 4.0
+                
+                if avg_density > threshold:
+                    # Create a quad for this cell
+                    v0 = len(verts)
+                    verts.append((float(x), float(y), 0.0))
+                    verts.append((float(x+1), float(y), 0.0))
+                    verts.append((float(x+1), float(y+1), 0.0))
+                    verts.append((float(x), float(y+1), 0.0))
+                    faces.append((v0, v0+1, v0+2, v0+3))
+        
+        if not verts:
+            self.report({'WARNING'}, "No mesh generated (density too low)")
+            return {'CANCELLED'}
+        
+        # Create mesh
+        mesh = bpy.data.meshes.new("CuFlodaMesh")
+        obj = bpy.data.objects.new("CuFlodaMesh", mesh)
+        context.collection.objects.link(obj)
+        
+        edges = []
+        mesh.from_pydata(verts, edges, faces)
+        mesh.update()
+        
+        # Add vertex colors based on density
+        if len(mesh.vertex_colors) == 0:
+            mesh.vertex_colors.new()
+        
+        vcol = mesh.vertex_colors[0]
+        for i, vert in enumerate(verts):
+            x, y = int(vert[0]), int(vert[1])
+            if x < width and y < height:
+                d = density[y, x]
+                intensity = min(1.0, (d - threshold) * 2)
+                vcol.data[i].color = (intensity, intensity, 1.0, 1.0)
+        
+        self.report({'INFO'}, f"Exported mesh with {len(verts)} vertices, {len(faces)} faces")
+        return {'FINISHED'}
+
 class CuFlodaRealtimePreview(Operator):
     bl_idname = "cufloda.realtime_preview"
     bl_label = "Real-time Preview"
@@ -342,6 +410,7 @@ classes = (
     CuFlodaRunSimulation,
     CuFlodaRealtimePreview,
     CuFlodaExportParticles,
+    CuFlodaExportMesh,
 )
 
 def register():
