@@ -60,6 +60,12 @@ class CuFlodaProperties(PropertyGroup):
         min=-1.0,
         max=1.0
     )
+    
+    obstacle_object: PointerProperty(
+        name="Obstacle Object",
+        description="Blender object to use as obstacle",
+        type=bpy.types.Object
+    )
 
 class CuFlodaPanel(Panel):
     bl_label = "CuFloda Fluid Simulation"
@@ -78,10 +84,12 @@ class CuFlodaPanel(Panel):
         layout.prop(props, "steps_per_frame")
         layout.prop(props, "initial_velocity_x")
         layout.prop(props, "initial_velocity_y")
+        layout.prop(props, "obstacle_object")
         
         layout.separator()
         
         layout.operator("cufloda.initialize_simulation")
+        layout.operator("cufloda.set_obstacles")
         layout.operator("cufloda.run_step")
         layout.operator("cufloda.run_simulation")
         layout.operator("cufloda.export_particles")
@@ -107,6 +115,55 @@ class CuFlodaInitializeSimulation(Operator):
         except Exception as e:
             self.report({'ERROR'}, f"Failed to initialize: {str(e)}")
             return {'CANCELLED'}
+
+class CuFlodaSetObstacles(Operator):
+    bl_idname = "cufloda.set_obstacles"
+    bl_label = "Set Obstacles"
+    
+    def execute(self, context):
+        sim = getattr(context.scene, 'cufloda_simulation', None)
+        if sim is None:
+            self.report({'ERROR'}, "No active simulation. Initialize first.")
+            return {'CANCELLED'}
+        
+        props = context.scene.cufloda_props
+        obstacle_obj = props.obstacle_object
+        
+        if obstacle_obj is None:
+            self.report({'WARNING'}, "No obstacle object selected")
+            return {'CANCELLED'}
+        
+        import numpy as np
+        
+        # Create obstacle mask from object
+        obstacles = np.zeros((props.height, props.width), dtype=bool)
+        
+        # Simple bounding box obstacle for now
+        # In future, use actual mesh geometry
+        if obstacle_obj.type == 'MESH':
+            bbox = obstacle_obj.bound_box
+            min_x = min(v[0] for v in bbox)
+            max_x = max(v[0] for v in bbox)
+            min_y = min(v[1] for v in bbox)
+            max_y = max(v[1] for v in bbox)
+            
+            # Convert to grid coordinates
+            grid_min_x = int(min_x)
+            grid_max_x = int(max_x)
+            grid_min_y = int(min_y)
+            grid_max_y = int(max_y)
+            
+            # Clamp to grid bounds
+            grid_min_x = max(0, grid_min_x)
+            grid_max_x = min(props.width, grid_max_x)
+            grid_min_y = max(0, grid_min_y)
+            grid_max_y = min(props.height, grid_max_y)
+            
+            obstacles[grid_min_y:grid_max_y, grid_min_x:grid_max_x] = True
+        
+        sim.set_obstacles(obstacles)
+        self.report({'INFO'}, f"Obstacles set from {obstacle_obj.name}")
+        return {'FINISHED'}
 
 class CuFlodaRunStep(Operator):
     bl_idname = "cufloda.run_step"
@@ -150,18 +207,39 @@ class CuFlodaExportParticles(Operator):
         density = sim.get_density()
         velocity = sim.get_velocity()
         
-        # Create particle system from density field
+        import numpy as np
+        
+        # Create particles from high-density regions
+        threshold = 1.01
+        y_indices, x_indices = np.where(density > threshold)
+        
+        if len(x_indices) == 0:
+            self.report({'WARNING'}, "No particles above threshold")
+            return {'CANCELLED'}
+        
+        # Create mesh from particles
         mesh = bpy.data.meshes.new("CuFlodaParticles")
         obj = bpy.data.objects.new("CuFlodaParticles", mesh)
         context.collection.objects.link(obj)
         
-        self.report({'INFO'}, "Particles exported")
+        verts = []
+        for x, y in zip(x_indices, y_indices):
+            verts.append((float(x), float(y), 0.0))
+        
+        edges = []
+        faces = []
+        
+        mesh.from_pydata(verts, edges, faces)
+        mesh.update()
+        
+        self.report({'INFO'}, f"Exported {len(verts)} particles")
         return {'FINISHED'}
 
 classes = (
     CuFlodaProperties,
     CuFlodaPanel,
     CuFlodaInitializeSimulation,
+    CuFlodaSetObstacles,
     CuFlodaRunStep,
     CuFlodaRunSimulation,
     CuFlodaExportParticles,
