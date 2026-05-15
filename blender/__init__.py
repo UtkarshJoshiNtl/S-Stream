@@ -92,6 +92,7 @@ class CuFlodaPanel(Panel):
         layout.operator("cufloda.set_obstacles")
         layout.operator("cufloda.run_step")
         layout.operator("cufloda.run_simulation")
+        layout.operator("cufloda.realtime_preview")
         layout.operator("cufloda.export_particles")
 
 class CuFlodaInitializeSimulation(Operator):
@@ -235,6 +236,103 @@ class CuFlodaExportParticles(Operator):
         self.report({'INFO'}, f"Exported {len(verts)} particles")
         return {'FINISHED'}
 
+class CuFlodaRealtimePreview(Operator):
+    bl_idname = "cufloda.realtime_preview"
+    bl_label = "Real-time Preview"
+    bl_options = {'REGISTER', 'INTERNAL'}
+    
+    _timer = None
+    
+    def modal(self, context, event):
+        if event.type == 'TIMER':
+            sim = getattr(context.scene, 'cufloda_simulation', None)
+            if sim is None:
+                self.cancel(context)
+                return {'CANCELLED'}
+            
+            props = context.scene.cufloda_props
+            sim.run(props.steps_per_frame)
+            
+            # Update visualization
+            self.update_visualization(context, sim)
+            
+            # Force viewport update
+            for area in context.screen.areas:
+                area.tag_redraw()
+        
+        if event.type in {'ESC'}:
+            self.cancel(context)
+            return {'CANCELLED'}
+        
+        return {'PASS_THROUGH'}
+    
+    def execute(self, context):
+        sim = getattr(context.scene, 'cufloda_simulation', None)
+        if sim is None:
+            self.report({'ERROR'}, "No active simulation. Initialize first.")
+            return {'CANCELLED'}
+        
+        wm = context.window_manager
+        self._timer = wm.event_timer_add(0.05, window=context.window)
+        wm.modal_handler_add(self)
+        
+        self.report({'INFO'}, "Real-time preview started (ESC to stop)")
+        return {'RUNNING_MODAL'}
+    
+    def cancel(self, context):
+        wm = context.window_manager
+        if self._timer:
+            wm.event_timer_remove(self._timer)
+        self.report({'INFO'}, "Real-time preview stopped")
+    
+    def update_visualization(self, context, sim):
+        import numpy as np
+        
+        # Get density field
+        density = sim.get_density()
+        
+        # Find or create visualization object
+        vis_name = "CuFlodaVisualization"
+        if vis_name in bpy.data.objects:
+            vis_obj = bpy.data.objects[vis_name]
+            vis_mesh = vis_obj.data
+        else:
+            vis_mesh = bpy.data.meshes.new(vis_name)
+            vis_obj = bpy.data.objects.new(vis_name, vis_mesh)
+            context.collection.objects.link(vis_obj)
+        
+        # Create vertices from density field (downsample for performance)
+        step = 4  # Sample every 4th pixel
+        verts = []
+        colors = []
+        
+        for y in range(0, sim.height, step):
+            for x in range(0, sim.width, step):
+                d = density[y, x]
+                if d > 0.95:  # Only show significant density
+                    verts.append((float(x), float(y), 0.0))
+                    # Color based on density
+                    intensity = min(1.0, (d - 0.95) * 10)
+                    colors.append((intensity, intensity, 1.0, 1.0))
+        
+        if verts:
+            edges = []
+            faces = []
+            
+            vis_mesh.clear_geometry()
+            vis_mesh.from_pydata(verts, edges, faces)
+            vis_mesh.update()
+            
+            # Add vertex colors if available
+            if len(vis_mesh.vertex_colors) == 0:
+                vis_mesh.vertex_colors.new()
+            
+            if len(vis_mesh.vertex_colors) > 0:
+                vcol = vis_mesh.vertex_colors[0]
+                for i, color in enumerate(colors):
+                    if i < len(vcol.data):
+                        vcol.data[i].color = color
+
 classes = (
     CuFlodaProperties,
     CuFlodaPanel,
@@ -242,6 +340,7 @@ classes = (
     CuFlodaSetObstacles,
     CuFlodaRunStep,
     CuFlodaRunSimulation,
+    CuFlodaRealtimePreview,
     CuFlodaExportParticles,
 )
 
