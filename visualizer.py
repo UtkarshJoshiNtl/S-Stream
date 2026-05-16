@@ -50,34 +50,33 @@ class FluidVisualizer:
             density: Density field (height, width)
             velocity: Velocity field (height, width, 2) with (u, v) components
         """
-        # Normalize density to 0-1 range
-        # Typical density range is around 0.9-1.1
-        d_min, d_max = 0.95, 1.05
+        # Normalize density to 0-1 range with wider range for better visibility
+        d_min, d_max = 0.9, 1.1
         d_norm = (density - d_min) / (d_max - d_min)
         d_norm = np.clip(d_norm, 0, 1)
         
         # Calculate velocity magnitude if provided
         if velocity is not None:
             v_mag = np.sqrt(velocity[:, :, 0]**2 + velocity[:, :, 1]**2)
-            v_norm = np.clip(v_mag / 0.2, 0, 1)  # Normalize velocity
+            v_norm = np.clip(v_mag / 0.15, 0, 1)  # Normalize velocity
         else:
             v_norm = np.zeros_like(d_norm)
         
-        # Fire/smoke coloring
+        # Fire/smoke coloring with more dramatic contrast
         # Low density: dark gray/black
         # Medium density: orange/red
         # High density: yellow/white
         # Velocity adds brightness and shifts toward yellow
         
-        # Base color from density
-        r = np.clip(d_norm * 2.0, 0, 1) * 255
-        g = np.clip((d_norm - 0.3) * 1.5, 0, 1) * 255
-        b = np.clip((d_norm - 0.6) * 2.0, 0, 1) * 255
+        # Base color from density - more dramatic gradient
+        r = np.clip(d_norm * 3.0, 0, 1) * 255
+        g = np.clip((d_norm - 0.2) * 2.0, 0, 1) * 255
+        b = np.clip((d_norm - 0.5) * 3.0, 0, 1) * 255
         
         # Add velocity influence (brightens and shifts toward yellow)
-        r = np.clip(r + v_norm * 50, 0, 255)
-        g = np.clip(g + v_norm * 80, 0, 255)
-        b = np.clip(b + v_norm * 30, 0, 255)
+        r = np.clip(r + v_norm * 80, 0, 255)
+        g = np.clip(g + v_norm * 100, 0, 255)
+        b = np.clip(b + v_norm * 50, 0, 255)
         
         # Convert to uint8
         r = r.astype(np.uint8)

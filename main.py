@@ -11,10 +11,10 @@ def main():
     
     # Initialize simulation
     sim = CPULBM2D(width=width, height=height, viscosity=viscosity)
-    sim.initialize(rho=1.0, u=0.1, v=0.0)
+    sim.initialize(rho=1.0, u=0.15, v=0.0)  # Increased inflow velocity
     
-    # Initialize visualizer
-    vis = FluidVisualizer(width=width, height=height, scale=4)
+    # Initialize visualizer with larger scale
+    vis = FluidVisualizer(width=width, height=height, scale=5)
     
     # Main loop
     clock = time.time()
@@ -22,6 +22,7 @@ def main():
     step_count = 0
     fps_timer = time.time()
     fps_frames = 0
+    last_fps = 0.0
     
     print("Starting simulation...")
     print("Controls: Space=Pause, R=Reset, ESC=Quit, Mouse=Draw obstacles")
@@ -35,19 +36,20 @@ def main():
             # Run simulation steps if not paused
             if not vis.paused:
                 # Run multiple steps per frame for faster simulation
-                steps_per_frame = max(1, int(target_fps / 10))
+                steps_per_frame = 5
                 sim.run(steps_per_frame)
                 step_count += steps_per_frame
             
             # Calculate FPS
             current_time = time.time()
             fps_frames += 1
-            if current_time - fps_timer >= 1.0:
+            if current_time - fps_timer >= 0.5:  # Update every 0.5 seconds
                 fps = fps_frames / (current_time - fps_timer)
+                last_fps = fps
                 fps_timer = current_time
                 fps_frames = 0
             else:
-                fps = 0.0
+                fps = last_fps
             
             # Get simulation state
             density = sim.get_density()

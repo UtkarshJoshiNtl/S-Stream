@@ -107,7 +107,7 @@ class CPULBM2D:
         for i in range(9):
             self.f[i][self.obstacles] = self.f[self.opp[i]][self.obstacles]
     
-    def apply_inflow(self, u_inflow=0.1):
+    def apply_inflow(self, u_inflow=0.15):
         """
         Apply inflow boundary condition on left side.
         Sets equilibrium distribution with specified velocity.
@@ -151,7 +151,7 @@ class CPULBM2D:
         """
         self.streaming()
         self.apply_obstacles()
-        self.apply_inflow(u_inflow=0.1)
+        self.apply_inflow(u_inflow=0.15)
         self.apply_outflow()
         self.apply_walls()
         self.collision()
