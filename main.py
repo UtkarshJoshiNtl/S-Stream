@@ -51,10 +51,11 @@ def main():
             
             # Get simulation state
             density = sim.get_density()
+            velocity = sim.get_velocity()
             obstacles = sim.obstacles
             
             # Update visualization
-            vis.update(density, obstacles, fps, step_count)
+            vis.update(density, velocity, obstacles, fps, step_count)
             
             # Frame rate control
             frame_time = time.time() - clock

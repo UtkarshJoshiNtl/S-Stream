@@ -42,24 +42,50 @@ class FluidVisualizer:
         self.running = True
         self.drawing_obstacle = False
     
-    def render_density(self, density):
+    def render_density(self, density, velocity=None):
         """
-        Render density field as grayscale image.
+        Render density field with fire/smoke coloring.
         
         Args:
             density: Density field (height, width)
+            velocity: Velocity field (height, width, 2) with (u, v) components
         """
-        # Normalize density to 0-255 range
+        # Normalize density to 0-1 range
         # Typical density range is around 0.9-1.1
         d_min, d_max = 0.95, 1.05
         d_norm = (density - d_min) / (d_max - d_min)
         d_norm = np.clip(d_norm, 0, 1)
         
-        # Convert to grayscale (0-255)
-        gray = (d_norm * 255).astype(np.uint8)
+        # Calculate velocity magnitude if provided
+        if velocity is not None:
+            v_mag = np.sqrt(velocity[:, :, 0]**2 + velocity[:, :, 1]**2)
+            v_norm = np.clip(v_mag / 0.2, 0, 1)  # Normalize velocity
+        else:
+            v_norm = np.zeros_like(d_norm)
         
-        # Create RGB array (grayscale)
-        rgb = np.stack([gray, gray, gray], axis=2)
+        # Fire/smoke coloring
+        # Low density: dark gray/black
+        # Medium density: orange/red
+        # High density: yellow/white
+        # Velocity adds brightness and shifts toward yellow
+        
+        # Base color from density
+        r = np.clip(d_norm * 2.0, 0, 1) * 255
+        g = np.clip((d_norm - 0.3) * 1.5, 0, 1) * 255
+        b = np.clip((d_norm - 0.6) * 2.0, 0, 1) * 255
+        
+        # Add velocity influence (brightens and shifts toward yellow)
+        r = np.clip(r + v_norm * 50, 0, 255)
+        g = np.clip(g + v_norm * 80, 0, 255)
+        b = np.clip(b + v_norm * 30, 0, 255)
+        
+        # Convert to uint8
+        r = r.astype(np.uint8)
+        g = g.astype(np.uint8)
+        b = b.astype(np.uint8)
+        
+        # Create RGB array
+        rgb = np.stack([r, g, b], axis=2)
         
         # Create PyGame surface
         pygame.surfarray.blit_array(self.surface, np.transpose(rgb, (1, 0, 2)))
@@ -99,12 +125,13 @@ class FluidVisualizer:
         controls_surface = self.font.render(controls_text, True, (200, 200, 200))
         self.screen.blit(controls_surface, (10, self.display_height - 40))
     
-    def update(self, density, obstacles, fps, step_count):
+    def update(self, density, velocity, obstacles, fps, step_count):
         """
         Update display.
         
         Args:
             density: Density field
+            velocity: Velocity field
             obstacles: Obstacle mask
             fps: Current FPS
             step_count: Number of simulation steps
@@ -112,8 +139,8 @@ class FluidVisualizer:
         # Clear screen
         self.screen.fill(self.bg_color)
         
-        # Render density field
-        self.render_density(density)
+        # Render density field with fire coloring
+        self.render_density(density, velocity)
         
         # Render obstacles
         self.render_obstacles(obstacles)
