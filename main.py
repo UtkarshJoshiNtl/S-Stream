@@ -23,7 +23,7 @@ def run_visual(sim, target_fps=30):
     last_fps = 0.0
 
     print("Starting simulation...")
-    print("Controls: Space=Pause, R=Reset, ESC=Quit, Mouse=Draw obstacles")
+    print("Controls: O=obstacle mode, E=emitter mode, R=reset, C=clear emitters")
 
     try:
         while vis.running:
@@ -45,11 +45,11 @@ def run_visual(sim, target_fps=30):
             else:
                 fps = last_fps
 
-            density = sim.get_density()
-            velocity = sim.get_velocity()
+            smoke = sim.get_smoke()
             obstacles = sim.obstacles
+            emitters = sim.emitters
 
-            vis.update(density, velocity, obstacles, fps, step_count)
+            vis.update(smoke, obstacles, emitters, fps, step_count)
 
             frame_time = time.time() - last_frame_time
             if frame_time < 1.0 / target_fps:

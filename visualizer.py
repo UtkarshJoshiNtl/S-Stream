@@ -1,165 +1,104 @@
 import pygame
 import numpy as np
 
+
 class FluidVisualizer:
-    """
-    PyGame-based visualization for fluid simulation.
-    Displays density field as grayscale image.
-    """
-
-    def __init__(self, width, height, scale=4):
-        """
-        Initialize visualizer.
-
-        Args:
-            width: Simulation grid width
-            height: Simulation grid height
-            scale: Display scale factor (pixels per grid cell)
-        """
+    def __init__(self, width, height, scale=5):
         self.width = width
         self.height = height
         self.scale = scale
 
-        # Initialize PyGame
         pygame.init()
         self.display_width = width * scale
         self.display_height = height * scale
         self.screen = pygame.display.set_mode((self.display_width, self.display_height))
         pygame.display.set_caption("CuFloda - Fluid Simulation")
 
-        # Create surface for density field
         self.surface = pygame.Surface((width, height))
 
-        # Colors
         self.bg_color = (0, 0, 0)
-        self.obstacle_color = (128, 128, 128)
+        self.obstacle_color = (100, 100, 100)
+        self.emitter_color = (255, 100, 50)
 
-        # Font for info display
         self.font = pygame.font.Font(None, 36)
-        self.controls_surface = self.font.render(
-            "Space: Pause | R: Reset | ESC: Quit | Mouse: Draw obstacles",
-            True, (200, 200, 200))
+        self._cache_control_surfaces()
 
-        # State
         self.paused = False
         self.running = True
         self.drawing_obstacle = False
+        self.emitter_mode = False
 
-    def render_density(self, density, velocity=None):
-        """
-        Render density field with fire/smoke coloring.
+    def _cache_control_surfaces(self):
+        self.controls_surface = self.font.render(
+            "O: obstacle mode | E: emitter mode | C: clear emitters",
+            True, (180, 180, 180))
+        self.mode_obstacle_surface = self.font.render(
+            "MODE: OBSTACLE (drag to draw)", True, (255, 200, 100))
+        self.mode_emitter_surface = self.font.render(
+            "MODE: EMITTER (click to place)", True, (100, 200, 255))
 
-        Args:
-            density: Density field (height, width)
-            velocity: Velocity field (height, width, 2) with (u, v) components
-        """
-        # Normalize density to 0-1 range with wider range for better visibility
-        d_min, d_max = 0.9, 1.1
-        d_norm = (density - d_min) / (d_max - d_min)
-        d_norm = np.clip(d_norm, 0, 1)
+    def render_smoke(self, smoke):
+        s_norm = np.clip(smoke / 0.3, 0, 1)
 
-        # Calculate velocity magnitude if provided
-        if velocity is not None:
-            v_mag = np.sqrt(velocity[:, :, 0]**2 + velocity[:, :, 1]**2)
-            v_norm = np.clip(v_mag / 0.15, 0, 1)  # Normalize velocity
-        else:
-            v_norm = np.zeros_like(d_norm)
+        r = np.clip(s_norm * 4.0 - 0.2, 0, 1) * 255
+        g = np.clip((s_norm - 0.15) * 3.0, 0, 1) * 255
+        b = np.clip((s_norm - 0.5) * 2.5, 0, 1) * 255
 
-        # Fire/smoke coloring with more dramatic contrast
-        # Low density: dark gray/black
-        # Medium density: orange/red
-        # High density: yellow/white
-        # Velocity adds brightness and shifts toward yellow
-
-        # Base color from density - more dramatic gradient
-        r = np.clip(d_norm * 3.0, 0, 1) * 255
-        g = np.clip((d_norm - 0.2) * 2.0, 0, 1) * 255
-        b = np.clip((d_norm - 0.5) * 3.0, 0, 1) * 255
-
-        # Add velocity influence (brightens and shifts toward yellow)
-        r = np.clip(r + v_norm * 80, 0, 255)
-        g = np.clip(g + v_norm * 100, 0, 255)
-        b = np.clip(b + v_norm * 50, 0, 255)
-
-        # Convert to uint8
         r = r.astype(np.uint8)
         g = g.astype(np.uint8)
         b = b.astype(np.uint8)
 
-        # Create RGB array
         rgb = np.stack([r, g, b], axis=2)
-
-        # Create PyGame surface
         pygame.surfarray.blit_array(self.surface, np.transpose(rgb, (1, 0, 2)))
 
-        # Scale up for display
-        scaled_surface = pygame.transform.scale(self.surface,
-                                                (self.display_width, self.display_height))
-        self.screen.blit(scaled_surface, (0, 0))
+        scaled = pygame.transform.scale(
+            self.surface, (self.display_width, self.display_height))
+        self.screen.blit(scaled, (0, 0))
 
     def render_obstacles(self, obstacles):
         if not np.any(obstacles):
             return
-
-        obstacle_surface = pygame.Surface(
+        surf = pygame.Surface(
             (self.display_width, self.display_height), pygame.SRCALPHA)
-        y_indices, x_indices = np.where(obstacles)
-        for y, x in zip(y_indices, x_indices):
-            obstacle_surface.fill(
-                self.obstacle_color,
-                (x * self.scale, y * self.scale, self.scale, self.scale))
-        self.screen.blit(obstacle_surface, (0, 0))
+        ys, xs = np.where(obstacles)
+        for y, x in zip(ys, xs):
+            surf.fill(self.obstacle_color,
+                      (x * self.scale, y * self.scale, self.scale, self.scale))
+        self.screen.blit(surf, (0, 0))
+
+    def render_emitters(self, emitters):
+        for x, y, _ in emitters:
+            cx = x * self.scale + self.scale // 2
+            cy = y * self.scale + self.scale // 2
+            pygame.draw.circle(self.screen, self.emitter_color,
+                               (cx, cy), self.scale // 2)
+            pygame.draw.circle(self.screen, (255, 255, 200),
+                               (cx, cy), self.scale // 4)
 
     def render_info(self, fps, step_count):
-        """
-        Render simulation info overlay.
+        info_text = (
+            f"FPS: {fps:.1f} | Steps: {step_count}"
+            f" | {'PAUSED' if self.paused else 'RUNNING'}"
+            f" | Emitters: {0 if not hasattr(self, '_emitter_count') else self._emitter_count}")
+        info_surf = self.font.render(info_text, True, (255, 255, 255))
+        self.screen.blit(info_surf, (10, 10))
 
-        Args:
-            fps: Current FPS
-            step_count: Number of simulation steps
-        """
-        info_text = f"FPS: {fps:.1f} | Steps: {step_count} | {'PAUSED' if self.paused else 'RUNNING'}"
-        text_surface = self.font.render(info_text, True, (255, 255, 255))
-        self.screen.blit(text_surface, (10, 10))
+        mode_surf = (self.mode_emitter_surface if self.emitter_mode
+                     else self.mode_obstacle_surface)
+        self.screen.blit(mode_surf, (10, 50))
 
         self.screen.blit(self.controls_surface, (10, self.display_height - 40))
 
-    def update(self, density, velocity, obstacles, fps, step_count):
-        """
-        Update display.
-
-        Args:
-            density: Density field
-            velocity: Velocity field
-            obstacles: Obstacle mask
-            fps: Current FPS
-            step_count: Number of simulation steps
-        """
-        # Clear screen
+    def update(self, smoke, obstacles, emitters, fps, step_count):
+        self._emitter_count = len(emitters)
         self.screen.fill(self.bg_color)
-
-        # Render density field with fire coloring
-        self.render_density(density, velocity)
-
-        # Render obstacles
+        self.render_smoke(smoke)
         self.render_obstacles(obstacles)
-
-        # Render info overlay
+        self.render_emitters(emitters)
         self.render_info(fps, step_count)
-
-        # Update display
         pygame.display.flip()
 
     def handle_events(self, sim):
-        """
-        Handle PyGame events.
-
-        Args:
-            sim: Simulation instance (for obstacle interaction)
-
-        Returns:
-            False if should quit, True otherwise
-        """
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 return False
@@ -172,24 +111,33 @@ class FluidVisualizer:
                 elif event.key == pygame.K_r:
                     sim.initialize(rho=1.0, u=0.1, v=0.0)
                     sim.clear_obstacles()
+                elif event.key == pygame.K_e:
+                    self.emitter_mode = True
+                elif event.key == pygame.K_o:
+                    self.emitter_mode = False
+                elif event.key == pygame.K_c:
+                    sim.clear_emitters()
 
             elif event.type == pygame.MOUSEBUTTONDOWN:
-                if event.button == 1:  # Left click
-                    self.drawing_obstacle = True
+                if event.button == 1:
+                    x, y = pygame.mouse.get_pos()
+                    gx = x // self.scale
+                    gy = y // self.scale
+                    if self.emitter_mode:
+                        sim.add_emitter(gx, gy, strength=0.05)
+                    else:
+                        self.drawing_obstacle = True
 
             elif event.type == pygame.MOUSEBUTTONUP:
                 if event.button == 1:
                     self.drawing_obstacle = False
 
             elif event.type == pygame.MOUSEMOTION:
-                if self.drawing_obstacle:
+                if self.drawing_obstacle and not self.emitter_mode:
                     x, y = pygame.mouse.get_pos()
-                    grid_x = x // self.scale
-                    grid_y = y // self.scale
-                    sim.add_obstacle(grid_x, grid_y, radius=3)
+                    sim.add_obstacle(x // self.scale, y // self.scale, radius=3)
 
         return True
 
     def close(self):
-        """Clean up PyGame resources."""
         pygame.quit()
