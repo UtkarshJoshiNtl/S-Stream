@@ -134,3 +134,77 @@ class TestGetter:
         assert v.shape == (32, 32, 2)
         assert np.allclose(v[:, :, 0], sim.u)
         assert np.allclose(v[:, :, 1], sim.v)
+
+    def test_get_smoke(self, sim):
+        s = sim.get_smoke()
+        assert s.shape == (32, 32)
+        assert np.allclose(s, sim.smoke)
+
+
+class TestSmoke:
+    def test_initial_smoke_zero(self, sim):
+        assert np.allclose(sim.smoke, 0.0)
+
+    def test_add_emitter(self, sim):
+        sim.add_emitter(16, 16, strength=0.05)
+        assert len(sim.emitters) == 1
+        assert sim.emitters[0] == (16, 16, 0.05)
+
+    def test_clear_emitters(self, sim):
+        sim.add_emitter(16, 16, strength=0.05)
+        sim.clear_emitters()
+        assert len(sim.emitters) == 0
+
+    def test_emitter_injects_smoke(self, sim):
+        sim.add_emitter(16, 16, strength=0.1)
+        sim.apply_emitters()
+        assert sim.smoke[16, 16] == pytest.approx(0.1)
+
+    def test_smoke_advection_preserves_mass(self, sim):
+        sim.smoke[16, 16] = 1.0
+        sim.u[:] = 0.0
+        sim.v[:] = 0.0
+        mass_before = np.sum(sim.smoke)
+        sim.advect_smoke()
+        mass_after = np.sum(sim.smoke)
+        assert mass_after == pytest.approx(mass_before, rel=1e-10)
+
+    def test_smoke_advection_moves_downstream(self, sim):
+        sim.smoke[16, 16] = 1.0
+        sim.u[:] = 1.0
+        sim.v[:] = 0.0
+        sim.advect_smoke()
+        assert sim.smoke[16, 17] > 0.1
+        assert sim.smoke[16, 16] < 1.0
+
+    def test_decay_reduces_smoke(self, sim):
+        sim.smoke[16, 16] = 1.0
+        sim.decay_smoke()
+        assert sim.smoke[16, 16] == pytest.approx(0.999)
+
+    def test_diffusion_spreads_smoke(self, sim):
+        sim.smoke[16, 16] = 1.0
+        sim.diffuse_smoke()
+        assert sim.smoke[15, 16] > 0
+        assert sim.smoke[16, 15] > 0
+        assert sim.smoke[17, 16] > 0
+        assert sim.smoke[16, 17] > 0
+
+    def test_obstacles_clear_smoke(self, sim):
+        sim.smoke[16, 16] = 1.0
+        sim.obstacles[16, 16] = True
+        sim.apply_obstacles()
+        assert sim.smoke[16, 16] == 0.0
+
+    def test_smoke_step_integration(self, sim):
+        sim.add_emitter(16, 16, strength=0.1)
+        sim.step()
+        assert np.sum(sim.smoke) > 0
+        assert np.all(sim.smoke >= 0)
+
+    def test_initialize_clears_smoke(self, sim):
+        sim.smoke[16, 16] = 1.0
+        sim.emitters.append((16, 16, 0.1))
+        sim.initialize(rho=1.0, u=0.1, v=0.0)
+        assert np.allclose(sim.smoke, 0.0)
+        assert len(sim.emitters) == 0
