@@ -6,23 +6,22 @@ Fluid dynamics simulation using Lattice Boltzmann Method (LBM) with CPU prototyp
 
 **Current Phase: CPU Prototype with PyGame Visualization**
 - D2Q9 Lattice Boltzmann Method implementation
-- Real-time visualization with PyGame
+- Real-time visualization with PyGame (fire/smoke coloring)
 - Complex boundary conditions (inflow, outflow, walls, obstacles)
-- Target: 128x128 resolution at 30+ FPS
-
-**Future Phases:**
-- Advanced visualization (volume rendering, lighting, fire coloring)
-- CUDA port with SOA (Structure of Arrays) memory layout
-- Performance optimization and benchmarking
+- Headless mode for benchmarking
 
 ## Project Structure
 ```
 CuFloda/
-├── cpu_lbm.py           # CPU D2Q9 implementation
+├── cpu_lbm.py           # CPU D2Q9 LBM implementation
 ├── visualizer.py        # PyGame visualization
-├── main.py              # Entry point
+├── main.py              # Entry point (visual + headless)
+├── requirements.txt     # Python dependencies
+├── pyproject.toml       # Project configuration
 ├── tests/
-│   └── benchmark.py     # CPU benchmark
+│   ├── __init__.py
+│   ├── test_basic.py    # Unit tests
+│   └── benchmark.py     # Performance benchmark
 └── README.md
 ```
 
@@ -30,8 +29,6 @@ CuFloda/
 
 ### Required
 - Python 3.10+
-- NumPy
-- PyGame
 
 ## Installation
 
@@ -41,7 +38,7 @@ git clone https://github.com/UtkarshJoshiNtl/CuFloda.git
 cd CuFloda
 
 # Install dependencies
-pip install numpy pygame
+pip install -r requirements.txt
 ```
 
 ## Usage
