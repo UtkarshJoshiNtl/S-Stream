@@ -1,6 +1,6 @@
 # CuFloda - Fluid Dynamics Simulation
 
-Fluid dynamics simulation using Lattice Boltzmann Method (LBM) with CPU prototype and future CUDA acceleration.
+2D fluid dynamics simulation using the Lattice Boltzmann Method (D2Q9 + BGK) with PyGame visualization.
 
 ## Development Phases
 
