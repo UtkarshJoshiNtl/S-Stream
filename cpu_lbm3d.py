@@ -128,3 +128,45 @@ class CPULBM3D:
                 shift=(self.cz[i], self.cy[i], self.cx[i]),
                 axis=(0, 1, 2),
             )
+
+    def apply_obstacles(self) -> None:
+        for i in range(19):
+            self.f[i][self.obstacles] = self.f[self.opp[i]][self.obstacles]
+
+    def apply_inflow(self, u_inflow: float = 0.15) -> None:
+        rho_inlet = 1.0
+        u_inlet = np.full((self.depth, self.height), u_inflow)
+        v_inlet = np.zeros((self.depth, self.height))
+        w_inlet = np.zeros((self.depth, self.height))
+        for i in range(19):
+            cu = (
+                self.cx[i] * u_inlet
+                + self.cy[i] * v_inlet
+                + self.cz[i] * w_inlet
+            )
+            u2 = u_inlet**2 + v_inlet**2 + w_inlet**2
+            feq = self.w[i] * rho_inlet * (
+                1 + 3 * cu + 4.5 * cu**2 - 1.5 * u2
+            )
+            self.f[i, :, :, 0] = feq
+
+    def apply_outflow(self) -> None:
+        for i in range(19):
+            self.f[i, :, :, -1] = self.f[i, :, :, -2]
+
+    def apply_walls(self) -> None:
+        for i in range(19):
+            self.f[i, :, 0, :] = self.f[self.opp[i], :, 0, :]
+            self.f[i, :, -1, :] = self.f[self.opp[i], :, -1, :]
+            self.f[i, 0, :, :] = self.f[self.opp[i], 0, :, :]
+            self.f[i, -1, :, :] = self.f[self.opp[i], -1, :, :]
+
+    def add_obstacle_sphere(
+        self, x: int, y: int, z: int, radius: int = 5
+    ) -> None:
+        z_grid, y_grid, x_grid = np.ogrid[:self.depth, :self.height, :self.width]
+        mask = (x_grid - x) ** 2 + (y_grid - y) ** 2 + (z_grid - z) ** 2 <= radius ** 2
+        self.obstacles[mask] = True
+
+    def clear_obstacles(self) -> None:
+        self.obstacles[:] = False
