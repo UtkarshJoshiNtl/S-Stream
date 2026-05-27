@@ -6,6 +6,7 @@ from cpu_lbm import CPULBM2D
 
 
 def run_headless(sim, steps: int) -> None:
+    """Run simulation steps without visualization, print timing at end."""
     print(f"Running {steps} steps headless...")
     start = time.time()
     sim.run(steps)
@@ -14,6 +15,7 @@ def run_headless(sim, steps: int) -> None:
 
 
 def run_visual_2d(sim, target_fps: int = 30) -> None:
+    """2D event loop: handles input, runs 5 steps/frame, renders smoke via PyGame."""
     from visualizer import FluidVisualizer
 
     vis = FluidVisualizer(width=sim.width, height=sim.height, scale=5)
@@ -64,6 +66,7 @@ def run_visual_2d(sim, target_fps: int = 30) -> None:
 
 
 def run_visual_3d(sim, target_fps: int = 24) -> None:
+    """3D event loop: runs 3 steps/frame, renders smoke via OpenGL volume rendering."""
     from visualizer3d import FluidVisualizer3D
 
     vis = FluidVisualizer3D(
@@ -111,6 +114,7 @@ def run_visual_3d(sim, target_fps: int = 24) -> None:
 
 
 def main() -> None:
+    """Parse CLI args, construct the appropriate engine (2D/3D/CPU/GPU), and run."""
     parser = argparse.ArgumentParser(
         description="CuFloda - Fluid Dynamics Simulation"
     )

@@ -11,6 +11,7 @@ from OpenGL.GL import (
     GL_COLOR_BUFFER_BIT,
     GL_DEPTH_BUFFER_BIT,
     GL_DEPTH_TEST,
+    GL_DYNAMIC_DRAW,
     GL_FALSE,
     GL_FLOAT,
     GL_FRAGMENT_SHADER,
@@ -43,7 +44,6 @@ from OpenGL.GL import (
     glGenBuffers,
     glGenTextures,
     glGenVertexArrays,
-    glGetAttribLocation,
     glGetUniformLocation,
     glPixelStorei,
     glTexImage2D,
@@ -56,7 +56,6 @@ from OpenGL.GL import (
     glUniformMatrix4fv,
     glUseProgram,
     glVertexAttribPointer,
-    glViewport,
     GL_UNPACK_ALIGNMENT,
     GL_RGBA,
     GL_NEAREST,
@@ -67,7 +66,12 @@ from OpenGL.GL import (
     glBlendFunc,
 )
 from OpenGL.GL.shaders import compileProgram, compileShader
-from OpenGL.GL import glGetString, GL_VERSION, glDeleteTextures, glDeleteVertexArrays, glDeleteBuffers
+from OpenGL.GL import (
+    glBufferSubData,
+    glGetString,
+    GL_VERSION,
+    glDeleteTextures,
+)
 
 if TYPE_CHECKING:
     from cpu_lbm3d import CPULBM3D
@@ -87,7 +91,6 @@ _VOLUME_FRAG_SRC = """
 out vec4 fragColor;
 uniform sampler3D volume;
 uniform mat4 invMVP;
-uniform vec3 camPos;
 uniform vec3 volExtent;
 
 vec4 transfer(float d) {
@@ -155,6 +158,19 @@ void main() {
 }
 """
 
+_SLICE_FRAG_SRC = """
+#version 330 core
+out vec4 fragColor;
+uniform sampler3D volume;
+uniform float sliceZ;
+in vec2 uv;
+void main() {
+    float s = texture(volume, vec3(uv, sliceZ)).r;
+    vec3 c = mix(vec3(0.02, 0.02, 0.06), vec3(1.0, 0.75, 0.4), sqrt(s));
+    fragColor = vec4(c, 1.0);
+}
+"""
+
 
 def _perspective(fov_y: float, aspect: float, near: float, far: float) -> np.ndarray:
     f = 1.0 / np.tan(fov_y / 2.0)
@@ -181,6 +197,10 @@ def _look_at(eye: np.ndarray, center: np.ndarray, up: np.ndarray) -> np.ndarray:
 
 
 class FluidVisualizer3D:
+    """OpenGL 3.3 volume renderer for 3D LBM smoke data.
+    Supports ray-marched volume rendering and 2D slice views.
+    """
+
     def __init__(
         self,
         width: int = 64,
@@ -222,6 +242,10 @@ class FluidVisualizer3D:
             compileShader(_HUD_VERT_SRC, GL_VERTEX_SHADER),
             compileShader(_HUD_FRAG_SRC, GL_FRAGMENT_SHADER),
         )
+        self.slice_shader = compileProgram(
+            compileShader(_VOLUME_VERT_SRC, GL_VERTEX_SHADER),
+            compileShader(_SLICE_FRAG_SRC, GL_FRAGMENT_SHADER),
+        )
 
         self._init_volume_texture()
         self._init_fullscreen_quad()
@@ -234,6 +258,7 @@ class FluidVisualizer3D:
         self._update_camera()
 
         self.font = pygame.font.Font(None, 28)
+        self._hud_texture_cache: dict[str, tuple[int, int, int]] = {}
         self.bg_color = (0.02, 0.02, 0.06)
 
         self.paused = False
@@ -284,7 +309,7 @@ class FluidVisualizer3D:
         self.hud_vbo = glGenBuffers(1)
         glBindVertexArray(self.hud_vao)
         glBindBuffer(GL_ARRAY_BUFFER, self.hud_vbo)
-        glBufferData(GL_ARRAY_BUFFER, verts.nbytes, verts, GL_STATIC_DRAW)
+        glBufferData(GL_ARRAY_BUFFER, verts.nbytes, verts, GL_DYNAMIC_DRAW)
         glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * 4, None)
         glEnableVertexAttribArray(0)
         glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * 4, ctypes.c_void_p(8))
@@ -325,10 +350,6 @@ class FluidVisualizer3D:
             1, GL_TRUE, self.inv_mvp.flatten(),
         )
         glUniform3f(
-            glGetUniformLocation(self.volume_shader, "camPos"),
-            self.cam_pos[0], self.cam_pos[1], self.cam_pos[2],
-        )
-        glUniform3f(
             glGetUniformLocation(self.volume_shader, "volExtent"),
             self.extent[0], self.extent[1], self.extent[2],
         )
@@ -339,30 +360,18 @@ class FluidVisualizer3D:
 
     def render_slice(self) -> None:
         z = np.clip(self.slice_z, 0, self.vol_d - 1)
-        glUseProgram(self.volume_shader)
+        slice_norm = z / (self.vol_d - 1)
+        glUseProgram(self.slice_shader)
         glActiveTexture(GL_TEXTURE0)
         glBindTexture(GL_TEXTURE_3D, self.volume_tex)
-        glUniform1i(glGetUniformLocation(self.volume_shader, "volume"), 0)
-        identity = np.eye(4, dtype=np.float32)
-        glUniformMatrix4fv(
-            glGetUniformLocation(self.volume_shader, "invMVP"),
-            1, GL_TRUE, identity.flatten(),
-        )
-        glUniform3f(
-            glGetUniformLocation(self.volume_shader, "camPos"),
-            0, 0, 0,
-        )
-        glUniform3f(
-            glGetUniformLocation(self.volume_shader, "volExtent"),
-            self.extent[0], self.extent[1], self.extent[2],
-        )
+        glUniform1i(glGetUniformLocation(self.slice_shader, "volume"), 0)
+        glUniform1f(glGetUniformLocation(self.slice_shader, "sliceZ"), slice_norm)
         glBindVertexArray(self.fs_vao)
         glDrawArrays(GL_TRIANGLES, 0, 6)
         glBindVertexArray(0)
         glUseProgram(0)
 
-    def _make_hud_texture(self, text: str, color=(255, 255, 255)) -> int:
-        surf = self.font.render(text, True, color, (0, 0, 0, 0))
+    def _surface_to_texture(self, surf: pygame.Surface) -> int:
         data = pygame.image.tostring(surf, 'RGBA', True)
         tex = glGenTextures(1)
         glBindTexture(GL_TEXTURE_2D, tex)
@@ -374,6 +383,8 @@ class FluidVisualizer3D:
         )
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
         glBindTexture(GL_TEXTURE_2D, 0)
         return tex
 
@@ -392,17 +403,29 @@ class FluidVisualizer3D:
             "Click+drag:rotate  Scroll:zoom",
         ]
         y_off = 10
+
+        glUseProgram(self.hud_shader)
+        glUniform1i(glGetUniformLocation(self.hud_shader, "hudTex"), 0)
+        glBindVertexArray(self.hud_vao)
+
         for text in lines:
             if not text:
+                y_off += 28 + 4
                 continue
-            tex = self._make_hud_texture(
-                text,
-                (255, 200, 100) if text.startswith('View') else (255, 255, 255),
-            )
-            glBindTexture(GL_TEXTURE_2D, tex)
-            surf = self.font.render(text, True, (255, 255, 255))
-            tw, th = surf.get_width(), surf.get_height()
-            pygame.image.tostring(surf, 'RGBA')
+
+            color = (255, 200, 100) if text.startswith('View') else (255, 255, 255)
+
+            if text in self._hud_texture_cache:
+                tex_id, tw, th = self._hud_texture_cache[text]
+            else:
+                surf = self.font.render(text, True, color, (0, 0, 0, 0))
+                tw, th = surf.get_width(), surf.get_height()
+                tex_id = self._surface_to_texture(surf)
+                if not text.startswith('FPS') and not text.startswith('View'):
+                    self._hud_texture_cache[text] = (tex_id, tw, th)
+
+            glActiveTexture(GL_TEXTURE0)
+            glBindTexture(GL_TEXTURE_2D, tex_id)
 
             nx = -1.0 + 2.0 * 10 / self.win_w
             ny = 1.0 - 2.0 * (y_off + th) / self.win_h
@@ -418,26 +441,16 @@ class FluidVisualizer3D:
                 nx, ny + nh, 0, 0,
             ], dtype=np.float32)
 
-            vao = glGenVertexArrays(1)
-            vbo = glGenBuffers(1)
-            glBindVertexArray(vao)
-            glBindBuffer(GL_ARRAY_BUFFER, vbo)
-            glBufferData(GL_ARRAY_BUFFER, verts.nbytes, verts, GL_STATIC_DRAW)
-            glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * 4, None)
-            glEnableVertexAttribArray(0)
-            glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * 4, ctypes.c_void_p(8))
-            glEnableVertexAttribArray(1)
-            glBindVertexArray(vao)
-
-            glUseProgram(self.hud_shader)
-            glUniform1i(glGetUniformLocation(self.hud_shader, "hudTex"), 0)
+            glBufferSubData(GL_ARRAY_BUFFER, 0, verts.nbytes, verts)
             glDrawArrays(GL_TRIANGLES, 0, 6)
-            glUseProgram(0)
-            glDeleteVertexArrays(1, [vao])
-            glDeleteBuffers(1, [vbo])
-            glDeleteTextures(1, [tex])
+
+            if text.startswith('FPS') or text.startswith('View'):
+                glDeleteTextures(1, [tex_id])
 
             y_off += th + 4
+
+        glBindVertexArray(0)
+        glUseProgram(0)
 
     def handle_events(self, sim: CPULBM3D) -> bool:
         for event in pygame.event.get():
@@ -488,14 +501,17 @@ class FluidVisualizer3D:
                     self.drawing_obstacle = False
 
             elif event.type == pygame.MOUSEMOTION:
-                if event.drag and event.buttons[0]:
+                if event.buttons[0]:
                     dx, dy = event.rel
                     if self.drawing_obstacle and not self.emitter_mode:
                         vw, vh = self.win_w, self.win_h
                         x, y = event.pos
                         gx = int(x / vw * self.vol_w)
                         gy = int(y / vh * self.vol_h)
-                        gz = self.slice_z if self.view_mode == 'slice' else self.vol_d // 2
+                        gz = (
+                            self.slice_z if self.view_mode == 'slice'
+                            else self.vol_d // 2
+                        )
                         sim.add_obstacle_sphere(gx, gy, gz, radius=3)
                     else:
                         self.theta += dx * 0.005

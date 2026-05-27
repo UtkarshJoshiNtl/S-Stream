@@ -22,12 +22,17 @@ class GPULBM3D:
         self.depth = depth
         self.viscosity = viscosity
 
+        # Relaxation rate from viscosity (BGK): omega = 1 / (3*nu + 0.5).
+        # Asserts omega in (0,2) — outside this range the BGK scheme diverges.
         self.omega = 1.0 / (3.0 * viscosity + 0.5)
         assert 0 < self.omega < 2, (
             f"omega={self.omega:.3f} outside stable range (0, 2) "
             f"for viscosity={viscosity}"
         )
 
+        # D3Q19 lattice: 19 velocity directions, 3 weight classes.
+        # Weights: rest=1/3, axis=1/18, diagonal=1/36.
+        # float32 halves GPU memory/bandwidth vs float64 with negligible LBM error.
         self.w = cp.array([
             1 / 3,
             1 / 18, 1 / 18, 1 / 18, 1 / 18, 1 / 18, 1 / 18,
@@ -36,6 +41,8 @@ class GPULBM3D:
             1 / 36, 1 / 36, 1 / 36, 1 / 36,
         ], dtype=cp.float32)
 
+        # Velocity vectors (cx, cy, cz) for each of the 19 directions.
+        # Indices 0=rest, 1-6=axis-aligned, 7-18=diagonal.
         self.cx = cp.array([
             0,  1, -1,  0,  0,  0,  0,
             1, -1,  1, -1,  1, -1,  1, -1,
@@ -54,6 +61,8 @@ class GPULBM3D:
             1, -1, -1,  1,
         ], dtype=cp.float32)
 
+        # opp[i] gives the index of the velocity opposite to direction i.
+        # Used for bounce-back boundary conditions.
         self.opp = cp.array([
             0, 2, 1, 4, 3, 6, 5,
             8, 7, 10, 9, 12, 11, 14, 13,
@@ -74,6 +83,8 @@ class GPULBM3D:
         self.smoke_decay = 0.999
         self.emitters: list[tuple[int, int, int, float]] = []
 
+        # Precompute grid coordinates for smoke advection.
+        # indexing='ij' gives (z, y, x) order matching ndarray indexing.
         z, y, x = cp.meshgrid(
             cp.arange(depth, dtype=cp.float32),
             cp.arange(height, dtype=cp.float32),
@@ -116,7 +127,9 @@ class GPULBM3D:
         self.emitters.clear()
 
     def collision(self) -> None:
+        # Compute macroscopic density from distribution moments
         self.rho = cp.sum(self.f, axis=0)
+        # Clamp density to avoid division by zero inside obstacles
         rho_safe = cp.where(self.rho > 0, self.rho, 1.0)
         c = self.cx[:, cp.newaxis, cp.newaxis, cp.newaxis]
         self.u = cp.sum(self.f * c, axis=0) / rho_safe
@@ -125,11 +138,14 @@ class GPULBM3D:
         c = self.cz[:, cp.newaxis, cp.newaxis, cp.newaxis]
         self.w_vel = cp.sum(self.f * c, axis=0) / rho_safe
 
+        # BGK relaxation toward local equilibrium
         feq = self.equilibrium(self.rho, self.u, self.v, self.w_vel)
         self.f = self.f * (1 - self.omega) + feq * self.omega
 
     def streaming(self) -> None:
         for i in range(19):
+            # CuPy 0-D arrays (from indexing cp.array[i]) don't implicitly
+            # convert to Python int for cp.roll shift — extract via .item().
             cz_i = int(self.cz[i].item()) if hasattr(self.cz[i], 'item') else self.cz[i]
             cy_i = int(self.cy[i].item()) if hasattr(self.cy[i], 'item') else self.cy[i]
             cx_i = int(self.cx[i].item()) if hasattr(self.cx[i], 'item') else self.cx[i]
@@ -195,6 +211,7 @@ class GPULBM3D:
             self.smoke = cp.minimum(self.smoke, 1.0)
 
     def advect_smoke(self) -> None:
+        # Zero velocity inside obstacles so smoke is not pushed through them
         u_adv = cp.where(self.obstacles, 0.0, self.u)
         v_adv = cp.where(self.obstacles, 0.0, self.v)
         w_adv = cp.where(self.obstacles, 0.0, self.w_vel)
@@ -239,6 +256,9 @@ class GPULBM3D:
         )
 
     def diffuse_smoke(self) -> None:
+        # 6-neighbor Laplacian with boundary-safe slice arithmetic.
+        # Avoids cp.roll (used in 2D) because periodic wrapping at domain
+        # boundaries would incorrectly couple opposite walls.
         s = self.smoke
         d = self.smoke_diffusion
         lap = cp.zeros_like(s)
@@ -254,6 +274,8 @@ class GPULBM3D:
         self.smoke *= self.smoke_decay
 
     def step(self) -> None:
+        # Order matters: streaming before BCs, collision after BCs,
+        # smoke cleared from obstacles AFTER advection to prevent drift-through.
         self.streaming()
         self.apply_obstacles()
         self.apply_inflow(u_inflow=0.15)

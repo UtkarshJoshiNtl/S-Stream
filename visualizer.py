@@ -10,6 +10,8 @@ if TYPE_CHECKING:
 
 
 class FluidVisualizer:
+    """PyGame-based 2D renderer for smoke density, obstacles, emitters, and HUD."""
+
     def __init__(self, width: int, height: int, scale: int = 5) -> None:
         self.width = width
         self.height = height
@@ -54,6 +56,8 @@ class FluidVisualizer:
         )
 
     def render_smoke(self, smoke: np.ndarray) -> None:
+        # Fire-like color map: black→red→yellow→white as density increases.
+        # Empirically tuned thresholds create a flame gradient.
         s_norm = np.clip(smoke / 0.3, 0, 1)
 
         r = np.clip(s_norm * 4.0 - 0.2, 0, 1) * 255
@@ -65,6 +69,7 @@ class FluidVisualizer:
         b = b.astype(np.uint8)
 
         rgb = np.stack([r, g, b], axis=2)
+        # PyGame blit_array expects (W, H, C) — transpose from (H, W, C)
         pygame.surfarray.blit_array(self.surface, np.transpose(rgb, (1, 0, 2)))
 
         scaled = pygame.transform.scale(

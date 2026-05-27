@@ -21,12 +21,16 @@ class CPULBM3D:
         self.depth = depth
         self.viscosity = viscosity
 
+        # Relaxation rate from viscosity (BGK): omega = 1 / (3*nu + 0.5).
+        # Asserts omega in (0,2) — outside this range the BGK scheme diverges.
         self.omega = 1.0 / (3.0 * viscosity + 0.5)
         assert 0 < self.omega < 2, (
             f"omega={self.omega:.3f} outside stable range (0, 2) "
             f"for viscosity={viscosity}"
         )
 
+        # D3Q19 lattice: 19 velocity directions, 3 weight classes.
+        # Weights: rest=1/3, axis=1/18, diagonal=1/36.
         self.w = np.array([
             1 / 3,
             1 / 18, 1 / 18, 1 / 18, 1 / 18, 1 / 18, 1 / 18,
@@ -35,6 +39,8 @@ class CPULBM3D:
             1 / 36, 1 / 36, 1 / 36, 1 / 36,
         ])
 
+        # Velocity vectors (cx, cy, cz) for each of the 19 directions.
+        # Indices 0=rest, 1-6=axis-aligned, 7-18=diagonal.
         self.cx = np.array([
             0,  1, -1,  0,  0,  0,  0,
             1, -1,  1, -1,  1, -1,  1, -1,
@@ -53,6 +59,8 @@ class CPULBM3D:
             1, -1, -1,  1,
         ])
 
+        # opp[i] gives the index of the velocity opposite to direction i.
+        # Used for bounce-back boundary conditions.
         self.opp = np.array([
             0, 2, 1, 4, 3, 6, 5,
             8, 7, 10, 9, 12, 11, 14, 13,
@@ -73,6 +81,8 @@ class CPULBM3D:
         self.smoke_decay = 0.999
         self.emitters: list[tuple[int, int, int, float]] = []
 
+        # Precompute grid coordinates for smoke advection.
+        # indexing='ij' gives (z, y, x) order matching ndarray indexing.
         z, y, x = np.meshgrid(
             np.arange(depth, dtype=np.float64),
             np.arange(height, dtype=np.float64),
@@ -115,7 +125,9 @@ class CPULBM3D:
         self.emitters.clear()
 
     def collision(self) -> None:
+        # Compute macroscopic density from distribution moments
         self.rho = np.sum(self.f, axis=0)
+        # Clamp density to avoid division by zero inside obstacles
         rho_safe = np.where(self.rho > 0, self.rho, 1.0)
         c = self.cx[:, np.newaxis, np.newaxis, np.newaxis]
         self.u = np.sum(self.f * c, axis=0) / rho_safe
@@ -124,6 +136,7 @@ class CPULBM3D:
         c = self.cz[:, np.newaxis, np.newaxis, np.newaxis]
         self.w_vel = np.sum(self.f * c, axis=0) / rho_safe
 
+        # BGK relaxation toward local equilibrium
         feq = self.equilibrium(self.rho, self.u, self.v, self.w_vel)
         self.f = self.f * (1 - self.omega) + feq * self.omega
 
@@ -191,6 +204,7 @@ class CPULBM3D:
             self.smoke = np.minimum(self.smoke, 1.0)
 
     def advect_smoke(self) -> None:
+        # Zero velocity inside obstacles so smoke is not pushed through them
         u_adv = np.where(self.obstacles, 0.0, self.u)
         v_adv = np.where(self.obstacles, 0.0, self.v)
         w_adv = np.where(self.obstacles, 0.0, self.w_vel)
@@ -235,6 +249,9 @@ class CPULBM3D:
         )
 
     def diffuse_smoke(self) -> None:
+        # 6-neighbor Laplacian with boundary-safe slice arithmetic.
+        # Avoids np.roll (used in 2D) because periodic wrapping at domain
+        # boundaries would incorrectly couple opposite walls.
         s = self.smoke
         d = self.smoke_diffusion
         lap = np.zeros_like(s)
@@ -250,6 +267,8 @@ class CPULBM3D:
         self.smoke *= self.smoke_decay
 
     def step(self) -> None:
+        # Order matters: streaming before BCs, collision after BCs,
+        # smoke cleared from obstacles AFTER advection to prevent drift-through.
         self.streaming()
         self.apply_obstacles()
         self.apply_inflow(u_inflow=0.15)

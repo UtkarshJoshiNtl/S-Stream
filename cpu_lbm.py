@@ -16,8 +16,11 @@ class CPULBM2D:
         self.height = height
         self.viscosity = viscosity
 
+        # Relaxation rate from viscosity (BGK): omega = 1 / (3*nu + 0.5)
         self.omega = 1.0 / (3.0 * viscosity + 0.5)
 
+        # D2Q9 lattice: weights w[i], velocity vectors (cx[i], cy[i]),
+        # and opposite-direction index opp[i] for bounce-back.
         self.w = np.array(
             [4 / 9, 1 / 9, 1 / 9, 1 / 9, 1 / 9, 1 / 36, 1 / 36, 1 / 36, 1 / 36]
         )
@@ -60,10 +63,12 @@ class CPULBM2D:
 
     def collision(self) -> None:
         self.rho = np.sum(self.f, axis=0)
+        # Prevent division-by-zero at walls/obstacles where rho may be zero
         rho_safe = np.where(self.rho > 0, self.rho, 1.0)
         self.u = np.sum(self.f * self.cx[:, np.newaxis, np.newaxis], axis=0) / rho_safe
         self.v = np.sum(self.f * self.cy[:, np.newaxis, np.newaxis], axis=0) / rho_safe
 
+        # BGK relaxation toward equilibrium
         feq = self.equilibrium(self.rho, self.u, self.v)
         self.f = self.f * (1 - self.omega) + feq * self.omega
 
@@ -142,6 +147,8 @@ class CPULBM2D:
         self.smoke *= self.smoke_decay
 
     def step(self) -> None:
+        # Order matters: obstacles bounce-back before boundary conditions,
+        # collision after boundaries, smoke advection after emitters.
         self.streaming()
         self.apply_obstacles()
         self.apply_inflow(u_inflow=0.15)
