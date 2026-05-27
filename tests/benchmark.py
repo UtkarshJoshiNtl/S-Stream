@@ -2,7 +2,7 @@ import time
 from cpu_lbm import CPULBM2D
 
 
-def benchmark():
+def benchmark() -> None:
     print("=" * 60)
     print("CuFloda Performance Benchmark")
     print("=" * 60)
@@ -25,7 +25,8 @@ def benchmark():
         print(f"CPU:  {cpu_time:.3f}s ({cpu_fps:.1f} FPS)")
 
         try:
-            import cufloda
+            import cufloda  # type: ignore[import-not-found]
+
             gpu_sim = cufloda.LBM2D(width, height, 0.02)
             gpu_sim.initialize(1.0, 0.1, 0.0)
 

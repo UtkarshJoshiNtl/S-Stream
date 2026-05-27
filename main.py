@@ -1,17 +1,19 @@
+from __future__ import annotations
+
 import argparse
 import time
 from cpu_lbm import CPULBM2D
 
 
-def run_headless(sim, steps):
+def run_headless(sim: CPULBM2D, steps: int) -> None:
     print(f"Running {steps} steps headless...")
     start = time.time()
     sim.run(steps)
     elapsed = time.time() - start
-    print(f"Done: {steps} steps in {elapsed:.3f}s ({steps/elapsed:.1f} steps/s)")
+    print(f"Done: {steps} steps in {elapsed:.3f}s ({steps / elapsed:.1f} steps/s)")
 
 
-def run_visual(sim, target_fps=30):
+def run_visual(sim: CPULBM2D, target_fps: int = 30) -> None:
     from visualizer import FluidVisualizer
 
     vis = FluidVisualizer(width=sim.width, height=sim.height, scale=5)
@@ -63,16 +65,19 @@ def run_visual(sim, target_fps=30):
         print(f"Simulation ended. Total steps: {step_count}")
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="CuFloda - Fluid Dynamics Simulation")
-    parser.add_argument("--headless", action="store_true",
-                        help="Run without visualization (for benchmarking)")
+    parser.add_argument(
+        "--headless",
+        action="store_true",
+        help="Run without visualization (for benchmarking)",
+    )
     parser.add_argument("--width", type=int, default=128, help="Grid width")
     parser.add_argument("--height", type=int, default=128, help="Grid height")
-    parser.add_argument("--steps", type=int, default=1000,
-                        help="Number of steps (headless only)")
-    parser.add_argument("--viscosity", type=float, default=0.02,
-                        help="Fluid viscosity")
+    parser.add_argument(
+        "--steps", type=int, default=1000, help="Number of steps (headless only)"
+    )
+    parser.add_argument("--viscosity", type=float, default=0.02, help="Fluid viscosity")
     args = parser.parse_args()
 
     sim = CPULBM2D(width=args.width, height=args.height, viscosity=args.viscosity)

@@ -1,9 +1,16 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 import pygame
 import numpy as np
 
+if TYPE_CHECKING:
+    from cpu_lbm import CPULBM2D
+
 
 class FluidVisualizer:
-    def __init__(self, width, height, scale=5):
+    def __init__(self, width: int, height: int, scale: int = 5) -> None:
         self.width = width
         self.height = height
         self.scale = scale
@@ -14,7 +21,11 @@ class FluidVisualizer:
         self.screen = pygame.display.set_mode((self.display_width, self.display_height))
         pygame.display.set_caption("CuFloda - Fluid Simulation")
 
-        self.surface = pygame.Surface((width, height))
+        self.surface = pygame.Surface((width, height)).convert()
+
+        self.obstacle_surf = pygame.Surface(
+            (self.display_width, self.display_height), pygame.SRCALPHA
+        )
 
         self.bg_color = (0, 0, 0)
         self.obstacle_color = (100, 100, 100)
@@ -27,17 +38,22 @@ class FluidVisualizer:
         self.running = True
         self.drawing_obstacle = False
         self.emitter_mode = False
+        self._emitter_count = 0
 
-    def _cache_control_surfaces(self):
+    def _cache_control_surfaces(self) -> None:
         self.controls_surface = self.font.render(
             "O: obstacle mode | E: emitter mode | C: clear emitters",
-            True, (180, 180, 180))
+            True,
+            (180, 180, 180),
+        )
         self.mode_obstacle_surface = self.font.render(
-            "MODE: OBSTACLE (drag to draw)", True, (255, 200, 100))
+            "MODE: OBSTACLE (drag to draw)", True, (255, 200, 100)
+        )
         self.mode_emitter_surface = self.font.render(
-            "MODE: EMITTER (click to place)", True, (100, 200, 255))
+            "MODE: EMITTER (click to place)", True, (100, 200, 255)
+        )
 
-    def render_smoke(self, smoke):
+    def render_smoke(self, smoke: np.ndarray) -> None:
         s_norm = np.clip(smoke / 0.3, 0, 1)
 
         r = np.clip(s_norm * 4.0 - 0.2, 0, 1) * 255
@@ -52,44 +68,57 @@ class FluidVisualizer:
         pygame.surfarray.blit_array(self.surface, np.transpose(rgb, (1, 0, 2)))
 
         scaled = pygame.transform.scale(
-            self.surface, (self.display_width, self.display_height))
+            self.surface, (self.display_width, self.display_height)
+        )
         self.screen.blit(scaled, (0, 0))
 
-    def render_obstacles(self, obstacles):
+    def render_obstacles(self, obstacles: np.ndarray) -> None:
         if not np.any(obstacles):
             return
-        surf = pygame.Surface(
-            (self.display_width, self.display_height), pygame.SRCALPHA)
+        self.obstacle_surf.fill((0, 0, 0, 0))
         ys, xs = np.where(obstacles)
         for y, x in zip(ys, xs):
-            surf.fill(self.obstacle_color,
-                      (x * self.scale, y * self.scale, self.scale, self.scale))
-        self.screen.blit(surf, (0, 0))
+            self.obstacle_surf.fill(
+                self.obstacle_color,
+                (x * self.scale, y * self.scale, self.scale, self.scale),
+            )
+        self.screen.blit(self.obstacle_surf, (0, 0))
 
-    def render_emitters(self, emitters):
+    def render_emitters(self, emitters: list[tuple[int, int, float]]) -> None:
         for x, y, _ in emitters:
             cx = x * self.scale + self.scale // 2
             cy = y * self.scale + self.scale // 2
-            pygame.draw.circle(self.screen, self.emitter_color,
-                               (cx, cy), self.scale // 2)
-            pygame.draw.circle(self.screen, (255, 255, 200),
-                               (cx, cy), self.scale // 4)
+            pygame.draw.circle(
+                self.screen, self.emitter_color, (cx, cy), self.scale // 2
+            )
+            pygame.draw.circle(self.screen, (255, 255, 200), (cx, cy), self.scale // 4)
 
-    def render_info(self, fps, step_count):
+    def render_info(self, fps: float, step_count: int) -> None:
         info_text = (
             f"FPS: {fps:.1f} | Steps: {step_count}"
             f" | {'PAUSED' if self.paused else 'RUNNING'}"
-            f" | Emitters: {0 if not hasattr(self, '_emitter_count') else self._emitter_count}")
+            f" | Emitters: {self._emitter_count}"
+        )
         info_surf = self.font.render(info_text, True, (255, 255, 255))
         self.screen.blit(info_surf, (10, 10))
 
-        mode_surf = (self.mode_emitter_surface if self.emitter_mode
-                     else self.mode_obstacle_surface)
+        mode_surf = (
+            self.mode_emitter_surface
+            if self.emitter_mode
+            else self.mode_obstacle_surface
+        )
         self.screen.blit(mode_surf, (10, 50))
 
         self.screen.blit(self.controls_surface, (10, self.display_height - 40))
 
-    def update(self, smoke, obstacles, emitters, fps, step_count):
+    def update(
+        self,
+        smoke: np.ndarray,
+        obstacles: np.ndarray,
+        emitters: list[tuple[int, int, float]],
+        fps: float,
+        step_count: int,
+    ) -> None:
         self._emitter_count = len(emitters)
         self.screen.fill(self.bg_color)
         self.render_smoke(smoke)
@@ -98,7 +127,7 @@ class FluidVisualizer:
         self.render_info(fps, step_count)
         pygame.display.flip()
 
-    def handle_events(self, sim):
+    def handle_events(self, sim: CPULBM2D) -> bool:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 return False
@@ -139,5 +168,5 @@ class FluidVisualizer:
 
         return True
 
-    def close(self):
+    def close(self) -> None:
         pygame.quit()
