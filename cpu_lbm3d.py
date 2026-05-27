@@ -73,9 +73,15 @@ class CPULBM3D:
         self.smoke_decay = 0.999
         self.emitters: list[tuple[int, int, int, float]] = []
 
-        self._grid_z, self._grid_y, self._grid_x = np.meshgrid(
-            np.arange(depth), np.arange(height), np.arange(width), indexing='ij'
+        z, y, x = np.meshgrid(
+            np.arange(depth, dtype=np.float64),
+            np.arange(height, dtype=np.float64),
+            np.arange(width, dtype=np.float64),
+            indexing='ij',
         )
+        self._grid_x = x
+        self._grid_y = y
+        self._grid_z = z
 
         self.initialize(rho=1.0, u=0.1, v=0.0, w=0.0)
 
@@ -189,13 +195,9 @@ class CPULBM3D:
         v_adv = np.where(self.obstacles, 0.0, self.v)
         w_adv = np.where(self.obstacles, 0.0, self.w_vel)
 
-        xs = self._grid_x.astype(np.float64)
-        ys = self._grid_y.astype(np.float64)
-        zs = self._grid_z.astype(np.float64)
-
-        x_orig = xs - u_adv
-        y_orig = ys - v_adv
-        z_orig = zs - w_adv
+        x_orig = self._grid_x - u_adv
+        y_orig = self._grid_y - v_adv
+        z_orig = self._grid_z - w_adv
 
         x_orig = np.clip(x_orig, 0, self.width - 1)
         y_orig = np.clip(y_orig, 0, self.height - 1)
