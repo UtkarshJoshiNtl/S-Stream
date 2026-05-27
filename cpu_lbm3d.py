@@ -170,3 +170,105 @@ class CPULBM3D:
 
     def clear_obstacles(self) -> None:
         self.obstacles[:] = False
+
+    def add_emitter(
+        self, x: int, y: int, z: int, strength: float = 0.05
+    ) -> None:
+        self.emitters.append((x, y, z, strength))
+
+    def clear_emitters(self) -> None:
+        self.emitters.clear()
+
+    def apply_emitters(self) -> None:
+        for x, y, z, strength in self.emitters:
+            self.smoke[z, y, x] += strength
+            self.smoke = np.minimum(self.smoke, 1.0)
+
+    def advect_smoke(self) -> None:
+        u_adv = np.where(self.obstacles, 0.0, self.u)
+        v_adv = np.where(self.obstacles, 0.0, self.v)
+        w_adv = np.where(self.obstacles, 0.0, self.w_vel)
+
+        xs = self._grid_x.astype(np.float64)
+        ys = self._grid_y.astype(np.float64)
+        zs = self._grid_z.astype(np.float64)
+
+        x_orig = xs - u_adv
+        y_orig = ys - v_adv
+        z_orig = zs - w_adv
+
+        x_orig = np.clip(x_orig, 0, self.width - 1)
+        y_orig = np.clip(y_orig, 0, self.height - 1)
+        z_orig = np.clip(z_orig, 0, self.depth - 1)
+
+        x0 = np.floor(x_orig).astype(np.int32)
+        y0 = np.floor(y_orig).astype(np.int32)
+        z0 = np.floor(z_orig).astype(np.int32)
+        x1 = np.minimum(x0 + 1, self.width - 1)
+        y1 = np.minimum(y0 + 1, self.height - 1)
+        z1 = np.minimum(z0 + 1, self.depth - 1)
+
+        fx = x_orig - x0
+        fy = y_orig - y0
+        fz = z_orig - z0
+
+        c000 = self.smoke[z0, y0, x0]
+        c100 = self.smoke[z0, y0, x1]
+        c010 = self.smoke[z0, y1, x0]
+        c110 = self.smoke[z0, y1, x1]
+        c001 = self.smoke[z1, y0, x0]
+        c101 = self.smoke[z1, y0, x1]
+        c011 = self.smoke[z1, y1, x0]
+        c111 = self.smoke[z1, y1, x1]
+
+        self.smoke = (
+            c000 * (1 - fx) * (1 - fy) * (1 - fz)
+            + c100 * fx * (1 - fy) * (1 - fz)
+            + c010 * (1 - fx) * fy * (1 - fz)
+            + c110 * fx * fy * (1 - fz)
+            + c001 * (1 - fx) * (1 - fy) * fz
+            + c101 * fx * (1 - fy) * fz
+            + c011 * (1 - fx) * fy * fz
+            + c111 * fx * fy * fz
+        )
+
+    def diffuse_smoke(self) -> None:
+        s = self.smoke
+        d = self.smoke_diffusion
+        lap = np.zeros_like(s)
+        lap[1:] += s[:-1] - s[1:]
+        lap[:-1] += s[1:] - s[:-1]
+        lap[:, 1:] += s[:, :-1] - s[:, 1:]
+        lap[:, :-1] += s[:, 1:] - s[:, :-1]
+        lap[:, :, 1:] += s[:, :, :-1] - s[:, :, 1:]
+        lap[:, :, :-1] += s[:, :, 1:] - s[:, :, :-1]
+        s += d * lap
+
+    def decay_smoke(self) -> None:
+        self.smoke *= self.smoke_decay
+
+    def step(self) -> None:
+        self.streaming()
+        self.apply_obstacles()
+        self.apply_inflow(u_inflow=0.15)
+        self.apply_outflow()
+        self.apply_walls()
+        self.collision()
+        self.apply_emitters()
+        self.advect_smoke()
+        self.diffuse_smoke()
+        self.smoke[self.obstacles] = 0.0
+        self.decay_smoke()
+
+    def run(self, steps: int) -> None:
+        for _ in range(steps):
+            self.step()
+
+    def get_density(self) -> np.ndarray:
+        return self.rho.copy()
+
+    def get_velocity(self) -> np.ndarray:
+        return np.stack([self.u, self.v, self.w_vel], axis=3)
+
+    def get_smoke(self) -> np.ndarray:
+        return self.smoke.copy()
