@@ -524,15 +524,18 @@ class FluidVisualizer3D:
 
         self.upload_smoke(smoke)
 
+        glDisable(GL_DEPTH_TEST)
+
         if self.view_mode == 'volume':
+            glEnable(GL_BLEND)
+            glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA)
             self.render_volume()
         else:
+            glDisable(GL_BLEND)
             self.render_slice()
 
-        glDisable(GL_DEPTH_TEST)
         glEnable(GL_BLEND)
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-
         slice_info = str(self.slice_z) if self.view_mode == 'slice' else ''
         self.render_hud(fps, step_count, self.paused, self.view_mode, slice_info)
 
