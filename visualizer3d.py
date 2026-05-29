@@ -258,7 +258,6 @@ class FluidVisualizer3D:
         self._update_camera()
 
         self.font = pygame.font.Font(None, 28)
-        self._hud_texture_cache: dict[str, tuple[int, int, int]] = {}
         self.bg_color = (0.02, 0.02, 0.06)
 
         self.paused = False
@@ -414,15 +413,9 @@ class FluidVisualizer3D:
                 continue
 
             color = (255, 200, 100) if text.startswith('View') else (255, 255, 255)
-
-            if text in self._hud_texture_cache:
-                tex_id, tw, th = self._hud_texture_cache[text]
-            else:
-                surf = self.font.render(text, True, color, (0, 0, 0, 0))
-                tw, th = surf.get_width(), surf.get_height()
-                tex_id = self._surface_to_texture(surf)
-                if not text.startswith('FPS') and not text.startswith('View'):
-                    self._hud_texture_cache[text] = (tex_id, tw, th)
+            surf = self.font.render(text, True, color, (0, 0, 0, 0))
+            tw, th = surf.get_width(), surf.get_height()
+            tex_id = self._surface_to_texture(surf)
 
             glActiveTexture(GL_TEXTURE0)
             glBindTexture(GL_TEXTURE_2D, tex_id)
@@ -444,9 +437,7 @@ class FluidVisualizer3D:
             glBufferSubData(GL_ARRAY_BUFFER, 0, verts.nbytes, verts)
             glDrawArrays(GL_TRIANGLES, 0, 6)
 
-            if text.startswith('FPS') or text.startswith('View'):
-                glDeleteTextures(1, [tex_id])
-
+            glDeleteTextures(1, [tex_id])
             y_off += th + 4
 
         glBindVertexArray(0)

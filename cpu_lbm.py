@@ -77,7 +77,6 @@ class CPULBM2D:
             self.f[i] = np.roll(self.f[i], shift=(self.cx[i], self.cy[i]), axis=(1, 0))
 
     def apply_obstacles(self) -> None:
-        self.smoke[self.obstacles] = 0.0
         for i in range(9):
             self.f[i][self.obstacles] = self.f[self.opp[i]][self.obstacles]
 
@@ -104,7 +103,7 @@ class CPULBM2D:
     def apply_emitters(self) -> None:
         for x, y, strength in self.emitters:
             self.smoke[y, x] += strength
-            self.smoke = np.minimum(self.smoke, 1.0)
+        np.clip(self.smoke, 0, 1, out=self.smoke)
 
     def advect_smoke(self) -> None:
         xs = self._grid_x
@@ -135,13 +134,14 @@ class CPULBM2D:
         )
 
     def diffuse_smoke(self) -> None:
-        self.smoke += self.smoke_diffusion * (
-            np.roll(self.smoke, 1, axis=0)
-            + np.roll(self.smoke, -1, axis=0)
-            + np.roll(self.smoke, 1, axis=1)
-            + np.roll(self.smoke, -1, axis=1)
-            - 4 * self.smoke
-        )
+        s = self.smoke
+        d = self.smoke_diffusion
+        lap = np.zeros_like(s)
+        lap[1:] += s[:-1] - s[1:]
+        lap[:-1] += s[1:] - s[:-1]
+        lap[:, 1:] += s[:, :-1] - s[:, 1:]
+        lap[:, :-1] += s[:, 1:] - s[:, :-1]
+        s += d * lap
 
     def decay_smoke(self) -> None:
         self.smoke *= self.smoke_decay
@@ -158,6 +158,7 @@ class CPULBM2D:
         self.apply_emitters()
         self.advect_smoke()
         self.diffuse_smoke()
+        self.smoke[self.obstacles] = 0.0
         self.decay_smoke()
 
     def run(self, steps: int) -> None:

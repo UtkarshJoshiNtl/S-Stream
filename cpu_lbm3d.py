@@ -201,7 +201,7 @@ class CPULBM3D:
     def apply_emitters(self) -> None:
         for x, y, z, strength in self.emitters:
             self.smoke[z, y, x] += strength
-            self.smoke = np.minimum(self.smoke, 1.0)
+        np.clip(self.smoke, 0, 1, out=self.smoke)
 
     def advect_smoke(self) -> None:
         # Zero velocity inside obstacles so smoke is not pushed through them

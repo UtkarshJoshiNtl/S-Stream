@@ -196,7 +196,7 @@ class TestSmoke:
     def test_obstacles_clear_smoke(self, sim: CPULBM2D) -> None:
         sim.smoke[16, 16] = 1.0
         sim.obstacles[16, 16] = True
-        sim.apply_obstacles()
+        sim.step()
         assert sim.smoke[16, 16] == 0.0
 
     def test_smoke_step_integration(self, sim: CPULBM2D) -> None:
