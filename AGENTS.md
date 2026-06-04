@@ -1,15 +1,20 @@
 # CuFloda
 
-2D/3D Lattice Boltzmann (D2Q9 / D3Q19 + BGK) fluid simulation with PyGame visualization.
+2D/3D Lattice Boltzmann (D2Q9 / D3Q19 + BGK) fluid simulation with modular UI.
 
 ## Entry points
 
 - `main.py` — CLI entry point (`python main.py` or `cufloda` after `pip install -e .`)
-- `cpu_lbm.py:CPULBM2D` — core 2D LBM engine (D2Q9)
-- `visualizer.py:FludVisualizer` — 2D PyGame rendering
-- `cpu_lbm3d.py:CPULBM3D` — core 3D LBM engine (D3Q19)
-- `gpu_lbm3d.py:GPULBM3D` — GPU-accelerated 3D LBM engine (CuPy, same interface)
-- `visualizer3d.py:FluidVisualizer3D` — 3D OpenGL volume rendering
+- `engines/lbm2d.py:LBM2D` — core 2D LBM engine (D2Q9)
+- `engines/lbm3d_cpu.py:LBM3DCPU` — core 3D LBM engine (D3Q19, CPU)
+- `engines/lbm3d_gpu.py:LBM3DGPU` — GPU-accelerated 3D LBM engine (CuPy, same interface)
+- `engines/base.py:SimEngine` — abstract base class for all simulation backends
+- `engines/lbm_common.py` — shared lattice definitions (LATTICE_2D, LATTICE_3D)
+- `visualizer.py:FluidVisualizer` — 2D PyGame rendering (legacy)
+- `visualizer3d.py:FluidVisualizer3D` — 3D OpenGL volume rendering (legacy)
+- `ui/renderer.py` — OpenGL smoke rendering (2D fullscreen quad + 3D volume)
+- `ui/widgets.py` — ImGui control panels
+- `ui/app.py` — GLFW + pyimgui main loop
 
 ## Quick commands
 
@@ -40,21 +45,36 @@ All enforce 88-char line length. Ruff `select = ["E", "F", "W"]`, flake8 ignores
 
 ## Architecture notes
 
+### Module structure
+```
+engines/           # Simulation backends (plug in via SimEngine ABC)
+├── base.py        # SimEngine abstract base class
+├── lbm_common.py  # Shared lattice definitions (LATTICE_2D, LATTICE_3D)
+├── lbm2d.py       # D2Q9 CPU engine
+├── lbm3d_cpu.py   # D3Q19 CPU engine
+└── lbm3d_gpu.py   # D3Q19 GPU engine (CuPy)
+ui/                # UI layer (engine-agnostic, talks only to SimEngine)
+├── renderer.py    # OpenGL smoke rendering
+├── widgets.py     # ImGui control panels
+└── app.py         # GLFW + pyimgui main loop
+```
+
 ### 2D (D2Q9)
-- `CPULBM2D.step()` calls: streaming → obstacles → inflow → outflow → walls → collision → emitters → advect smoke → diffuse smoke → decay smoke (order matters)
+- `LBM2D.step()` calls: streaming → obstacles → inflow → outflow → walls → collision → emitters → advect smoke → diffuse smoke → decay smoke (order matters)
 - Obstacles use bounce-back BC; inflow sets equilibrium at left column; outflow copies last column; walls bounce-back top/bottom
-- Smoke is a passive scalar advected via bilinear interpolation, with diffusion (`smoke_diffusion=0.05`) and decay (`smoke_decay=0.999`)
-- `C:clear_emitters` in visualizer calls `sim.clear_emitters()` (list-based, not grid-based)
+- Smoke is a passive scalar advected via bilinear interpolation, with velocity zeroed inside obstacles to prevent drift-through
+- Diffusion (`smoke_diffusion=0.05`) and decay (`smoke_decay=0.999`)
+- `C:clear_emitters` calls `sim.clear_emitters()` (list-based, not grid-based)
 
 ### 3D (D3Q19)
-- `CPULBM3D` / `GPULBM3D` share the same interface — swap via `--gpu` flag
+- `LBM3DCPU` / `LBM3DGPU` share the same SimEngine interface — swap via `--gpu` flag
 - Default depth: 64 for CPU, 128 for GPU (auto-selected)
 - Lattice: D3Q19 (19 velocity directions), weights `1/3`, `1/18`, `1/36`
 - Smoke advection uses trilinear interpolation; diffusion uses boundary-safe 6-neighbor Laplacian
 - Obstacle smoke cleared after advection (not before) to prevent drift-through
-- `add_obstacle_sphere(x, y, z, radius)` for spherical obstacles
+- `add_obstacle(x, y, z, radius)` for spherical obstacles (unified interface with 2D)
 
-### 3D Visualizer
+### 3D Visualizer (legacy, being replaced)
 - OpenGL 3.3 core profile volume renderer (ray-marching fragment shader)
 - Two view modes: volume rendering (V key to toggle) and 2D slice view (W/S to scroll)
 - Camera: spherical orbit (mouse drag), zoom (scroll wheel)
@@ -68,7 +88,7 @@ All enforce 88-char line length. Ruff `select = ["E", "F", "W"]`, flake8 ignores
 - `benchmark.py` is a standalone script, not collected by pytest
 - All tests are CPU-only, no GPU required
 
-## Controls
+## Controls (legacy visualizers)
 
 ### 2D mode
 Space=pause, O=obstacle mode, E=emitter mode, R=reset, C=clear emitters, ESC=quit
