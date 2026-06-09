@@ -93,9 +93,15 @@ class TestBoundaries:
 
     def test_walls_bounce_back_top(self, sim: LBM2D) -> None:
         sim.initialize(rho=1.0, u=0.1, v=0.0)
+        f_before = sim.f.copy()
         sim.apply_walls()
         for i in range(9):
-            assert np.allclose(sim.f[i, 0, :], sim.f[sim.lattice.opp[i], 0, :])
+            opp_i = sim.lattice.opp[i]
+            np.testing.assert_allclose(
+                sim.f[i, 0, :],
+                f_before[opp_i, 0, :],
+                err_msg=f"f[{i}] at top wall should equal original f[{opp_i}]",
+            )
 
 
 class TestObstacles:
@@ -112,7 +118,14 @@ class TestObstacles:
         sim.obstacles[16, 16] = True
         f_before = sim.f.copy()
         sim.apply_obstacles()
-        assert np.any(sim.f != f_before)
+        for i in range(9):
+            opp_i = sim.lattice.opp[i]
+            if i != opp_i:
+                np.testing.assert_allclose(
+                    sim.f[i, 16, 16],
+                    f_before[opp_i, 16, 16],
+                    err_msg=f"f[{i}] should equal original f[{opp_i}] at obstacle",
+                )
 
 
 class TestStep:

@@ -18,6 +18,8 @@ class UIState:
     show_controls: bool = True
     fps: float = 0.0
     step_count: int = 0
+    prev_mouse_x: float = 0.0
+    prev_mouse_y: float = 0.0
     mouse_events: list = field(default_factory=list)
 
 
@@ -54,7 +56,6 @@ class Widgets:
             if self.sim.ndim == 3:
                 kw["w"] = 0.0
             self.sim.initialize(**kw)
-            self.sim.clear_obstacles()
 
         imgui.separator()
 

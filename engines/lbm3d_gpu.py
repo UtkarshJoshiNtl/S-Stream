@@ -25,8 +25,9 @@ class LBM3DGPU(SimEngine):
 
         # Copy lattice data to CuPy float32 arrays for GPU usage
         self._lattice = LATTICE_3D
-        self.omega = self._lattice.omega_from_viscosity(viscosity)
-        self._lattice.assert_stable(viscosity, self.omega)
+        self._lattice.assert_stable(
+            viscosity, self._lattice.omega_from_viscosity(viscosity)
+        )
 
         self.w = cp.array(self._lattice.w, dtype=cp.float32)
         self.cx = cp.array(self._lattice.cx, dtype=cp.float32)
@@ -70,6 +71,10 @@ class LBM3DGPU(SimEngine):
     def grid_shape(self) -> tuple[int, ...]:
         return (self.depth, self.height, self.width)
 
+    @property
+    def omega(self) -> float:
+        return self._lattice.omega_from_viscosity(self.viscosity)
+
     def initialize(
         self, rho: float = 1.0, u: float = 0.1, v: float = 0.0, w: float = 0.0
     ) -> None:
@@ -80,6 +85,7 @@ class LBM3DGPU(SimEngine):
         self.f = self._equilibrium(self.rho, self.u, self.v, self.w_vel)
         self.smoke[:] = 0.0
         self.emitters.clear()
+        self.clear_obstacles()
 
     def step(self) -> None:
         self.streaming()
@@ -169,7 +175,11 @@ class LBM3DGPU(SimEngine):
 
     def apply_obstacles(self) -> None:
         for i in range(19):
-            self.f[i][self.obstacles] = self.f[self.opp[i]][self.obstacles]
+            opp_i = int(self.opp[i])
+            if i < opp_i:
+                tmp = self.f[i][self.obstacles].copy()
+                self.f[i][self.obstacles] = self.f[opp_i][self.obstacles]
+                self.f[opp_i][self.obstacles] = tmp
 
     def apply_inflow(self) -> None:
         rho_inlet = 1.0
@@ -187,11 +197,13 @@ class LBM3DGPU(SimEngine):
             self.f[i, :, :, -1] = self.f[i, :, :, -2]
 
     def apply_walls(self) -> None:
+        f_copy = self.f.copy()
         for i in range(19):
-            self.f[i, :, 0, :] = self.f[self.opp[i], :, 0, :]
-            self.f[i, :, -1, :] = self.f[self.opp[i], :, -1, :]
-            self.f[i, 0, :, :] = self.f[self.opp[i], 0, :, :]
-            self.f[i, -1, :, :] = self.f[self.opp[i], -1, :, :]
+            opp_i = int(self.opp[i])
+            self.f[i, :, 0, :] = f_copy[opp_i, :, 0, :]
+            self.f[i, :, -1, :] = f_copy[opp_i, :, -1, :]
+            self.f[i, 0, :, :] = f_copy[opp_i, 0, :, :]
+            self.f[i, -1, :, :] = f_copy[opp_i, -1, :, :]
 
     def apply_emitters(self) -> None:
         for x, y, z, strength in self.emitters:

@@ -173,27 +173,6 @@ void main() {
 }
 """
 
-_HUD_VERT_SRC = """
-#version 330 core
-layout(location = 0) in vec2 aPos;
-layout(location = 1) in vec2 aUV;
-out vec2 uv;
-void main() {
-    uv = aUV;
-    gl_Position = vec4(aPos, 0.0, 1.0);
-}
-"""
-
-_HUD_FRAG_SRC = """
-#version 330 core
-in vec2 uv;
-out vec4 fragColor;
-uniform sampler2D hudTex;
-void main() {
-    fragColor = texture(hudTex, uv);
-}
-"""
-
 
 def _perspective(fov_y: float, aspect: float, near: float, far: float) -> np.ndarray:
     f = 1.0 / np.tan(fov_y / 2.0)
@@ -235,8 +214,6 @@ class Renderer:
             self._init_3d(sim)
         else:
             self._init_2d(sim)
-
-        self._init_hud()
 
         # Camera state (3D only)
         self.theta = np.pi * 0.25
@@ -375,21 +352,6 @@ class Renderer:
         glBindVertexArray(self.tex_vao)
         glBindBuffer(GL_ARRAY_BUFFER, self.tex_vbo)
         glBufferData(GL_ARRAY_BUFFER, verts.nbytes, verts, GL_STATIC_DRAW)
-        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * 4, None)
-        glEnableVertexAttribArray(0)
-        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * 4, ctypes.c_void_p(8))
-        glEnableVertexAttribArray(1)
-        glBindVertexArray(0)
-
-    def _init_hud(self) -> None:
-        self.hud_shader = compileProgram(
-            compileShader(_HUD_VERT_SRC, GL_VERTEX_SHADER),
-            compileShader(_HUD_FRAG_SRC, GL_FRAGMENT_SHADER),
-        )
-        self.hud_vao = glGenVertexArrays(1)
-        self.hud_vbo = glGenBuffers(1)
-        glBindVertexArray(self.hud_vao)
-        glBindBuffer(GL_ARRAY_BUFFER, self.hud_vbo)
         glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * 4, None)
         glEnableVertexAttribArray(0)
         glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * 4, ctypes.c_void_p(8))

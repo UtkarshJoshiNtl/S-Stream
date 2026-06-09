@@ -60,8 +60,7 @@ class Lattice3D:
     def omega_from_viscosity(nu: float) -> float:
         return 1.0 / (3.0 * nu + 0.5)
 
-    @staticmethod
-    def assert_stable(nu: float, omega: float) -> None:
+    def assert_stable(self, nu: float, omega: float) -> None:
         assert 0 < omega < 2, (
             f"omega={omega:.3f} outside stable range (0, 2) " f"for viscosity={nu}"
         )

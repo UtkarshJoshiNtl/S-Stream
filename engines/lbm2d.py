@@ -18,8 +18,9 @@ class LBM2D(SimEngine):
         self.u_inflow = 0.15
 
         self.lattice = LATTICE_2D
-        self.omega = self.lattice.omega_from_viscosity(viscosity)
-        self.lattice.assert_stable(viscosity, self.omega)
+        self.lattice.assert_stable(
+            viscosity, self.lattice.omega_from_viscosity(viscosity)
+        )
 
         self.f = np.zeros((9, height, width))
 
@@ -51,6 +52,10 @@ class LBM2D(SimEngine):
     def grid_shape(self) -> tuple[int, ...]:
         return (self.height, self.width)
 
+    @property
+    def omega(self) -> float:
+        return self.lattice.omega_from_viscosity(self.viscosity)
+
     def initialize(
         self, rho: float = 1.0, u: float = 0.1, v: float = 0.0, w: float = 0.0
     ) -> None:
@@ -60,6 +65,7 @@ class LBM2D(SimEngine):
         self.f = self.lattice.equilibrium(self.rho, self.u, self.v)
         self.smoke[:] = 0.0
         self.emitters.clear()
+        self.clear_obstacles()
 
     def step(self) -> None:
         self.streaming()
@@ -128,7 +134,11 @@ class LBM2D(SimEngine):
 
     def apply_obstacles(self) -> None:
         for i in range(9):
-            self.f[i][self.obstacles] = self.f[self.lattice.opp[i]][self.obstacles]
+            opp_i = self.lattice.opp[i]
+            if i < opp_i:
+                tmp = self.f[i][self.obstacles].copy()
+                self.f[i][self.obstacles] = self.f[opp_i][self.obstacles]
+                self.f[opp_i][self.obstacles] = tmp
 
     def apply_inflow(self) -> None:
         rho_inlet = 1.0
@@ -146,9 +156,14 @@ class LBM2D(SimEngine):
 
     def apply_walls(self) -> None:
         for i in range(9):
-            self.f[i, 0, :] = self.f[self.lattice.opp[i], 0, :]
-        for i in range(9):
-            self.f[i, -1, :] = self.f[self.lattice.opp[i], -1, :]
+            opp_i = self.lattice.opp[i]
+            if i < opp_i:
+                tmp_top = self.f[i, 0, :].copy()
+                self.f[i, 0, :] = self.f[opp_i, 0, :]
+                self.f[opp_i, 0, :] = tmp_top
+                tmp_bot = self.f[i, -1, :].copy()
+                self.f[i, -1, :] = self.f[opp_i, -1, :]
+                self.f[opp_i, -1, :] = tmp_bot
 
     def apply_emitters(self) -> None:
         for x, y, strength in self.emitters:

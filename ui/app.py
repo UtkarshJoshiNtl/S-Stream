@@ -123,8 +123,12 @@ class CuFlodaApp:
             self._place_emitter(x, y)
         elif not self.state.emitter_mode and left:
             if self.sim.ndim == 3:
-                cx, cy = glfw.get_cursor_pos(win_ptr)
-                self.renderer.orbit(cx - x, cy - y)
+                dx = x - self.state.prev_mouse_x
+                dy = y - self.state.prev_mouse_y
+                self.renderer.orbit(dx, dy)
+
+        self.state.prev_mouse_x = x
+        self.state.prev_mouse_y = y
 
     def _place_emitter(self, x: float, y: float) -> None:
         d, h, w = self.sim.grid_shape

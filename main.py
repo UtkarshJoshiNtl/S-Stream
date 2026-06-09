@@ -41,9 +41,12 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.mode3d:
-        depth = args.depth or (128 if args.gpu else 64)
+        if args.gpu and LBM3DGPU is None:
+            print("Warning: CuPy not available, falling back to CPU (--gpu ignored)")
+        gpu_avail = args.gpu and LBM3DGPU is not None
+        depth = args.depth or (128 if gpu_avail else 64)
 
-        if args.gpu and LBM3DGPU is not None:
+        if gpu_avail:
             sim: SimEngine = LBM3DGPU(
                 width=args.width,
                 height=args.height,
