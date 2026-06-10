@@ -131,12 +131,15 @@ class CuFlodaApp:
         self.state.prev_mouse_y = y
 
     def _place_emitter(self, x: float, y: float) -> None:
-        d, h, w = self.sim.grid_shape
+        if self.sim.ndim == 3:
+            d, h, w = self.sim.grid_shape
+        else:
+            h, w = self.sim.grid_shape
         win_addr = hello_imgui.get_glfw_window_address()
         win_ptr = ctypes.cast(win_addr, ctypes.POINTER(glfw._GLFWwindow))
         win_w, win_h = glfw.get_window_size(win_ptr)
-        gx = int(x / max(win_w, 1) * w)
-        gy = int(y / max(win_h, 1) * h)
+        gx = min(int(x / max(win_w, 1) * w), w - 1)
+        gy = min(int(y / max(win_h, 1) * h), h - 1)
         if self.sim.ndim == 3:
             gz = self.state.slice_z if self.state.view_mode == "slice" else d // 2
             self.sim.add_emitter(gx, gy, gz, strength=0.1)
