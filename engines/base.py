@@ -55,6 +55,12 @@ class SimEngine(ABC):
     smoke_diffusion: float
     smoke_decay: float
 
+    @property
+    @abstractmethod
+    def omega(self) -> float:
+        """Relaxation parameter derived from viscosity (BGK)."""
+        ...
+
     # --- Observables (the UI reads these each frame) ---
 
     @abstractmethod

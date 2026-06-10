@@ -208,7 +208,14 @@ class Viewport(QOpenGLWidget):
 
     def _compute_field(self) -> np.ndarray:
         cmap = self._colormap
-        if cmap == "smoke" or self.sim is None:
+        if cmap == "smoke":
+            if self.sim is None:
+                shape = (
+                    (self.scene.height, self.scene.width)
+                    if self.scene
+                    else (128, 128)
+                )
+                return np.zeros(shape)
             return self.sim.get_smoke()
         vel = self.sim.get_velocity()
         if cmap == "speed":

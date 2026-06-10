@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import time
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer
@@ -49,7 +48,6 @@ class MainWindow(QMainWindow):
         self._fps_count = 0
         self._fps_value = 0.0
         self._frame_times: list[float] = []
-        self._dt = 1.0
         self._recorder: VideoRecorder | None = None
 
         self.setWindowTitle("S-Stream — Fluid Workbench")
@@ -277,6 +275,7 @@ class MainWindow(QMainWindow):
 
     def _apply_and_refresh(self) -> None:
         apply_to_sim(self.scene, self.sim)
+        self.step_count = 0
         self._rebuild_probes()
         self._sync_analysis_probes()
         self.viewport.set_scene(self.scene)
@@ -301,22 +300,19 @@ class MainWindow(QMainWindow):
         self.play_btn.setText("Play" if self.paused else "Pause")
 
     def reset(self) -> None:
-        self.sim.initialize(rho=1.0, u=self.scene.u_inflow, v=0.0)
+        apply_to_sim(self.scene, self.sim)
         self.step_count = 0
 
     def tick(self) -> None:
-        t0 = time.time()
         if not self.paused:
             self.sim.step()
             self.step_count += 1
-            self.analysis_panel.tick(self._dt)
+            self.analysis_panel.tick(1.0)
         self.viewport.update()
         if self._recorder is not None and self._recorder.recording:
             if not self._recorder.add_frame(self.viewport.grab().toImage()):
                 self._stop_video_recording()
         self._fps_count += 1
-        t1 = time.time()
-        self._dt = t1 - t0 if not self.paused else 0.0
         fps_str = f"{self._fps_value:.0f}"
         self.status_label.setText(f"Step {self.step_count}  |  FPS: {fps_str}")
 

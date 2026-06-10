@@ -38,7 +38,7 @@ def drag_coefficient(sim: SimEngine) -> float:
         Fx += cx * float(np.sum(f_i + f_opp))
 
     U = sim.u_inflow
-    rho0 = 0.3333333
+    rho0 = 1.0
     A = float(np.sum(obs))
     D = 2.0 * np.sqrt(A / np.pi) if A > 0 else 1.0
     if U <= 0 or D <= 0:

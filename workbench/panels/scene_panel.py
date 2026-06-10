@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 from dataclasses import fields
 
 from PySide6.QtCore import Qt, Signal
@@ -260,7 +261,7 @@ class ScenePanel(QWidget):
         self._current_item.setText(0, self._item_label(obj))
 
     def _add_obstacle(self, kind: str) -> None:
-        obs = _OBSTACLE_DEFAULTS[kind]
+        obs = copy.deepcopy(_OBSTACLE_DEFAULTS[kind])
         self.scene.obstacles.append(obs)
         self._reapply()
         self._rebuild_tree()
