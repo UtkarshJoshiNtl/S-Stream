@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "name": "Backward-Facing Step",
+  "width": 256,
+  "height": 64,
+  "viscosity": 0.006,
+  "u_inflow": 0.1,
+  "smoke_diffusion": 0.02,
+  "smoke_decay": 0.999,
+  "description": "Flow separation and reattachment behind a sudden expansion at Re ≈ 530 (based on step height). Demonstrates separation bubble and shear layer development.",
+  "obstacles": [
+    {"type": "rect", "name": "Step", "x": 0, "y": 32, "w": 48, "h": 32}
+  ],
+  "emitters": [
+    {"name": "Inlet", "x": 2, "y": 16, "strength": 0.05}
+  ],
+  "probes": [
+    {"name": "Reattachment", "x": 130, "y": 48, "fields": ["u", "v"]},
+    {"name": "Shear Layer", "x": 80, "y": 34, "fields": ["v"]}
+  ]
+}

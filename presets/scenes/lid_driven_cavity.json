@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "name": "Cavity Flow",
+  "width": 128,
+  "height": 128,
+  "viscosity": 0.015,
+  "u_inflow": 0.12,
+  "smoke_diffusion": 0.02,
+  "smoke_decay": 0.999,
+  "description": "Recirculating flow in a wall-bounded cavity at Re ≈ 1000. Three stationary walls with inflow creating a large primary vortex and corner eddies.",
+  "obstacles": [
+    {"type": "rect", "name": "Cavity Left", "x": 0, "y": 0, "w": 1, "h": 128},
+    {"type": "rect", "name": "Cavity Bot", "x": 1, "y": 127, "w": 126, "h": 1},
+    {"type": "rect", "name": "Cavity Right", "x": 127, "y": 0, "w": 1, "h": 128}
+  ],
+  "emitters": [
+    {"name": "Top Inlet", "x": 64, "y": 2, "strength": 0.04}
+  ],
+  "probes": [
+    {"name": "Center", "x": 64, "y": 64, "fields": ["u", "v", "speed"]},
+    {"name": "Bottom Corner", "x": 96, "y": 96, "fields": ["v"]}
+  ]
+}

@@ -4,7 +4,7 @@ from engines.lbm2d import LBM2D
 
 def benchmark() -> None:
     print("=" * 60)
-    print("CuFloda Performance Benchmark")
+    print("S-Stream Performance Benchmark")
     print("=" * 60)
 
     sizes = [(64, 64), (128, 128), (256, 256)]

@@ -167,7 +167,8 @@ class LBM2D(SimEngine):
 
     def apply_emitters(self) -> None:
         for x, y, strength in self.emitters:
-            self.smoke[y, x] += strength
+            if 0 <= y < self.height and 0 <= x < self.width:
+                self.smoke[y, x] += strength
         np.clip(self.smoke, 0, 1, out=self.smoke)
 
     def advect_smoke(self) -> None:

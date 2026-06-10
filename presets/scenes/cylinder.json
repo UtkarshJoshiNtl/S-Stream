@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "name": "Cylinder Wake",
+  "width": 256,
+  "height": 128,
+  "viscosity": 0.01,
+  "u_inflow": 0.1,
+  "smoke_diffusion": 0.02,
+  "smoke_decay": 0.999,
+  "description": "Kármán vortex street behind a circular cylinder at Re ≈ 240. The classic benchmark for external flow and periodic vortex shedding.",
+  "obstacles": [
+    {"type": "circle", "name": "Cylinder", "x": 64, "y": 64, "radius": 12}
+  ],
+  "emitters": [
+    {"name": "Inlet", "x": 2, "y": 64, "strength": 0.05}
+  ],
+  "probes": [
+    {"name": "Wake Center", "x": 130, "y": 64, "fields": ["u", "v", "speed"]},
+    {"name": "Wake Offset", "x": 130, "y": 48, "fields": ["v"]}
+  ]
+}

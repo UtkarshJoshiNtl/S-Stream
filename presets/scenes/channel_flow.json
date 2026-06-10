@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "name": "Channel Flow",
+  "width": 128,
+  "height": 64,
+  "viscosity": 0.064,
+  "u_inflow": 0.1,
+  "smoke_diffusion": 0.03,
+  "smoke_decay": 0.999,
+  "description": "Developing Poiseuille (parabolic) velocity profile in a straight channel at Re ≈ 100. Demonstrates wall-bounded internal flow.",
+  "obstacles": [],
+  "emitters": [
+    {"name": "Inlet", "x": 2, "y": 32, "strength": 0.05}
+  ],
+  "probes": [
+    {"name": "Profile", "x": 64, "y": 32, "fields": ["u", "speed"]}
+  ]
+}

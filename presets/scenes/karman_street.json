@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "name": "High-Re Wake",
+  "width": 512,
+  "height": 256,
+  "viscosity": 0.008,
+  "u_inflow": 0.1,
+  "smoke_diffusion": 0.02,
+  "smoke_decay": 0.999,
+  "description": "High-Reynolds wake behind a cylinder at Re ≈ 400. Large grid resolves secondary vortices and a rich wake structure.",
+  "obstacles": [
+    {"type": "circle", "name": "Cylinder", "x": 80, "y": 128, "radius": 16}
+  ],
+  "emitters": [
+    {"name": "Inlet", "x": 2, "y": 128, "strength": 0.06}
+  ],
+  "probes": [
+    {"name": "Near Wake", "x": 180, "y": 128, "fields": ["u", "v", "speed"]},
+    {"name": "Far Wake", "x": 300, "y": 128, "fields": ["v"]},
+    {"name": "Shear Layer", "x": 180, "y": 100, "fields": ["v"]}
+  ]
+}

@@ -28,10 +28,10 @@ def test_step() -> None:
 
 def test_obstacles() -> None:
     sim = LBM2D(64, 64, 0.02)
+    sim.initialize(1.0, 0.1, 0.0)
     obstacles = np.zeros((64, 64), dtype=bool)
     obstacles[32:40, 32:40] = True
     sim.obstacles = obstacles
-    sim.initialize(1.0, 0.1, 0.0)
     f_before = sim.f.copy()
     sim.apply_obstacles()
     assert np.any(sim.f != f_before)
