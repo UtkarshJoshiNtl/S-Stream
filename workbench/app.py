@@ -47,7 +47,6 @@ class MainWindow(QMainWindow):
         self._fps_timer = QTimer(self)
         self._fps_count = 0
         self._fps_value = 0.0
-        self._frame_times: list[float] = []
         self._recorder: VideoRecorder | None = None
 
         self.setWindowTitle("S-Stream — Fluid Workbench")
