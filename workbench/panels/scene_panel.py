@@ -86,6 +86,7 @@ class ScenePanel(QWidget):
         self.scene = scene
         self._current_editor: _PropEditor | None = None
         self._current_item: QTreeWidgetItem | None = None
+        self._expert_mode = False
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
@@ -192,6 +193,18 @@ class ScenePanel(QWidget):
         self._param_u_inflow.setValue(self.scene.u_inflow)
         self._param_diff.setValue(self.scene.smoke_diffusion)
         self._param_decay.setValue(self.scene.smoke_decay)
+
+    def set_expert_mode(self, expert: bool) -> None:
+        """Toggle between beginner and expert mode."""
+        self._expert_mode = expert
+        # In beginner mode, hide smoke diffusion and decay parameters
+        self._param_diff.setVisible(expert)
+        self._param_decay.setVisible(expert)
+        # Update the form layout labels visibility
+        form = self._param_visc.parent().layout()
+        if form:
+            form.labelForField(self._param_diff).setVisible(expert)
+            form.labelForField(self._param_decay).setVisible(expert)
 
     def _rebuild_tree(self) -> None:
         self.tree.blockSignals(True)

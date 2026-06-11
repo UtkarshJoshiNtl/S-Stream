@@ -19,6 +19,8 @@ def list_presets() -> list[dict]:
                 "file": str(f),
                 "description": scene.description,
                 "thumbnail": str(thumb) if thumb.exists() else "",
+                "headline": scene.product.lesson_headline,
+                "recipe": scene.product.recipe,
             })
         except Exception:
             continue

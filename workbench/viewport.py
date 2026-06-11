@@ -102,6 +102,7 @@ class Viewport(QOpenGLWidget):
         self._drag_end: tuple[float, float] | None = None
         self._poly_points: list[tuple[float, float]] = []
         self.setMouseTracking(True)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
     def set_sim(self, sim: SimEngine) -> None:
         self.sim = sim
@@ -194,6 +195,7 @@ class Viewport(QOpenGLWidget):
     def _upload_smoke(self) -> None:
         field = self._compute_field()
         field = np.ascontiguousarray(field.astype(np.float32))
+        field = np.flipud(field)
         h, w = field.shape
         glBindTexture(GL_TEXTURE_2D, self.texture)
         if not self._tex_init:
@@ -251,6 +253,26 @@ class Viewport(QOpenGLWidget):
             for obs in self.scene.obstacles:
                 self._draw_obstacle_shape(painter, obs)
 
+        # Draw emitters
+        if self.scene:
+            pen = QPen(QColor(0, 220, 220, 200), 2)
+            painter.setPen(pen)
+            painter.setBrush(QColor(0, 220, 220, 60))
+            s = (
+                min(
+                    self.width() / self.scene.width,
+                    self.height() / self.scene.height,
+                )
+                if self.scene.width > 0 and self.scene.height > 0
+                else 1
+            )
+            er = max(4, 4 * s)
+            for emit in self.scene.emitters:
+                wx, wy = self._grid_to_widget(emit.x, emit.y)
+                painter.drawEllipse(
+                    int(wx - er), int(wy - er), int(er * 2), int(er * 2)
+                )
+
         # Draw drag preview
         if self._drag_start is not None and self._drag_end is not None:
             pen = QPen(QColor(255, 255, 255, 200), 2)
@@ -260,7 +282,16 @@ class Viewport(QOpenGLWidget):
             sx, sy = self._grid_to_widget(*self._drag_start)
             ex, ey = self._grid_to_widget(*self._drag_end)
             if self.draw_mode == "circle":
-                r = math.dist((sx, sy), (ex, ey))
+                r_grid = math.dist(self._drag_start, self._drag_end)
+                s = (
+                    min(
+                        self.width() / self.scene.width,
+                        self.height() / self.scene.height,
+                    )
+                    if self.scene
+                    else 1
+                )
+                r = r_grid * s
                 painter.drawEllipse(int(sx - r), int(sy - r), int(r * 2), int(r * 2))
             elif self.draw_mode == "rect":
                 rect = self._widget_rect(sx, sy, ex, ey)
@@ -291,7 +322,13 @@ class Viewport(QOpenGLWidget):
     def _draw_obstacle_shape(self, painter: QPainter, obs: ObstacleSpec) -> None:
         if isinstance(obs, CircleObstacle):
             cx, cy = self._grid_to_widget(obs.x, obs.y)
-            r = obs.radius * (self.width() / self.scene.width) if self.scene else 5
+            if self.scene:
+                sx = self.width() / self.scene.width
+                sy = self.height() / self.scene.height
+                s = min(sx, sy)
+            else:
+                s = 1
+            r = obs.radius * s
             painter.drawEllipse(int(cx - r), int(cy - r), int(r * 2), int(r * 2))
         elif isinstance(obs, RectObstacle):
             x1, y1 = self._grid_to_widget(obs.x, obs.y)
@@ -333,6 +370,39 @@ class Viewport(QOpenGLWidget):
         else:
             self._drag_start = (gx, gy)
             self._drag_end = (gx, gy)
+
+    def mouseDoubleClickEvent(self, event) -> None:
+        if self.draw_mode == "polygon" and len(self._poly_points) >= 2:
+            pts = [
+                (int(round(x)), int(round(y)))
+                for x, y in self._poly_points
+            ]
+            obs = PolygonObstacle(name="Polygon", points=pts)
+            self.obstacle_created.emit(obs)
+            self._poly_points = []
+            self.update()
+            return
+        super().mouseDoubleClickEvent(event)
+
+    def keyPressEvent(self, event) -> None:
+        if event.key() == Qt.Key_Escape:
+            self._drag_start = None
+            self._drag_end = None
+            self._poly_points = []
+            self.update()
+            return
+        if event.key() in (Qt.Key_Return, Qt.Key_Enter):
+            if self.draw_mode == "polygon" and len(self._poly_points) >= 3:
+                pts = [
+                    (int(round(x)), int(round(y)))
+                    for x, y in self._poly_points
+                ]
+                obs = PolygonObstacle(name="Polygon", points=pts)
+                self.obstacle_created.emit(obs)
+                self._poly_points = []
+                self.update()
+                return
+        super().keyPressEvent(event)
 
     def mouseMoveEvent(self, event) -> None:
         if self.draw_mode is None or self.scene is None:

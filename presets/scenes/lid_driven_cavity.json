@@ -19,5 +19,20 @@
   "probes": [
     {"name": "Center", "x": 64, "y": 64, "fields": ["u", "v", "speed"]},
     {"name": "Bottom Corner", "x": 96, "y": 96, "fields": ["v"]}
-  ]
+  ],
+  "product": {
+    "recommended_colormap": "vorticity",
+    "autorun_steps": 3000,
+    "lesson_headline": "A moving lid drives a large recirculating vortex in a closed box.",
+    "expected_ranges": {"Re": [800, 1200]},
+    "flow_regime_labels": ["lid-driven cavity", "recirculation"],
+    "export_caption": "Lid-driven cavity: recirculating flow driven by a moving wall.",
+    "classroom_prompts": [
+      "Where is the fastest flow in the cavity?",
+      "Why do corner eddies form?",
+      "What happens if the lid speed increases?"
+    ],
+    "recommended_sweep": {"parameter": "u_inflow", "min": 0.06, "max": 0.18, "steps": 7, "measurement": "max_vorticity"},
+    "recipe": "Create a lab-report figure"
+  }
 }

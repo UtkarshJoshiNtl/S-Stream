@@ -19,24 +19,11 @@ def export_image(
     step_count: int = 0,
     colormap: str = "smoke",
 ) -> None:
-    """Render the fluid field to a high-resolution PNG.
-
-    Parameters
-    ----------
-    sim: Engine with fluid data (get_smoke/get_velocity/get_density).
-    scene: Scene metadata (grid dims, name).
-    path: Output file path.
-    scale: Upscale factor (2 = 2x the simulation grid resolution).
-    include_colorbar: Draw a vertical colorbar on the right.
-    include_annotations: Draw Re, viscosity, step, timestamp text.
-    step_count: Current simulation step (for annotation).
-    colormap: Field to render ("smoke", "speed", "vorticity", "pressure").
-    """
     field = _compute_field(sim, colormap)
     h, w = field.shape
     out_w = w * scale
     out_h = h * scale
-    pad = 80 if include_colorbar else 20
+    pad = 96 if include_colorbar else 24
     total_w = out_w + pad
 
     field_img = QImage(out_w, out_h, QImage.Format.Format_RGB32)
@@ -48,10 +35,10 @@ def export_image(
     painter.drawImage(0, 0, field_img)
 
     if include_colorbar:
-        _draw_colorbar(painter, out_w + 10, 20, 20, out_h - 80, colormap)
+        _draw_colorbar(painter, out_w + 12, 28, 20, max(20, out_h - 96), colormap)
 
     if include_annotations:
-        _draw_annotations(painter, scene, sim, step_count, total_w, out_h)
+        _draw_annotations(painter, scene, sim, step_count, total_w, out_h, colormap)
 
     painter.end()
     if not result.save(str(path)):
@@ -85,18 +72,17 @@ def _compute_field(sim: SimEngine, cmap: str) -> np.ndarray:
 
 
 def _render_field(img: QImage, field: np.ndarray, cmap: str) -> None:
-    """Paint the 2D field onto *img* using the appropriate colormap."""
     h, w = field.shape
-    flat = field.ravel()
-    if cmap == "smoke":
-        pixels = bytearray()
-        for val in flat:
-            c = _smoke_color(val)
-            pixels.extend(c)
-    else:
-        pixels = bytearray()
-        for val in flat:
-            v = int(val * 255)
+    pixels = bytearray()
+    for val in field.ravel():
+        if cmap == "smoke":
+            pixels.extend(_smoke_color(val))
+        elif cmap == "vorticity":
+            pixels.extend(_vorticity_color(val))
+        elif cmap == "pressure":
+            pixels.extend(_pressure_color(val))
+        else:
+            v = int(max(0.0, min(1.0, float(val))) * 255)
             pixels.extend([v, v, v])
     qimg = QImage(bytes(pixels), w, h, w * 3, QImage.Format.Format_RGB888)
     painter = QPainter(img)
@@ -106,13 +92,27 @@ def _render_field(img: QImage, field: np.ndarray, cmap: str) -> None:
 
 
 def _smoke_color(val: float) -> bytes:
-    v = max(0.0, min(1.0, val))
+    v = max(0.0, min(1.0, float(val)))
     bg = (5, 5, 20)
     smoke = (255, 191, 102)
-    r = int(bg[0] + (smoke[0] - bg[0]) * (v**0.5))
-    g = int(bg[1] + (smoke[1] - bg[1]) * (v**0.5))
-    b = int(bg[2] + (smoke[2] - bg[2]) * (v**0.5))
-    return bytes([r, g, b])
+    return bytes(
+        int(bg[i] + (smoke[i] - bg[i]) * (v**0.5))
+        for i in range(3)
+    )
+
+
+def _vorticity_color(val: float) -> bytes:
+    v = max(0.0, min(1.0, float(val)))
+    if v < 0.5:
+        t = v / 0.5
+        return bytes([int(20 + 40 * t), int(80 + 120 * t), int(190 + 45 * t)])
+    t = (v - 0.5) / 0.5
+    return bytes([int(240 + 15 * t), int(220 - 120 * t), int(120 - 80 * t)])
+
+
+def _pressure_color(val: float) -> bytes:
+    v = max(0.0, min(1.0, float(val)))
+    return bytes([int(40 + 180 * v), int(60 + 80 * (1 - abs(v - 0.5))), int(220 - 150 * v)])
 
 
 def _draw_colorbar(
@@ -129,6 +129,10 @@ def _draw_colorbar(
         t = 1.0 - i / (h - 1) if h > 1 else 0.0
         if cmap == "smoke":
             color = QColor(*_smoke_color(t))
+        elif cmap == "vorticity":
+            color = QColor(*_vorticity_color(t))
+        elif cmap == "pressure":
+            color = QColor(*_pressure_color(t))
         else:
             v = int(t * 255)
             color = QColor(v, v, v)
@@ -137,14 +141,12 @@ def _draw_colorbar(
     bar_painter.end()
     painter.drawImage(x, y, bar_img)
 
-    pen = QPen(QColor(200, 200, 200))
-    painter.setPen(pen)
+    painter.setPen(QPen(QColor(210, 210, 220)))
     painter.drawRect(x, y, w, h)
-    font = QFont("monospace", 8)
-    painter.setFont(font)
-    painter.drawText(x + w + 4, y + 8, "1.0")
-    painter.drawText(x + w + 4, y + h // 2 + 3, "0.5")
-    painter.drawText(x + w + 4, y + h + 4, "0.0")
+    painter.setFont(QFont("monospace", 8))
+    painter.drawText(x + w + 5, y + 8, "1.0")
+    painter.drawText(x + w + 5, y + h // 2 + 3, "0.5")
+    painter.drawText(x + w + 5, y + h + 4, "0.0")
 
 
 def _draw_annotations(
@@ -154,23 +156,37 @@ def _draw_annotations(
     step: int,
     img_w: int,
     img_h: int,
+    colormap: str,
 ) -> None:
-    from analysis.physics import reynolds_number
+    from analysis.physics import characteristic_length, drag_coefficient, reynolds_number
 
-    L = max(
-        (obs.radius * 2 for obs in scene.obstacles if hasattr(obs, "radius")),
-        default=float(scene.width),
-    )
-    re = reynolds_number(sim, obstacle_diameter=L)
+    length = characteristic_length(scene)
+    re = reynolds_number(sim, obstacle_diameter=length)
+    cd = drag_coefficient(sim)
 
-    font = QFont("monospace", 9)
-    painter.setFont(font)
-    painter.setPen(QPen(QColor(200, 200, 200)))
+    title_font = QFont("monospace", 11)
+    title_font.setBold(True)
+    body_font = QFont("monospace", 9)
+
+    painter.setPen(QPen(QColor(235, 235, 245)))
+    painter.setFont(title_font)
+    painter.drawText(8, 18, scene.name)
+
+    caption = scene.product.export_caption or scene.product.lesson_headline
+    if caption:
+        painter.setFont(body_font)
+        painter.drawText(8, 34, caption[:90])
+
+    painter.setFont(body_font)
+    painter.setPen(QPen(QColor(205, 205, 215)))
     lines = [
         f"Re = {re:.1f}",
-        f"ν = {sim.viscosity}",
+        f"Cd = {cd:.3f}",
+        f"nu = {sim.viscosity}",
         f"U_in = {sim.u_inflow}",
+        f"View = {colormap}",
         f"Step = {step}",
+        "SStream educational CFD",
     ]
     y = img_h - 14 * len(lines) - 4
     for line in lines:

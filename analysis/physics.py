@@ -4,6 +4,16 @@ import numpy as np
 
 from engines.base import SimEngine
 from engines.lbm_common import LATTICE_2D
+from scene.scene import CircleObstacle, RectObstacle, Scene
+
+
+def characteristic_length(scene: Scene) -> float:
+    for obs in scene.obstacles:
+        if isinstance(obs, CircleObstacle):
+            return float(obs.radius * 2)
+        if isinstance(obs, RectObstacle):
+            return float(max(obs.w, obs.h))
+    return float(scene.width)
 
 
 def reynolds_number(

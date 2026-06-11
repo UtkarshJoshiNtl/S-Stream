@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "name": "Porous Screen",
+  "width": 256,
+  "height": 128,
+  "viscosity": 0.018,
+  "u_inflow": 0.1,
+  "smoke_diffusion": 0.025,
+  "smoke_decay": 0.999,
+  "description": "A row of small blockers acts like a crude porous screen, useful for pressure-loss intuition.",
+  "obstacles": [
+    {"type": "rect", "name": "Screen 1", "x": 80, "y": 12, "w": 6, "h": 12},
+    {"type": "rect", "name": "Screen 2", "x": 80, "y": 36, "w": 6, "h": 12},
+    {"type": "rect", "name": "Screen 3", "x": 80, "y": 60, "w": 6, "h": 12},
+    {"type": "rect", "name": "Screen 4", "x": 80, "y": 84, "w": 6, "h": 12},
+    {"type": "rect", "name": "Screen 5", "x": 80, "y": 108, "w": 6, "h": 12}
+  ],
+  "emitters": [
+    {"name": "Inlet", "x": 2, "y": 64, "strength": 0.05}
+  ],
+  "probes": [
+    {"name": "Upstream", "x": 54, "y": 64, "fields": ["pressure", "speed"]},
+    {"name": "Downstream", "x": 122, "y": 64, "fields": ["pressure", "speed"]}
+  ],
+  "product": {
+    "recommended_colormap": "pressure",
+    "autorun_steps": 3500,
+    "lesson_headline": "A screen trades flow speed for pressure loss and mixing.",
+    "expected_ranges": {"Re": [80, 240]},
+    "flow_regime_labels": ["pressure-drop demo", "wake mixing"],
+    "export_caption": "Porous screen: pressure and wake mixing around repeated blockers.",
+    "classroom_prompts": [
+      "Where is pressure highest?",
+      "How would more blockers change downstream flow?"
+    ],
+    "recommended_sweep": {"parameter": "u_inflow", "min": 0.04, "max": 0.16, "steps": 7, "measurement": "max_speed"},
+    "recipe": "Create a lab-report figure"
+  }
+}

@@ -17,5 +17,20 @@
   "probes": [
     {"name": "Wake Center", "x": 130, "y": 64, "fields": ["u", "v", "speed"]},
     {"name": "Wake Offset", "x": 130, "y": 48, "fields": ["v"]}
-  ]
+  ],
+  "product": {
+    "recommended_colormap": "vorticity",
+    "autorun_steps": 5000,
+    "lesson_headline": "Re near 240: a laminar Karman vortex street should appear.",
+    "expected_ranges": {"Re": [180, 320], "Cd": [0.8, 2.0], "St": [0.12, 0.28]},
+    "flow_regime_labels": ["periodic vortex shedding", "laminar wake"],
+    "export_caption": "Cylinder wake: alternating vortices behind a bluff body.",
+    "classroom_prompts": [
+      "Where do vortices first separate from the cylinder?",
+      "How does increasing viscosity change the wake?",
+      "Why does a probe off the centerline reveal the shedding rhythm?"
+    ],
+    "recommended_sweep": {"parameter": "viscosity", "min": 0.004, "max": 0.03, "steps": 8, "measurement": "drag_coefficient"},
+    "recipe": "Show vortex shedding"
+  }
 }

@@ -16,9 +16,13 @@ from PySide6.QtWidgets import (
     QToolBar,
 )
 
+from analysis.regimes import detect_flow_regime
+from analysis.sanity import check_sanity
+from analysis.scorecard import compute_scorecard
 from engines.base import SimEngine
 from export.data import export_field_snapshot, export_probe_csv
 from export.image import export_image
+from export.report import export_markdown_report
 from export.video import VideoRecorder
 from presets.loader import list_presets, load_preset
 from scene.probe import Probe
@@ -27,8 +31,10 @@ from scene.serializer import load as scene_load
 from scene.serializer import save as scene_save
 from workbench.dialogs.export_dialog import ExportDialog
 from workbench.dialogs.presets_dialog import PresetsDialog
+from workbench.dialogs.recipes_dialog import RecipesDialog
 from workbench.dialogs.sweep_dialog import SweepDialog
 from workbench.panels.analysis_panel import AnalysisPanel
+from workbench.panels.outcome_panel import OutcomePanel
 from workbench.panels.scene_panel import ScenePanel
 from workbench.viewport import Viewport
 
@@ -48,14 +54,15 @@ class MainWindow(QMainWindow):
         self._fps_count = 0
         self._fps_value = 0.0
         self._recorder: VideoRecorder | None = None
+        self._demo_target = 0
+        self._demo_running = False
+        self._expert_mode = False
 
-        self.setWindowTitle("S-Stream — Fluid Workbench")
-        self.resize(1200, 800)
+        self.setWindowTitle("SStream - Fluid Workbench")
+        self.resize(1320, 840)
 
-        # Apply initial scene to sim
         apply_to_sim(self.scene, self.sim)
 
-        # --- central viewport ---
         self.viewport = Viewport()
         self.viewport.set_sim(sim)
         self.viewport.set_scene(self.scene)
@@ -63,11 +70,9 @@ class MainWindow(QMainWindow):
         self.viewport.probe_placed.connect(self._on_viewport_probe)
         self.setCentralWidget(self.viewport)
 
-        # --- runtime probes (after viewport exists) ---
         self.runtime_probes: list[Probe] = []
         self._rebuild_probes()
 
-        # --- left dock: scene panel ---
         self.scene_panel = ScenePanel(sim, self.scene)
         self.scene_panel.scene_changed.connect(self._on_scene_changed)
         self.scene_panel.parameters_changed.connect(self._on_params_changed)
@@ -76,19 +81,37 @@ class MainWindow(QMainWindow):
         self.scene_dock.setMinimumWidth(260)
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self.scene_dock)
 
-        # --- right dock: analysis panel ---
         self.analysis_panel = AnalysisPanel(sim)
         self.analysis_dock = QDockWidget("Analysis", self)
         self.analysis_dock.setWidget(self.analysis_panel)
-        self.analysis_dock.setMinimumWidth(300)
+        self.analysis_dock.setMinimumWidth(310)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.analysis_dock)
 
+        self.outcome_panel = OutcomePanel(sim, self.scene)
+        self.outcome_dock = QDockWidget("What am I seeing?", self)
+        self.outcome_dock.setWidget(self.outcome_panel)
+        self.outcome_dock.setMinimumWidth(360)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.outcome_dock)
+        self.tabifyDockWidget(self.analysis_dock, self.outcome_dock)
+        self.outcome_dock.raise_()
+
         self._sync_analysis_probes()
-
-        # --- file menu ---
         self._setup_menus()
+        self._setup_toolbar()
+        self._setup_statusbar()
+        self._setup_shortcuts()
+        self._show_welcome_if_first()
 
-        # --- toolbar ---
+        self._fps_timer.setTimerType(Qt.TimerType.CoarseTimer)
+        self._fps_timer.timeout.connect(self._update_fps)
+        self._fps_timer.start(1000)
+
+        self.timer = QTimer(self)
+        self.timer.setTimerType(Qt.TimerType.PreciseTimer)
+        self.timer.timeout.connect(self.tick)
+        self.timer.start(33)
+
+    def _setup_toolbar(self) -> None:
         self.toolbar = QToolBar("Simulation")
         self.addToolBar(self.toolbar)
 
@@ -103,7 +126,35 @@ class MainWindow(QMainWindow):
 
         self.toolbar.addSeparator()
 
-        self.record_btn = QPushButton("● Record")
+        self.demo_btn = QPushButton("Run Demo")
+        self.demo_btn.clicked.connect(self._run_guided_demo)
+        self.toolbar.addWidget(self.demo_btn)
+
+        export_fig_btn = QPushButton("Export Figure")
+        export_fig_btn.clicked.connect(self._quick_export_figure)
+        self.toolbar.addWidget(export_fig_btn)
+
+        recipes_btn = QPushButton("Recipes")
+        recipes_btn.clicked.connect(self._open_recipes_dialog)
+        self.toolbar.addWidget(recipes_btn)
+
+        sweep_re_btn = QPushButton("Sweep Re")
+        sweep_re_btn.clicked.connect(self._open_sweep_dialog)
+        self.toolbar.addWidget(sweep_re_btn)
+
+        self.ai_btn = QPushButton("AI")
+        self.ai_btn.setCheckable(True)
+        self.ai_btn.clicked.connect(self._toggle_ai_preview)
+        self.toolbar.addWidget(self.ai_btn)
+
+        self.mode_btn = QPushButton("Beginner")
+        self.mode_btn.setCheckable(True)
+        self.mode_btn.clicked.connect(self._toggle_mode)
+        self.toolbar.addWidget(self.mode_btn)
+
+        self.toolbar.addSeparator()
+
+        self.record_btn = QPushButton("Record")
         self.record_btn.setCheckable(True)
         self.record_btn.clicked.connect(self._toggle_recording)
         self.toolbar.addWidget(self.record_btn)
@@ -112,10 +163,10 @@ class MainWindow(QMainWindow):
 
         self._draw_group: list[QPushButton] = []
         for mode, label in [
-            ("circle", "○ Circle"),
-            ("rect", "▭ Rect"),
-            ("polygon", "✎ Freehand"),
-            ("probe", "✚ Probe"),
+            ("circle", "Circle"),
+            ("rect", "Rect"),
+            ("polygon", "Freehand"),
+            ("probe", "Probe"),
         ]:
             btn = QPushButton(label)
             btn.setCheckable(True)
@@ -125,7 +176,7 @@ class MainWindow(QMainWindow):
             self.toolbar.addWidget(btn)
             self._draw_group.append(btn)
 
-        select_btn = QPushButton("▸ Select")
+        select_btn = QPushButton("Select")
         select_btn.setCheckable(True)
         select_btn.setChecked(True)
         select_btn.clicked.connect(lambda: self._set_draw_mode(None, select_btn))
@@ -138,17 +189,17 @@ class MainWindow(QMainWindow):
         self.colormap_combo.setMenu(self._build_colormap_menu())
         self.toolbar.addWidget(self.colormap_combo)
 
-        # --- status bar ---
+    def _setup_statusbar(self) -> None:
         self.status = QStatusBar()
-        self.re_label = QLabel("Re: —")
+        self.re_label = QLabel("Re: -")
         self.status.addWidget(self.re_label)
-        self.status_label = QLabel("Step 0  |  FPS: —")
+        self.status_label = QLabel("Step 0  |  FPS: -")
         self.status.addPermanentWidget(self.status_label)
         self.grid_label = QLabel(self._grid_label_text())
         self.status.addPermanentWidget(self.grid_label)
         self.setStatusBar(self.status)
 
-        # --- keyboard shortcuts ---
+    def _setup_shortcuts(self) -> None:
         pause_shortcut = QAction(self)
         pause_shortcut.setShortcut(QKeySequence(Qt.Key.Key_Space))
         pause_shortcut.triggered.connect(self.toggle_pause)
@@ -163,22 +214,6 @@ class MainWindow(QMainWindow):
         quit_shortcut.setShortcut(QKeySequence(Qt.Key.Key_Escape))
         quit_shortcut.triggered.connect(self.close)
         self.addAction(quit_shortcut)
-
-        # --- Welcome dialog ---
-        self._show_welcome_if_first()
-
-        # --- FPS counter (once per second) ---
-        self._fps_timer.setTimerType(Qt.TimerType.CoarseTimer)
-        self._fps_timer.timeout.connect(self._update_fps)
-        self._fps_timer.start(1000)
-
-        # --- simulation timer ---
-        self.timer = QTimer(self)
-        self.timer.setTimerType(Qt.TimerType.PreciseTimer)
-        self.timer.timeout.connect(self.tick)
-        self.timer.start(33)
-
-    # --- file menu ---
 
     def _setup_menus(self) -> None:
         menu = self.menuBar()
@@ -210,14 +245,16 @@ class MainWindow(QMainWindow):
         open_preset_action.triggered.connect(self._open_preset_dialog)
         file_menu.addAction(open_preset_action)
 
+        recipes_action = QAction("&Recipes...", self)
+        recipes_action.triggered.connect(self._open_recipes_dialog)
+        file_menu.addAction(recipes_action)
+
         file_menu.addSeparator()
 
         export_action = QAction("&Export...", self)
         export_action.setShortcut(QKeySequence("Ctrl+E"))
         export_action.triggered.connect(self._open_export_dialog)
         file_menu.addAction(export_action)
-
-        file_menu.addSeparator()
 
         sweep_action = QAction("&Sweep...", self)
         sweep_action.setShortcut(QKeySequence("Ctrl+Shift+S"))
@@ -271,6 +308,8 @@ class MainWindow(QMainWindow):
 
     def _sync_analysis_probes(self) -> None:
         self.analysis_panel.set_probes(self.runtime_probes)
+        if hasattr(self, "outcome_panel"):
+            self.outcome_panel.set_probes(self.runtime_probes)
 
     def _apply_and_refresh(self) -> None:
         apply_to_sim(self.scene, self.sim)
@@ -282,17 +321,19 @@ class MainWindow(QMainWindow):
         self.scene_panel.refresh()
         self.scene_panel.sync_params_from_scene()
         self.grid_label.setText(self._grid_label_text())
+        self._set_colormap(self.scene.product.recommended_colormap)
+        self.outcome_panel.set_scene(self.scene)
+        self._demo_target = self.scene.product.autorun_steps
+        self.outcome_panel.set_demo_target(self._demo_target)
         self._update_title()
 
     def _grid_label_text(self) -> str:
         gs = self.sim.grid_shape
-        return f"{gs[1]}×{gs[0]}  |  ν {self.sim.viscosity}"
+        return f"{gs[1]}x{gs[0]}  |  nu {self.sim.viscosity}"
 
     def _update_title(self) -> None:
         name = self._file_path.stem if self._file_path else self.scene.name
-        self.setWindowTitle(f"S-Stream — {name}")
-
-    # --- simulation control ---
+        self.setWindowTitle(f"SStream - {name}")
 
     def toggle_pause(self) -> None:
         self.paused = not self.paused
@@ -301,12 +342,20 @@ class MainWindow(QMainWindow):
     def reset(self) -> None:
         apply_to_sim(self.scene, self.sim)
         self.step_count = 0
+        self.outcome_panel.update_outcome(self.step_count, force=True)
 
     def tick(self) -> None:
         if not self.paused:
             self.sim.step()
             self.step_count += 1
             self.analysis_panel.tick(1.0)
+            if self._demo_running and self._demo_target > 0:
+                if self.step_count >= self._demo_target:
+                    self._demo_running = False
+                    self.paused = True
+                    self.play_btn.setText("Play")
+                    self.demo_btn.setText("Run Demo")
+        self.outcome_panel.update_outcome(self.step_count)
         self.viewport.update()
         if self._recorder is not None and self._recorder.recording:
             if not self._recorder.add_frame(self.viewport.grab().toImage()):
@@ -314,8 +363,6 @@ class MainWindow(QMainWindow):
         self._fps_count += 1
         fps_str = f"{self._fps_value:.0f}"
         self.status_label.setText(f"Step {self.step_count}  |  FPS: {fps_str}")
-
-    # --- drawing modes ---
 
     def _set_draw_mode(self, mode: str | None, sender: QPushButton) -> None:
         for btn in self._draw_group:
@@ -337,20 +384,20 @@ class MainWindow(QMainWindow):
         self._sync_analysis_probes()
         self.scene_panel.sync_params_from_scene()
         self.grid_label.setText(self._grid_label_text())
+        self.outcome_panel.set_scene(self.scene)
         self._update_title()
 
     def _on_params_changed(self) -> None:
         self.grid_label.setText(self._grid_label_text())
+        self.outcome_panel.update_outcome(self.step_count, force=True)
 
     def _update_fps(self) -> None:
         self._fps_value = self._fps_count
         self._fps_count = 0
 
-    # --- colormap ---
-
     @staticmethod
     def _colormap_label(name: str) -> str:
-        return f"🎨 {name.capitalize()}"
+        return f"View: {name.capitalize()}"
 
     def _build_colormap_menu(self):
         menu = QMenu(self)
@@ -360,14 +407,15 @@ class MainWindow(QMainWindow):
         return menu
 
     def _set_colormap(self, name: str) -> None:
+        if name not in _COLORMAPS:
+            name = "smoke"
         self.viewport.set_colormap(name)
         self.colormap_combo.setText(self._colormap_label(name))
 
-    # --- presets ---
-
     def _show_welcome_if_first(self) -> None:
         from PySide6.QtCore import QSettings
-        settings = QSettings("S-Stream", "S-Stream")
+
+        settings = QSettings("SStream", "SStream")
         if settings.value("welcome_shown", False, type=bool):
             return
         settings.setValue("welcome_shown", True)
@@ -386,10 +434,43 @@ class MainWindow(QMainWindow):
             self.scene = load_preset(path)
             self._file_path = None
             self._apply_and_refresh()
+            if self.scene.product.autorun_steps:
+                self._run_guided_demo()
         except Exception as e:
             QMessageBox.warning(self, "Load Failed", str(e))
 
-    # --- sweep ---
+    def _run_guided_demo(self) -> None:
+        target = self.scene.product.autorun_steps or 3000
+        self.reset()
+        self._demo_target = target
+        self._demo_running = True
+        self.paused = False
+        self.play_btn.setText("Pause")
+        self.demo_btn.setText("Running...")
+        self.outcome_panel.set_demo_target(target)
+        self._set_colormap(self.scene.product.recommended_colormap or "vorticity")
+        self.outcome_dock.raise_()
+
+    def _toggle_ai_preview(self, checked: bool) -> None:
+        if checked:
+            self.outcome_dock.raise_()
+            self.outcome_panel.refresh_ai_preview(has_api_key=False)
+
+    def _toggle_mode(self, checked: bool) -> None:
+        self._expert_mode = checked
+        self.mode_btn.setText("Expert" if checked else "Beginner")
+        self.scene_panel.set_expert_mode(checked)
+
+    def _open_recipes_dialog(self) -> None:
+        dialog = RecipesDialog(self)
+        dialog.recipe_selected.connect(
+            lambda name: QMessageBox.information(
+                self,
+                "Recipe Selected",
+                f"Recipe loaded: {name}\n\nUse the preset gallery or Sweep Re button to follow it.",
+            )
+        )
+        dialog.exec()
 
     def _open_sweep_dialog(self) -> None:
         dialog = SweepDialog(self.scene, self)
@@ -399,14 +480,42 @@ class MainWindow(QMainWindow):
             self.scene.sweeps.append(sweep_dict)
             scene_save(self.scene, self._file_path) if self._file_path else None
 
-    # --- export ---
-
     def _open_export_dialog(self) -> None:
         dialog = ExportDialog(self)
         dialog.export_image_requested.connect(self._export_image)
         dialog.export_data_requested.connect(self._export_data)
         dialog.start_recording.connect(self._start_video_recording)
         dialog.exec()
+
+    def _quick_export_figure(self) -> None:
+        base = self.scene.name.lower().replace(" ", "_") or "sstream_flow"
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export Report Figure",
+            f"{base}.png",
+            "PNG Image (*.png)",
+        )
+        if not path:
+            return
+        self._export_image(path, scale=3, colorbar=True, annotations=True)
+        try:
+            export_markdown_report(
+                Path(path).with_suffix(".md"),
+                self.scene,
+                self.sim,
+                self.step_count,
+                regime=detect_flow_regime(
+                    self.sim, self.scene, self.runtime_probes, self.step_count
+                ),
+                warnings=check_sanity(
+                    self.sim, self.scene, self.runtime_probes, self.step_count
+                ),
+                scorecard=compute_scorecard(
+                    self.sim, self.scene, self.runtime_probes, self.step_count
+                ),
+            )
+        except Exception as e:
+            QMessageBox.warning(self, "Report Export Failed", str(e))
 
     def _export_image(
         self,
@@ -450,7 +559,7 @@ class MainWindow(QMainWindow):
         try:
             max_f = max_frames if max_frames > 0 else None
             self._recorder = VideoRecorder(path, fps=fps, max_frames=max_f)
-            self.record_btn.setText("■ Stop")
+            self.record_btn.setText("Stop")
             self.record_btn.setChecked(True)
         except Exception as e:
             QMessageBox.warning(self, "Recording Failed", str(e))
@@ -464,5 +573,5 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
         self._recorder = None
-        self.record_btn.setText("● Record")
+        self.record_btn.setText("Record")
         self.record_btn.setChecked(False)

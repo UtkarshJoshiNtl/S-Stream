@@ -14,5 +14,19 @@
   ],
   "probes": [
     {"name": "Profile", "x": 64, "y": 32, "fields": ["u", "speed"]}
-  ]
+  ],
+  "product": {
+    "recommended_colormap": "speed",
+    "autorun_steps": 2500,
+    "lesson_headline": "Wall friction shapes a smooth channel-flow profile.",
+    "expected_ranges": {"Re": [70, 140]},
+    "flow_regime_labels": ["open channel flow", "developing laminar profile"],
+    "export_caption": "Channel flow: speed builds into a wall-bounded profile.",
+    "classroom_prompts": [
+      "Why is the speed lower near the walls?",
+      "What happens to Re when viscosity is doubled?"
+    ],
+    "recommended_sweep": {"parameter": "viscosity", "min": 0.02, "max": 0.09, "steps": 8, "measurement": "max_speed"},
+    "recipe": "Explain Reynolds number"
+  }
 }

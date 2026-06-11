@@ -18,5 +18,19 @@
     {"name": "Near Wake", "x": 180, "y": 128, "fields": ["u", "v", "speed"]},
     {"name": "Far Wake", "x": 300, "y": 128, "fields": ["v"]},
     {"name": "Shear Layer", "x": 180, "y": 100, "fields": ["v"]}
-  ]
+  ],
+  "product": {
+    "recommended_colormap": "vorticity",
+    "autorun_steps": 6500,
+    "lesson_headline": "Higher Re wakes grow richer, longer, and more animated.",
+    "expected_ranges": {"Re": [300, 520], "Cd": [0.7, 2.5], "St": [0.12, 0.3]},
+    "flow_regime_labels": ["high-Re wake", "vortex shedding"],
+    "export_caption": "High-Re cylinder wake: extended vortex street on a larger grid.",
+    "classroom_prompts": [
+      "How does this wake differ from the smaller cylinder preset?",
+      "Where do secondary structures appear?"
+    ],
+    "recommended_sweep": {"parameter": "viscosity", "min": 0.004, "max": 0.02, "steps": 8, "measurement": "max_vorticity"},
+    "recipe": "Show vortex shedding"
+  }
 }

@@ -17,5 +17,20 @@
   "probes": [
     {"name": "Reattachment", "x": 130, "y": 48, "fields": ["u", "v"]},
     {"name": "Shear Layer", "x": 80, "y": 34, "fields": ["v"]}
-  ]
+  ],
+  "product": {
+    "recommended_colormap": "vorticity",
+    "autorun_steps": 4000,
+    "lesson_headline": "Flow separates at sharp edges and reattaches downstream.",
+    "expected_ranges": {"Re": [400, 700]},
+    "flow_regime_labels": ["separation bubble", "shear layer"],
+    "export_caption": "Backward-facing step: flow separation and reattachment.",
+    "classroom_prompts": [
+      "Where does the flow separate from the step?",
+      "How far downstream does reattachment occur?",
+      "What happens if the step height changes?"
+    ],
+    "recommended_sweep": {"parameter": "viscosity", "min": 0.003, "max": 0.012, "steps": 8, "measurement": "max_vorticity"},
+    "recipe": "Create a lab-report figure"
+  }
 }

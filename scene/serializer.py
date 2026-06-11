@@ -11,6 +11,7 @@ from scene.scene import (
     ProbeSpec,
     RectObstacle,
     Scene,
+    SceneProductMeta,
 )
 
 SCHEMA_VERSION = 1
@@ -77,7 +78,36 @@ def scene_to_dict(scene: Scene) -> dict:
         d["description"] = scene.description
     if scene.sweeps:
         d["sweeps"] = scene.sweeps
+    product = scene.product
+    product_dict = {
+        "recommended_colormap": product.recommended_colormap,
+        "autorun_steps": product.autorun_steps,
+        "lesson_headline": product.lesson_headline,
+        "expected_ranges": product.expected_ranges,
+        "flow_regime_labels": product.flow_regime_labels,
+        "export_caption": product.export_caption,
+        "classroom_prompts": product.classroom_prompts,
+        "recommended_sweep": product.recommended_sweep,
+        "recipe": product.recipe,
+    }
+    if any(product_dict.values()):
+        d["product"] = product_dict
     return d
+
+
+def _product_from_dict(d: dict) -> SceneProductMeta:
+    product = d.get("product", {})
+    return SceneProductMeta(
+        recommended_colormap=product.get("recommended_colormap", "smoke"),
+        autorun_steps=int(product.get("autorun_steps", 0)),
+        lesson_headline=product.get("lesson_headline", ""),
+        expected_ranges=product.get("expected_ranges", {}),
+        flow_regime_labels=product.get("flow_regime_labels", []),
+        export_caption=product.get("export_caption", ""),
+        classroom_prompts=product.get("classroom_prompts", []),
+        recommended_sweep=product.get("recommended_sweep", {}),
+        recipe=product.get("recipe", ""),
+    )
 
 
 def dict_to_scene(d: dict) -> Scene:
@@ -94,6 +124,7 @@ def dict_to_scene(d: dict) -> Scene:
         emitters=[EmitterSpec(**e) for e in d.get("emitters", [])],
         probes=[ProbeSpec(**p) for p in d.get("probes", [])],
         sweeps=d.get("sweeps", []),
+        product=_product_from_dict(d),
     )
 
 

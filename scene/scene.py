@@ -98,6 +98,19 @@ class ProbeSpec:
 # --- Scene ---
 
 @dataclass
+class SceneProductMeta:
+    recommended_colormap: str = "smoke"
+    autorun_steps: int = 0
+    lesson_headline: str = ""
+    expected_ranges: dict[str, list[float]] = field(default_factory=dict)
+    flow_regime_labels: list[str] = field(default_factory=list)
+    export_caption: str = ""
+    classroom_prompts: list[str] = field(default_factory=list)
+    recommended_sweep: dict = field(default_factory=dict)
+    recipe: str = ""
+
+
+@dataclass
 class Scene:
     name: str = "Untitled"
     width: int = 128
@@ -111,6 +124,7 @@ class Scene:
     emitters: list[EmitterSpec] = field(default_factory=list)
     probes: list[ProbeSpec] = field(default_factory=list)
     sweeps: list[dict] = field(default_factory=list)
+    product: SceneProductMeta = field(default_factory=SceneProductMeta)
 
 
 def apply_to_sim(scene: Scene, sim: SimEngine) -> None:

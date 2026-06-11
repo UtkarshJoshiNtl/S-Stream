@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "name": "Bluff Body Drag",
+  "width": 256,
+  "height": 128,
+  "viscosity": 0.014,
+  "u_inflow": 0.11,
+  "smoke_diffusion": 0.02,
+  "smoke_decay": 0.999,
+  "description": "A rectangular bluff body creates a broad separated wake. Use it to compare drag and wake size against the cylinder.",
+  "obstacles": [
+    {"type": "rect", "name": "Bluff Block", "x": 62, "y": 48, "w": 18, "h": 32}
+  ],
+  "emitters": [
+    {"name": "Inlet", "x": 2, "y": 64, "strength": 0.05}
+  ],
+  "probes": [
+    {"name": "Wake Probe", "x": 132, "y": 64, "fields": ["u", "v", "speed"]}
+  ],
+  "product": {
+    "recommended_colormap": "vorticity",
+    "autorun_steps": 4500,
+    "lesson_headline": "Sharp corners make separation loud and visible.",
+    "expected_ranges": {"Re": [180, 320], "Cd": [1.0, 3.0]},
+    "flow_regime_labels": ["separated wake", "drag comparison"],
+    "export_caption": "Bluff-body wake: separated flow behind a rectangular obstacle.",
+    "classroom_prompts": [
+      "Why does a rectangle shed differently than a cylinder?",
+      "Which shape leaves a wider wake?"
+    ],
+    "recommended_sweep": {"parameter": "Bluff Block.w", "min": 0.01, "max": 0.04, "steps": 6, "measurement": "drag_coefficient"},
+    "recipe": "Compare drag of two shapes"
+  }
+}

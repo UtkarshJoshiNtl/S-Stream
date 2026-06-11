@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "name": "Nozzle Diffuser",
+  "width": 256,
+  "height": 128,
+  "viscosity": 0.02,
+  "u_inflow": 0.12,
+  "smoke_diffusion": 0.02,
+  "smoke_decay": 0.999,
+  "description": "Slanted walls squeeze then release the flow, making speed-up and expansion visible.",
+  "obstacles": [
+    {"type": "polygon", "name": "Top Ramp", "points": [[70, 0], [122, 0], [108, 48], [76, 38]]},
+    {"type": "polygon", "name": "Bottom Ramp", "points": [[70, 128], [122, 128], [108, 80], [76, 90]]}
+  ],
+  "emitters": [
+    {"name": "Inlet", "x": 2, "y": 64, "strength": 0.05}
+  ],
+  "probes": [
+    {"name": "Throat", "x": 112, "y": 64, "fields": ["u", "speed", "pressure"]},
+    {"name": "Outlet", "x": 170, "y": 64, "fields": ["u", "speed", "pressure"]}
+  ],
+  "product": {
+    "recommended_colormap": "speed",
+    "autorun_steps": 3500,
+    "lesson_headline": "Constricting a channel speeds the flow through the throat.",
+    "expected_ranges": {"Re": [100, 260]},
+    "flow_regime_labels": ["accelerating channel", "diffuser recovery"],
+    "export_caption": "Nozzle/diffuser: speed-up through a narrowed passage.",
+    "classroom_prompts": [
+      "Where is the fastest part of the flow?",
+      "Why can expansion create recirculation?"
+    ],
+    "recommended_sweep": {"parameter": "u_inflow", "min": 0.05, "max": 0.18, "steps": 7, "measurement": "max_speed"},
+    "recipe": "Create a lab-report figure"
+  }
+}

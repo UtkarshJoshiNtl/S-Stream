@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "name": "Two-Cylinder Interference",
+  "width": 256,
+  "height": 128,
+  "viscosity": 0.012,
+  "u_inflow": 0.1,
+  "smoke_diffusion": 0.02,
+  "smoke_decay": 0.999,
+  "description": "Two cylinders disturb each other's wakes, creating a more complex flow story than a single obstacle.",
+  "obstacles": [
+    {"type": "circle", "name": "Cylinder A", "x": 64, "y": 48, "radius": 10},
+    {"type": "circle", "name": "Cylinder B", "x": 92, "y": 78, "radius": 10}
+  ],
+  "emitters": [
+    {"name": "Inlet", "x": 2, "y": 64, "strength": 0.05}
+  ],
+  "probes": [
+    {"name": "Shared Wake", "x": 148, "y": 64, "fields": ["u", "v", "speed"]},
+    {"name": "Upper Wake", "x": 132, "y": 42, "fields": ["v"]}
+  ],
+  "product": {
+    "recommended_colormap": "vorticity",
+    "autorun_steps": 5500,
+    "lesson_headline": "Multiple bodies can synchronize, shield, or amplify wakes.",
+    "expected_ranges": {"Re": [120, 260], "Cd": [0.8, 3.0]},
+    "flow_regime_labels": ["wake interference", "multi-body shedding"],
+    "export_caption": "Two-cylinder wake interference: interacting vortex streets.",
+    "classroom_prompts": [
+      "Does the downstream cylinder sit in calmer or noisier flow?",
+      "How does spacing change the wake pattern?"
+    ],
+    "recommended_sweep": {"parameter": "viscosity", "min": 0.006, "max": 0.03, "steps": 8, "measurement": "max_vorticity"},
+    "recipe": "Show vortex shedding"
+  }
+}
