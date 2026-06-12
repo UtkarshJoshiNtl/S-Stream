@@ -9,6 +9,70 @@ from engines.base import SimEngine
 from scene.scene import Scene
 
 
+# --- Shared colormap data ---
+
+def _interp_cmap(stops, n=256):
+    pos = np.array([s[0] for s in stops], dtype=np.float64)
+    cols = np.array([s[1] for s in stops], dtype=np.float64)
+    x = np.linspace(0.0, 1.0, n)
+    return np.column_stack([
+        np.interp(x, pos, cols[:, i]) for i in range(3)
+    ]).astype(np.float32)
+
+_VIRIDIS_STOPS = [
+    (0.0, (0.267, 0.004, 0.329)),
+    (0.1, (0.282, 0.098, 0.460)),
+    (0.2, (0.254, 0.185, 0.551)),
+    (0.3, (0.207, 0.270, 0.602)),
+    (0.4, (0.163, 0.354, 0.619)),
+    (0.5, (0.128, 0.437, 0.609)),
+    (0.6, (0.135, 0.520, 0.572)),
+    (0.7, (0.206, 0.602, 0.508)),
+    (0.8, (0.368, 0.680, 0.401)),
+    (0.9, (0.603, 0.736, 0.242)),
+    (1.0, (0.993, 0.906, 0.144)),
+]
+
+_PLASMA_STOPS = [
+    (0.0, (0.050, 0.030, 0.528)),
+    (0.1, (0.215, 0.022, 0.593)),
+    (0.2, (0.385, 0.002, 0.601)),
+    (0.3, (0.539, 0.031, 0.554)),
+    (0.4, (0.670, 0.105, 0.470)),
+    (0.5, (0.780, 0.194, 0.367)),
+    (0.6, (0.872, 0.298, 0.252)),
+    (0.7, (0.950, 0.414, 0.132)),
+    (0.8, (0.990, 0.546, 0.051)),
+    (0.9, (0.966, 0.695, 0.119)),
+    (1.0, (0.940, 0.851, 0.212)),
+]
+
+_COOLWARM_STOPS = [
+    (0.0, (0.231, 0.299, 0.754)),
+    (0.25, (0.490, 0.620, 0.890)),
+    (0.5, (0.865, 0.865, 0.865)),
+    (0.75, (0.890, 0.560, 0.440)),
+    (1.0, (0.706, 0.016, 0.150)),
+]
+
+_CMAP_LUTS: dict[str, np.ndarray] = {
+    "viridis": _interp_cmap(_VIRIDIS_STOPS),
+    "plasma": _interp_cmap(_PLASMA_STOPS),
+    "coolwarm": _interp_cmap(_COOLWARM_STOPS),
+}
+
+_MODE_TO_CMAP: dict[str, str] = {
+    "smoke": "viridis",
+    "speed": "plasma",
+    "vorticity": "coolwarm",
+    "pressure": "coolwarm",
+}
+
+
+def _get_lut(mode: str) -> np.ndarray:
+    return _CMAP_LUTS.get(_MODE_TO_CMAP.get(mode, "viridis"), _CMAP_LUTS["viridis"])
+
+
 def export_image(
     sim: SimEngine,
     scene: Scene,
@@ -51,7 +115,11 @@ def _compute_field(sim: SimEngine, cmap: str) -> np.ndarray:
     vel = sim.get_velocity()
     if cmap == "speed":
         speed = np.sqrt(vel[:, :, 0] ** 2 + vel[:, :, 1] ** 2)
-        mx = max(sim.u_inflow * 1.5, float(speed.max()), 0.001)
+        mx = max(
+            sim.u_inflow * 1.5 if hasattr(sim, "u_inflow") else 0.0,
+            float(np.percentile(speed, 98)),
+            0.001,
+        )
         return np.clip(speed / mx, 0, 1)
     if cmap == "vorticity":
         u = vel[:, :, 0]
@@ -61,58 +129,27 @@ def _compute_field(sim: SimEngine, cmap: str) -> np.ndarray:
         dvdx[:, 1:-1] = (v[:, 2:] - v[:, :-2]) * 0.5
         dudy[1:-1, :] = (u[2:, :] - u[:-2, :]) * 0.5
         vort = dvdx - dudy
-        mx = max(float(abs(vort).max()), 0.001)
+        mx = max(float(np.percentile(abs(vort), 98)), 0.001)
         return np.clip(vort / mx * 0.5 + 0.5, 0, 1)
     if cmap == "pressure":
         rho = sim.get_density()
         p = rho - 1.0
-        mx = max(float(abs(p).max()), 0.001)
+        mx = max(float(np.percentile(abs(p), 98)), 0.001)
         return np.clip(p / mx * 0.5 + 0.5, 0, 1)
     return sim.get_smoke()
 
 
 def _render_field(img: QImage, field: np.ndarray, cmap: str) -> None:
     h, w = field.shape
-    pixels = bytearray()
-    for val in field.ravel():
-        if cmap == "smoke":
-            pixels.extend(_smoke_color(val))
-        elif cmap == "vorticity":
-            pixels.extend(_vorticity_color(val))
-        elif cmap == "pressure":
-            pixels.extend(_pressure_color(val))
-        else:
-            v = int(max(0.0, min(1.0, float(val))) * 255)
-            pixels.extend([v, v, v])
-    qimg = QImage(bytes(pixels), w, h, w * 3, QImage.Format.Format_RGB888)
+    lut = _get_lut(cmap)
+    idx = np.clip((field * 255).astype(np.int32), 0, 255)
+    rgb = (lut[idx] * 255).astype(np.uint8).reshape(h, w, 3)
+    pixels = rgb.tobytes()
+    qimg = QImage(pixels, w, h, w * 3, QImage.Format.Format_RGB888)
     painter = QPainter(img)
     painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
     painter.drawImage(img.rect(), qimg)
     painter.end()
-
-
-def _smoke_color(val: float) -> bytes:
-    v = max(0.0, min(1.0, float(val)))
-    bg = (5, 5, 20)
-    smoke = (255, 191, 102)
-    return bytes(
-        int(bg[i] + (smoke[i] - bg[i]) * (v**0.5))
-        for i in range(3)
-    )
-
-
-def _vorticity_color(val: float) -> bytes:
-    v = max(0.0, min(1.0, float(val)))
-    if v < 0.5:
-        t = v / 0.5
-        return bytes([int(20 + 40 * t), int(80 + 120 * t), int(190 + 45 * t)])
-    t = (v - 0.5) / 0.5
-    return bytes([int(240 + 15 * t), int(220 - 120 * t), int(120 - 80 * t)])
-
-
-def _pressure_color(val: float) -> bytes:
-    v = max(0.0, min(1.0, float(val)))
-    return bytes([int(40 + 180 * v), int(60 + 80 * (1 - abs(v - 0.5))), int(220 - 150 * v)])
 
 
 def _draw_colorbar(
@@ -123,20 +160,15 @@ def _draw_colorbar(
     h: int,
     cmap: str,
 ) -> None:
+    lut = _get_lut(cmap)
     bar_img = QImage(w, h, QImage.Format.Format_RGB32)
     bar_painter = QPainter(bar_img)
     for i in range(h):
         t = 1.0 - i / (h - 1) if h > 1 else 0.0
-        if cmap == "smoke":
-            color = QColor(*_smoke_color(t))
-        elif cmap == "vorticity":
-            color = QColor(*_vorticity_color(t))
-        elif cmap == "pressure":
-            color = QColor(*_pressure_color(t))
-        else:
-            v = int(t * 255)
-            color = QColor(v, v, v)
-        bar_painter.setPen(color)
+        idx = int(t * 255)
+        r, g, b = lut[idx]
+        r8, g8, b8 = int(r * 255), int(g * 255), int(b * 255)
+        bar_painter.setPen(QColor(r8, g8, b8))
         bar_painter.drawLine(0, i, w - 1, i)
     bar_painter.end()
     painter.drawImage(x, y, bar_img)

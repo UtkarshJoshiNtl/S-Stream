@@ -1,13 +1,140 @@
 from __future__ import annotations
 
 import numpy as np
+from numba import njit, prange
 
 from engines.base import SimEngine
 from engines.lbm_common import LATTICE_2D
 
 
+@njit(parallel=True)
+def _fused_step_nb(
+    f, rho, u, v, obstacles, opp, w, cx, cy, omega, u_inflow, height, width,
+):
+    f_new = np.empty_like(f)
+    for y in prange(height):
+        for x in range(width):
+            fi = np.empty(9, dtype=np.float32)
+            for i in range(9):
+                sx = x - cx[i]
+                if sx < 0:
+                    sx += width
+                elif sx >= width:
+                    sx -= width
+                sy = y - cy[i]
+                if sy < 0:
+                    sy += height
+                elif sy >= height:
+                    sy -= height
+                fi[i] = f[i, sy, sx]
+
+            if obstacles[y, x]:
+                for i in range(9):
+                    opp_i = opp[i]
+                    if i < opp_i:
+                        tmp = fi[i]
+                        fi[i] = fi[opp_i]
+                        fi[opp_i] = tmp
+
+            if x == 0:
+                u2 = u_inflow * u_inflow
+                for i in range(9):
+                    cu = cx[i] * u_inflow
+                    fi[i] = w[i] * (1.0 + 3.0 * cu + 4.5 * cu * cu - 1.5 * u2)
+
+            if y == 0 or y == height - 1:
+                for i in range(9):
+                    opp_i = opp[i]
+                    if i < opp_i:
+                        tmp = fi[i]
+                        fi[i] = fi[opp_i]
+                        fi[opp_i] = tmp
+
+            r = 0.0
+            u_vel = 0.0
+            v_vel = 0.0
+            for i in range(9):
+                fiv = fi[i]
+                r += fiv
+                u_vel += fiv * cx[i]
+                v_vel += fiv * cy[i]
+            rho_safe = r if r > 0 else 1.0
+            u_vel /= rho_safe
+            v_vel /= rho_safe
+
+            u2 = u_vel * u_vel + v_vel * v_vel
+            for i in range(9):
+                cu = cx[i] * u_vel + cy[i] * v_vel
+                feq = w[i] * r * (1.0 + 3.0 * cu + 4.5 * cu * cu - 1.5 * u2)
+                f_new[i, y, x] = fi[i] * (1.0 - omega) + feq * omega
+
+            rho[y, x] = r
+            u[y, x] = u_vel
+            v[y, x] = v_vel
+
+    f[:] = f_new
+
+
+@njit(parallel=True)
+def _collide_nb(f, rho, u, v, w, cx, cy, omega, height, width):
+    for y in prange(height):
+        for x in range(width):
+            r = 0.0
+            u_vel = 0.0
+            v_vel = 0.0
+            for i in range(9):
+                fiv = f[i, y, x]
+                r += fiv
+                u_vel += fiv * cx[i]
+                v_vel += fiv * cy[i]
+            rho_safe = r if r > 0 else 1.0
+            u_vel /= rho_safe
+            v_vel /= rho_safe
+            u2 = u_vel * u_vel + v_vel * v_vel
+            for i in range(9):
+                cu = cx[i] * u_vel + cy[i] * v_vel
+                feq = w[i] * r * (1.0 + 3.0 * cu + 4.5 * cu * cu - 1.5 * u2)
+                f[i, y, x] = f[i, y, x] * (1.0 - omega) + feq * omega
+            rho[y, x] = r
+            u[y, x] = u_vel
+            v[y, x] = v_vel
+
+
+@njit(parallel=True)
+def _stream_nb(f, cx, cy, height, width):
+    f_new = np.empty_like(f)
+    for i in range(9):
+        for y in prange(height):
+            for x in range(width):
+                sx = x - cx[i]
+                if sx < 0:
+                    sx += width
+                elif sx >= width:
+                    sx -= width
+                sy = y - cy[i]
+                if sy < 0:
+                    sy += height
+                elif sy >= height:
+                    sy -= height
+                f_new[i, y, x] = f[i, sy, sx]
+    f[:] = f_new
+
+
+@njit(parallel=True)
+def _bounce_back_nb(f, mask, opp, height, width):
+    for i in range(9):
+        opp_i = opp[i]
+        if i < opp_i:
+            for y in prange(height):
+                for x in range(width):
+                    if mask[y, x]:
+                        tmp = f[i, y, x]
+                        f[i, y, x] = f[opp_i, y, x]
+                        f[opp_i, y, x] = tmp
+
+
 class LBM2D(SimEngine):
-    """D2Q9 Lattice Boltzmann fluid simulation with passive scalar smoke."""
+    """D2Q9 Lattice Boltzmann fluid simulation with Numba-accelerated solver."""
 
     def __init__(
         self, width: int = 128, height: int = 128, viscosity: float = 0.02
@@ -22,23 +149,22 @@ class LBM2D(SimEngine):
             viscosity, self.lattice.omega_from_viscosity(viscosity)
         )
 
-        self.f = np.zeros((9, height, width))
+        self.f = np.zeros((9, height, width), dtype=np.float32)
 
-        self.rho = np.ones((height, width))
-        self.u = np.zeros((height, width))
-        self.v = np.zeros((height, width))
+        self.rho = np.ones((height, width), dtype=np.float32)
+        self.u = np.zeros((height, width), dtype=np.float32)
+        self.v = np.zeros((height, width), dtype=np.float32)
 
-        self.obstacles = np.zeros((height, width), dtype=bool)
+        self.obstacles = np.zeros((height, width), dtype=np.bool_)
 
-        self.smoke = np.zeros((height, width))
+        self.smoke = np.zeros((height, width), dtype=np.float32)
         self.smoke_diffusion = 0.05
         self.smoke_decay = 0.999
         self.emitters: list[tuple[int, int, float]] = []
 
-        self._grid_x, self._grid_y = np.meshgrid(
-            np.arange(width, dtype=np.float64),
-            np.arange(height, dtype=np.float64),
-        )
+        self._lap_buffer = np.empty_like(self.smoke)
+        self._x_coords = np.arange(width, dtype=np.float32)
+        self._y_coords = np.arange(height, dtype=np.float32)
 
         self.initialize(rho=1.0, u=0.1, v=0.0)
 
@@ -68,12 +194,15 @@ class LBM2D(SimEngine):
         self.clear_obstacles()
 
     def step(self) -> None:
-        self.streaming()
-        self.apply_obstacles()
-        self.apply_inflow()
-        self.apply_outflow()
-        self.apply_walls()
-        self.collision()
+        _fused_step_nb(
+            self.f, self.rho, self.u, self.v,
+            self.obstacles,
+            self.lattice.opp, self.lattice.w,
+            self.lattice.cx, self.lattice.cy,
+            self.omega, self.u_inflow,
+            self.height, self.width,
+        )
+        self.f[:, :, -1] = self.f[:, :, -2]
         self.apply_emitters()
         self.advect_smoke()
         self.diffuse_smoke()
@@ -113,46 +242,32 @@ class LBM2D(SimEngine):
     def clear_emitters(self) -> None:
         self.emitters.clear()
 
-    # --- LBM internals ---
+    # --- LBM internals (kept for testing) ---
 
     def collision(self) -> None:
-        self.rho = np.sum(self.f, axis=0)
-        rho_safe = np.where(self.rho > 0, self.rho, 1.0)
-        c = self.lattice.cx[:, np.newaxis, np.newaxis]
-        self.u = np.sum(self.f * c, axis=0) / rho_safe
-        c = self.lattice.cy[:, np.newaxis, np.newaxis]
-        self.v = np.sum(self.f * c, axis=0) / rho_safe
-
-        feq = self.lattice.equilibrium(self.rho, self.u, self.v)
-        self.f = self.f * (1 - self.omega) + feq * self.omega
+        _collide_nb(
+            self.f, self.rho, self.u, self.v,
+            self.lattice.w, self.lattice.cx, self.lattice.cy,
+            self.omega, self.height, self.width,
+        )
 
     def streaming(self) -> None:
-        for i in range(9):
-            self.f[i] = np.roll(
-                self.f[i], shift=(self.lattice.cx[i], self.lattice.cy[i]), axis=(1, 0)
-            )
+        _stream_nb(self.f, self.lattice.cx, self.lattice.cy, self.height, self.width)
 
     def apply_obstacles(self) -> None:
-        for i in range(9):
-            opp_i = self.lattice.opp[i]
-            if i < opp_i:
-                tmp = self.f[i][self.obstacles].copy()
-                self.f[i][self.obstacles] = self.f[opp_i][self.obstacles]
-                self.f[opp_i][self.obstacles] = tmp
+        _bounce_back_nb(
+            self.f, self.obstacles, self.lattice.opp, self.height, self.width
+        )
 
     def apply_inflow(self) -> None:
-        rho_inlet = 1.0
-        u_inlet = np.full(self.height, self.u_inflow)
-        v_inlet = np.zeros(self.height)
-        for i in range(9):
-            cu = self.lattice.cx[i] * u_inlet + self.lattice.cy[i] * v_inlet
-            u2 = u_inlet**2 + v_inlet**2
-            feq = self.lattice.w[i] * rho_inlet * (1 + 3 * cu + 4.5 * cu**2 - 1.5 * u2)
-            self.f[i, :, 0] = feq
+        u_in = self.u_inflow
+        u2 = u_in * u_in
+        cu = self.lattice.cx * u_in
+        feq = self.lattice.w * (1.0 + 3.0 * cu + 4.5 * cu**2 - 1.5 * u2)
+        self.f[:, :, 0] = feq[:, np.newaxis]
 
     def apply_outflow(self) -> None:
-        for i in range(9):
-            self.f[i, :, -1] = self.f[i, :, -2]
+        self.f[:, :, -1] = self.f[:, :, -2]
 
     def apply_walls(self) -> None:
         for i in range(9):
@@ -175,8 +290,8 @@ class LBM2D(SimEngine):
         u_adv = np.where(self.obstacles, 0.0, self.u)
         v_adv = np.where(self.obstacles, 0.0, self.v)
 
-        x_orig = self._grid_x - u_adv
-        y_orig = self._grid_y - v_adv
+        x_orig = self._x_coords[np.newaxis, :] - u_adv
+        y_orig = self._y_coords[:, np.newaxis] - v_adv
         x_orig = np.clip(x_orig, 0, self.width - 1)
         y_orig = np.clip(y_orig, 0, self.height - 1)
 
@@ -203,7 +318,8 @@ class LBM2D(SimEngine):
     def diffuse_smoke(self) -> None:
         s = self.smoke
         d = self.smoke_diffusion
-        lap = np.zeros_like(s)
+        lap = self._lap_buffer
+        lap[:] = 0.0
         lap[1:] += s[:-1] - s[1:]
         lap[:-1] += s[1:] - s[:-1]
         lap[:, 1:] += s[:, :-1] - s[:, 1:]

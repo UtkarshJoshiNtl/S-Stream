@@ -41,20 +41,20 @@ class TestInit:
 
 class TestEquilibrium:
     def test_equilibrium_total_density(self, sim: LBM2D) -> None:
-        rho = np.ones((32, 32))
-        u = np.zeros((32, 32))
-        v = np.zeros((32, 32))
+        rho = np.ones((32, 32), dtype=np.float32)
+        u = np.zeros((32, 32), dtype=np.float32)
+        v = np.zeros((32, 32), dtype=np.float32)
         feq = sim.lattice.equilibrium(rho, u, v)
         rho_sum = np.sum(feq, axis=0)
-        assert np.allclose(rho_sum, 1.0)
+        assert np.allclose(rho_sum, 1.0, atol=1e-6)
 
     def test_equilibrium_x_momentum(self, sim: LBM2D) -> None:
-        rho = np.ones((32, 32))
-        u_fld = np.full((32, 32), 0.1)
-        v_fld = np.zeros((32, 32))
+        rho = np.ones((32, 32), dtype=np.float32)
+        u_fld = np.full((32, 32), 0.1, dtype=np.float32)
+        v_fld = np.zeros((32, 32), dtype=np.float32)
         feq = sim.lattice.equilibrium(rho, u_fld, v_fld)
         u_comp = np.sum(feq * sim.lattice.cx[:, np.newaxis, np.newaxis], axis=0)
-        assert np.allclose(u_comp, 0.1)
+        assert np.allclose(u_comp, 0.1, atol=1e-6)
 
 
 class TestCollision:
@@ -62,7 +62,7 @@ class TestCollision:
         mass_before = np.sum(sim.f)
         sim.collision()
         mass_after = np.sum(sim.f)
-        assert mass_after == pytest.approx(mass_before, rel=1e-10)
+        assert mass_after == pytest.approx(mass_before, rel=1e-5)
 
     def test_output_shape(self, sim: LBM2D) -> None:
         sim.collision()

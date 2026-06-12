@@ -7,6 +7,7 @@ from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
     QDockWidget,
     QFileDialog,
+    QFrame,
     QLabel,
     QMainWindow,
     QMenu,
@@ -14,6 +15,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QStatusBar,
     QToolBar,
+    QVBoxLayout,
 )
 
 from analysis.regimes import detect_flow_regime
@@ -68,7 +70,16 @@ class MainWindow(QMainWindow):
         self.viewport.set_scene(self.scene)
         self.viewport.obstacle_created.connect(self._on_viewport_obstacle)
         self.viewport.probe_placed.connect(self._on_viewport_probe)
-        self.setCentralWidget(self.viewport)
+        vp_frame = QFrame()
+        vp_frame.setFrameStyle(QFrame.Shape.NoFrame)
+        vp_frame.setStyleSheet(
+            "QFrame { border: 2px solid #1e293b; border-radius: 6px; "
+            "background: transparent; }"
+        )
+        vp_layout = QVBoxLayout(vp_frame)
+        vp_layout.setContentsMargins(0, 0, 0, 0)
+        vp_layout.addWidget(self.viewport)
+        self.setCentralWidget(vp_frame)
 
         self.runtime_probes: list[Probe] = []
         self._rebuild_probes()
@@ -130,6 +141,10 @@ class MainWindow(QMainWindow):
         self.demo_btn.clicked.connect(self._run_guided_demo)
         self.toolbar.addWidget(self.demo_btn)
 
+        presets_btn = QPushButton("Presets")
+        presets_btn.clicked.connect(self._open_preset_dialog)
+        self.toolbar.addWidget(presets_btn)
+
         export_fig_btn = QPushButton("Export Figure")
         export_fig_btn.clicked.connect(self._quick_export_figure)
         self.toolbar.addWidget(export_fig_btn)
@@ -182,6 +197,18 @@ class MainWindow(QMainWindow):
         select_btn.clicked.connect(lambda: self._set_draw_mode(None, select_btn))
         self.toolbar.addWidget(select_btn)
         self._draw_group.append(select_btn)
+
+        self.toolbar.addSeparator()
+
+        self.arrows_btn = QPushButton("Arrows")
+        self.arrows_btn.setCheckable(True)
+        self.arrows_btn.clicked.connect(self._toggle_arrows)
+        self.toolbar.addWidget(self.arrows_btn)
+
+        self.streams_btn = QPushButton("Streams")
+        self.streams_btn.setCheckable(True)
+        self.streams_btn.clicked.connect(self._toggle_streams)
+        self.toolbar.addWidget(self.streams_btn)
 
         self.toolbar.addSeparator()
 
@@ -405,6 +432,12 @@ class MainWindow(QMainWindow):
             action = menu.addAction(name.capitalize())
             action.triggered.connect(lambda checked, n=name: self._set_colormap(n))
         return menu
+
+    def _toggle_arrows(self, checked: bool) -> None:
+        self.viewport.set_show_quiver(checked)
+
+    def _toggle_streams(self, checked: bool) -> None:
+        self.viewport.set_show_streamlines(checked)
 
     def _set_colormap(self, name: str) -> None:
         if name not in _COLORMAPS:
