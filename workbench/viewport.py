@@ -46,6 +46,7 @@ from OpenGL.GL import (  # noqa: E402
     glTexImage2D,
     glTexParameteri,
     glTexSubImage2D,
+    glUniform1f,
     glUniform1i,
     glUseProgram,
     glVertexAttribPointer,
@@ -83,9 +84,13 @@ in vec2 uv;
 out vec4 fragColor;
 uniform sampler2D smokeTex;
 uniform sampler2D cmapTex;
+uniform float uBoost;
 void main() {
     float s = texture(smokeTex, uv).r;
-    fragColor = vec4(texture(cmapTex, vec2(s, 0.5)).rgb, 1.0);
+    s = pow(s, 1.0 / (1.0 + uBoost));
+    vec3 c = texture(cmapTex, vec2(s, 0.5)).rgb;
+    float glow = exp(-(1.0 - s) * 10.0) * 0.2 * uBoost;
+    fragColor = vec4(c + glow, 1.0);
 }
 """
 
@@ -149,11 +154,21 @@ _COOLWARM_STOPS = [
     (1.0, (0.706, 0.016, 0.150)),
 ]
 
+_BLUES_STOPS = [
+    (0.0, (0.02, 0.02, 0.08)),
+    (0.3, (0.03, 0.06, 0.20)),
+    (0.5, (0.05, 0.20, 0.50)),
+    (0.7, (0.10, 0.50, 0.80)),
+    (0.85, (0.30, 0.75, 0.95)),
+    (1.0, (0.80, 0.95, 1.0)),
+]
+
 _CMAP_LUTS: dict[str, np.ndarray] = {
     "viridis": _interp_cmap(_VIRIDIS_STOPS),
     "plasma": _interp_cmap(_PLASMA_STOPS),
     "inferno": _interp_cmap(_INFERNO_STOPS),
     "coolwarm": _interp_cmap(_COOLWARM_STOPS),
+    "blues": _interp_cmap(_BLUES_STOPS),
 }
 
 _MODE_TO_CMAP: dict[str, str] = {
@@ -161,6 +176,8 @@ _MODE_TO_CMAP: dict[str, str] = {
     "speed": "plasma",
     "vorticity": "coolwarm",
     "pressure": "coolwarm",
+    "density": "inferno",
+    "phase": "blues",
 }
 
 
@@ -173,7 +190,9 @@ class Viewport(QOpenGLWidget):
         self.sim: SimEngine | None = None
         self.scene: Scene | None = None
         self.probes: list[Probe] = []
-        self._colormap = "smoke"
+        self._colormap = "speed"
+        self._gamma = 0.7
+        self._perf_mode = False
         self._tex_init = False
         self._cmap_tex: int | None = None
         self._cmap_uploaded: str | None = None
@@ -198,6 +217,11 @@ class Viewport(QOpenGLWidget):
     def set_colormap(self, name: str) -> None:
         self._colormap = name
         self._upload_colormap()
+
+    def set_perf_mode(self, enabled: bool) -> None:
+        if enabled != self._perf_mode:
+            self._perf_mode = enabled
+            self._tex_init = False
 
     def set_show_quiver(self, show: bool) -> None:
         self._show_quiver = show
@@ -277,7 +301,7 @@ class Viewport(QOpenGLWidget):
     def paintGL(self) -> None:
         if self.sim is None:
             return
-        glClearColor(0.02, 0.02, 0.06, 1.0)
+        glClearColor(0.08, 0.08, 0.14, 1.0)
         glClear(GL_COLOR_BUFFER_BIT)
 
         self._upload_smoke()
@@ -288,6 +312,7 @@ class Viewport(QOpenGLWidget):
         glActiveTexture(GL_TEXTURE1)
         glBindTexture(GL_TEXTURE_2D, self._cmap_tex)
         glUniform1i(glGetUniformLocation(self.shader, "cmapTex"), 1)
+        glUniform1f(glGetUniformLocation(self.shader, "uBoost"), self._gamma)
         glBindVertexArray(self.vao)
         glDrawArrays(GL_TRIANGLES, 0, 6)
         glBindVertexArray(0)
@@ -300,6 +325,8 @@ class Viewport(QOpenGLWidget):
         cmap = self._colormap
         if cmap == "smoke":
             field = self.sim.get_smoke()
+            mx = max(float(np.percentile(field, 98)), 0.001)
+            field = np.clip(field / mx, 0, 1).astype(np.float32)
         elif cmap in ("speed", "vorticity"):
             u = getattr(self.sim, "u", None)
             v = getattr(self.sim, "v", None)
@@ -327,21 +354,42 @@ class Viewport(QOpenGLWidget):
             p = rho - 1.0
             mx = max(float(np.percentile(abs(p), 98)), 0.001)
             field = np.clip(p / mx * 0.5 + 0.5, 0, 1).astype(np.float32)
+        elif cmap == "density":
+            rho = self.sim.get_density()
+            lo, hi = float(np.min(rho)), float(np.max(rho))
+            if hi - lo < 0.001:
+                field = np.full_like(rho, 0.5, dtype=np.float32)
+            else:
+                field = np.clip((rho - lo) / (hi - lo), 0, 1).astype(np.float32)
+        elif cmap == "phase":
+            rho = self.sim.get_density()
+            field = 1.0 / (1.0 + np.exp(-15 * (rho - 0.5)))
+            field = np.clip(field, 0, 1).astype(np.float32)
         else:
             field = self.sim.get_smoke()
 
         field = np.ascontiguousarray(field)
         h, w = field.shape
+        if self._perf_mode:
+            field_u8 = (field * 255).astype(np.uint8)
+            fmt = GL_RGB
+            upload = field_u8
+        else:
+            fmt = GL_RED
+            upload = field
         glBindTexture(GL_TEXTURE_2D, self.texture)
         if not self._tex_init:
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_R16F, w, h, 0, GL_RED, GL_FLOAT, field)
+            internal = GL_RGB if self._perf_mode else GL_R16F
+            pix_type = GL_UNSIGNED_BYTE if self._perf_mode else GL_FLOAT
+            glTexImage2D(GL_TEXTURE_2D, 0, internal, w, h, 0, fmt, pix_type, upload)
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
             self._tex_init = True
         else:
-            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, GL_RED, GL_FLOAT, field)
+            pix_type = GL_UNSIGNED_BYTE if self._perf_mode else GL_FLOAT
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, fmt, pix_type, upload)
 
     def _upload_colormap(self) -> None:
         cmap_name = _MODE_TO_CMAP.get(self._colormap, "viridis")

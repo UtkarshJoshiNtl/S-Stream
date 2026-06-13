@@ -55,10 +55,35 @@ _COOLWARM_STOPS = [
     (1.0, (0.706, 0.016, 0.150)),
 ]
 
+_BLUES_STOPS = [
+    (0.0, (0.02, 0.02, 0.08)),
+    (0.3, (0.03, 0.06, 0.20)),
+    (0.5, (0.05, 0.20, 0.50)),
+    (0.7, (0.10, 0.50, 0.80)),
+    (0.85, (0.30, 0.75, 0.95)),
+    (1.0, (0.80, 0.95, 1.0)),
+]
+
+_INFERNO_STOPS = [
+    (0.0, (0.001, 0.000, 0.014)),
+    (0.1, (0.088, 0.025, 0.174)),
+    (0.2, (0.210, 0.036, 0.388)),
+    (0.3, (0.356, 0.043, 0.569)),
+    (0.4, (0.512, 0.065, 0.679)),
+    (0.5, (0.661, 0.126, 0.714)),
+    (0.6, (0.794, 0.209, 0.668)),
+    (0.7, (0.910, 0.315, 0.549)),
+    (0.8, (0.980, 0.444, 0.384)),
+    (0.9, (0.987, 0.590, 0.203)),
+    (1.0, (0.940, 0.782, 0.057)),
+]
+
 _CMAP_LUTS: dict[str, np.ndarray] = {
     "viridis": _interp_cmap(_VIRIDIS_STOPS),
     "plasma": _interp_cmap(_PLASMA_STOPS),
     "coolwarm": _interp_cmap(_COOLWARM_STOPS),
+    "blues": _interp_cmap(_BLUES_STOPS),
+    "inferno": _interp_cmap(_INFERNO_STOPS),
 }
 
 _MODE_TO_CMAP: dict[str, str] = {
@@ -66,6 +91,8 @@ _MODE_TO_CMAP: dict[str, str] = {
     "speed": "plasma",
     "vorticity": "coolwarm",
     "pressure": "coolwarm",
+    "density": "inferno",
+    "phase": "blues",
 }
 
 
@@ -111,7 +138,9 @@ def export_image(
 
 def _compute_field(sim: SimEngine, cmap: str) -> np.ndarray:
     if cmap == "smoke":
-        return sim.get_smoke()
+        field = sim.get_smoke()
+        mx = max(float(np.percentile(field, 98)), 0.001)
+        return np.clip(field / mx, 0, 1)
     vel = sim.get_velocity()
     if cmap == "speed":
         speed = np.sqrt(vel[:, :, 0] ** 2 + vel[:, :, 1] ** 2)
@@ -136,6 +165,16 @@ def _compute_field(sim: SimEngine, cmap: str) -> np.ndarray:
         p = rho - 1.0
         mx = max(float(np.percentile(abs(p), 98)), 0.001)
         return np.clip(p / mx * 0.5 + 0.5, 0, 1)
+    if cmap == "density":
+        rho = sim.get_density()
+        lo, hi = float(np.min(rho)), float(np.max(rho))
+        if hi - lo < 0.001:
+            return np.full_like(rho, 0.5, dtype=np.float32)
+        return np.clip((rho - lo) / (hi - lo), 0, 1).astype(np.float32)
+    if cmap == "phase":
+        rho = sim.get_density()
+        field = 1.0 / (1.0 + np.exp(-15 * (rho - 0.5)))
+        return np.clip(field, 0, 1).astype(np.float32)
     return sim.get_smoke()
 
 

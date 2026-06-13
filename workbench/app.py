@@ -41,7 +41,7 @@ from workbench.panels.scene_panel import ScenePanel
 from workbench.viewport import Viewport
 
 
-_COLORMAPS = ["smoke", "speed", "vorticity", "pressure"]
+_COLORMAPS = ["speed", "smoke", "vorticity", "pressure", "density", "phase"]
 
 
 class MainWindow(QMainWindow):
@@ -113,6 +113,8 @@ class MainWindow(QMainWindow):
         self._setup_shortcuts()
         self._show_welcome_if_first()
 
+        self._auto_detect_view()
+
         self._fps_timer.setTimerType(Qt.TimerType.CoarseTimer)
         self._fps_timer.timeout.connect(self._update_fps)
         self._fps_timer.start(1000)
@@ -167,6 +169,11 @@ class MainWindow(QMainWindow):
         self.mode_btn.clicked.connect(self._toggle_mode)
         self.toolbar.addWidget(self.mode_btn)
 
+        self.perf_btn = QPushButton("Perf")
+        self.perf_btn.setCheckable(True)
+        self.perf_btn.clicked.connect(self._toggle_perf)
+        self.toolbar.addWidget(self.perf_btn)
+
         self.toolbar.addSeparator()
 
         self.record_btn = QPushButton("Record")
@@ -212,7 +219,7 @@ class MainWindow(QMainWindow):
 
         self.toolbar.addSeparator()
 
-        self.colormap_combo = QPushButton(self._colormap_label("smoke"))
+        self.colormap_combo = QPushButton(self._colormap_label("speed"))
         self.colormap_combo.setMenu(self._build_colormap_menu())
         self.toolbar.addWidget(self.colormap_combo)
 
@@ -348,7 +355,10 @@ class MainWindow(QMainWindow):
         self.scene_panel.refresh()
         self.scene_panel.sync_params_from_scene()
         self.grid_label.setText(self._grid_label_text())
-        self._set_colormap(self.scene.product.recommended_colormap)
+        cmap = self.scene.product.recommended_colormap
+        if type(self.sim).__name__ == "LBM2DLiquid" and cmap == "smoke":
+            cmap = "density"
+        self._set_colormap(cmap)
         self.outcome_panel.set_scene(self.scene)
         self._demo_target = self.scene.product.autorun_steps
         self.outcome_panel.set_demo_target(self._demo_target)
@@ -422,6 +432,12 @@ class MainWindow(QMainWindow):
         self._fps_value = self._fps_count
         self._fps_count = 0
 
+    def _auto_detect_view(self) -> None:
+        name = type(self.sim).__name__
+        if name == "LBM2DLiquid":
+            self.viewport.set_colormap("density")
+            self.colormap_combo.setText(self._colormap_label("density"))
+
     @staticmethod
     def _colormap_label(name: str) -> str:
         return f"View: {name.capitalize()}"
@@ -441,7 +457,7 @@ class MainWindow(QMainWindow):
 
     def _set_colormap(self, name: str) -> None:
         if name not in _COLORMAPS:
-            name = "smoke"
+            name = _COLORMAPS[0]
         self.viewport.set_colormap(name)
         self.colormap_combo.setText(self._colormap_label(name))
 
@@ -493,6 +509,9 @@ class MainWindow(QMainWindow):
         self._expert_mode = checked
         self.mode_btn.setText("Expert" if checked else "Beginner")
         self.scene_panel.set_expert_mode(checked)
+
+    def _toggle_perf(self, checked: bool) -> None:
+        self.viewport.set_perf_mode(checked)
 
     def _open_recipes_dialog(self) -> None:
         dialog = RecipesDialog(self)
