@@ -519,7 +519,10 @@ class MainWindow(QMainWindow):
             lambda name: QMessageBox.information(
                 self,
                 "Recipe Selected",
-                f"Recipe loaded: {name}\n\nUse the preset gallery or Sweep Re button to follow it.",
+                (
+                    f"Recipe loaded: {name}\n\n"
+                    "Use the preset gallery or Sweep Re button to follow it."
+                ),
             )
         )
         dialog.exec()

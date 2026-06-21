@@ -3,10 +3,15 @@ from __future__ import annotations
 import numpy as np
 
 from analysis.ai_context import build_ai_context, local_ai_response
-from analysis.physics import characteristic_length, drag_coefficient, reynolds_number, strouhal_number
-from analysis.regimes import detect_flow_regime, FlowRegime
-from analysis.sanity import check_sanity, SanityWarning
-from analysis.scorecard import compute_scorecard, DesignScorecard
+from analysis.physics import (
+    characteristic_length,
+    drag_coefficient,
+    reynolds_number,
+    strouhal_number,
+)
+from analysis.regimes import detect_flow_regime
+from analysis.sanity import check_sanity
+from analysis.scorecard import compute_scorecard
 from analysis.sweep import run_sweep, SweepResult
 from engines.lbm2d import LBM2D
 from scene.scene import CircleObstacle, Scene

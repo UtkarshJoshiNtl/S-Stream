@@ -11,11 +11,26 @@ from PySide6.QtWidgets import (
 
 
 RECIPES = {
-    "Show vortex shedding": "Open Cylinder Wake, run the demo, switch to vorticity, and watch alternating wake structures.",
-    "Compare drag of two shapes": "Draw or load two obstacle scenes, run each to a settled wake, then compare Cd and wake strength.",
-    "Generate Cd vs Re": "Use Sweep Re to vary inlet/viscosity and export the plotted drag trend.",
-    "Explain Reynolds number": "Start with Channel Flow, change viscosity, and watch the Re readout and sanity notes.",
-    "Create a lab-report figure": "Run a flagship preset, wait for Demo ready, then export a report PNG and Markdown summary.",
+    "Show vortex shedding": (
+        "Open Cylinder Wake, run the demo, switch to vorticity, "
+        "and watch alternating wake structures."
+    ),
+    "Compare drag of two shapes": (
+        "Draw or load two obstacle scenes, run each to a settled wake, "
+        "then compare Cd and wake strength."
+    ),
+    "Generate Cd vs Re": (
+        "Use Sweep Re to vary inlet/viscosity "
+        "and export the plotted drag trend."
+    ),
+    "Explain Reynolds number": (
+        "Start with Channel Flow, change viscosity, "
+        "and watch the Re readout and sanity notes."
+    ),
+    "Create a lab-report figure": (
+        "Run a flagship preset, wait for Demo ready, "
+        "then export a report PNG and Markdown summary."
+    ),
 }
 
 
@@ -49,8 +64,10 @@ class RecipesDialog(QDialog):
         self.setStyleSheet(
             "QDialog { background: #111827; color: #e5e7eb; } "
             "QLabel { color: #e5e7eb; } "
-            "QListWidget { background: #0b1020; color: #e5e7eb; border: 1px solid #374151; } "
-            "QPushButton { background: #2563eb; color: white; padding: 8px; border-radius: 5px; }"
+            "QListWidget { background: #0b1020; color: #e5e7eb; "
+            "border: 1px solid #374151; } "
+            "QPushButton { background: #2563eb; color: white; "
+            "padding: 8px; border-radius: 5px; }"
         )
 
     def _show_recipe(self, name: str) -> None:

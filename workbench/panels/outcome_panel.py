@@ -60,7 +60,8 @@ class OutcomePanel(QWidget):
         self.setStyleSheet(
             "QWidget { background: #111827; color: #e5e7eb; } "
             "QLabel { color: #e5e7eb; } "
-            "QTextEdit { background: #0b1020; color: #d1d5db; border: 1px solid #374151; }"
+            "QTextEdit { background: #0b1020; color: #d1d5db; "
+            "border: 1px solid #374151; }"
         )
 
     def set_scene(self, scene: Scene) -> None:
@@ -76,7 +77,9 @@ class OutcomePanel(QWidget):
         self.progress.setVisible(self.demo_target > 0)
         self.progress.setMaximum(max(1, self.demo_target))
 
-    def update_outcome(self, step_count: int | None = None, force: bool = False) -> None:
+    def update_outcome(
+        self, step_count: int | None = None, force: bool = False
+    ) -> None:
         if step_count is not None:
             self.step_count = step_count
         if not force and self.step_count % 15 != 0:
@@ -95,7 +98,8 @@ class OutcomePanel(QWidget):
         st_text = f"{regime.strouhal:.3f}" if regime.strouhal else "settling"
         self.readouts.setText(
             f"Re {re:.1f} | Cd {cd:.3f} | St {st_text}<br>"
-            f"Scorecard: wake {score.wake_strength:.4f}, pressure-drop proxy {score.pressure_drop:.4f}<br>"
+            f"Scorecard: wake {score.wake_strength:.4f}, "
+            f"pressure-drop proxy {score.pressure_drop:.4f}<br>"
             f"{score.summary}"
         )
         if warnings:
@@ -124,4 +128,6 @@ class OutcomePanel(QWidget):
             warnings=warnings,
             step_count=self.step_count,
         )
-        self.ai_box.setPlainText(local_ai_response(context, has_api_key) + "\n\n" + context)
+        self.ai_box.setPlainText(
+            local_ai_response(context, has_api_key) + "\n\n" + context
+        )

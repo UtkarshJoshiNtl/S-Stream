@@ -85,7 +85,10 @@ def detect_flow_regime(
         return FlowRegime(
             "Periodic vortex shedding",
             0.85,
-            "The wake probe shows a repeating cross-flow signal, consistent with a Karman street.",
+            (
+                "The wake probe shows a repeating cross-flow signal, "
+                "consistent with a Karman street."
+            ),
             st,
             oscillation,
             vort,
@@ -103,7 +106,10 @@ def detect_flow_regime(
         return FlowRegime(
             "Separated laminar wake",
             0.65,
-            "The Reynolds number is near the onset of wake separation; shedding may be weak or slow.",
+            (
+                "The Reynolds number is near the onset of wake separation; "
+                "shedding may be weak or slow."
+            ),
             st,
             oscillation,
             vort,
@@ -111,7 +117,10 @@ def detect_flow_regime(
     return FlowRegime(
         "Unsteady qualitative wake",
         0.55,
-        "The flow is unsteady or not yet cleanly periodic; use it for intuition unless the probe settles.",
+        (
+            "The flow is unsteady or not yet cleanly periodic; "
+            "use it for intuition unless the probe settles."
+        ),
         st,
         oscillation,
         vort,

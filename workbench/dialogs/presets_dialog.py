@@ -54,7 +54,11 @@ class _PresetCard(QWidget):
         name_label.setStyleSheet("color: #f8fafc; font-size: 14px;")
         layout.addWidget(name_label)
 
-        headline = preset.get("headline") or preset.get("recipe") or "Ready-made flow story"
+        headline = (
+            preset.get("headline")
+            or preset.get("recipe")
+            or "Ready-made flow story"
+        )
         headline_label = QLabel(headline)
         headline_label.setWordWrap(True)
         headline_label.setStyleSheet("color: #7dd3fc; font-size: 11px;")

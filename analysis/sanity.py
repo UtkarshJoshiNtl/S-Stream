@@ -30,13 +30,19 @@ def check_sanity(
         warnings.append(SanityWarning(
             "danger",
             "Low viscosity",
-            "BGK LBM can become noisy at very low viscosity; increase nu if the field sparkles or blows up.",
+            (
+                "BGK LBM can become noisy at very low viscosity; "
+                "increase nu if the field sparkles or blows up."
+            ),
         ))
     if sim.u_inflow > 0.25:
         warnings.append(SanityWarning(
             "warn",
             "Fast inlet",
-            "High lattice velocity can reduce physical trust. Prefer lower inflow and tune viscosity for Re.",
+            (
+                "High lattice velocity can reduce physical trust. "
+                "Prefer lower inflow and tune viscosity for Re."
+            ),
         ))
     if not scene.obstacles:
         warnings.append(SanityWarning(
@@ -48,18 +54,27 @@ def check_sanity(
         warnings.append(SanityWarning(
             "warn",
             "Coarse obstacle",
-            "The main obstacle is under-resolved. Use a larger radius/shape for cleaner Cd and wake structure.",
+            (
+                "The main obstacle is under-resolved. "
+                "Use a larger radius/shape for cleaner Cd and wake structure."
+            ),
         ))
     if not probes:
         warnings.append(SanityWarning(
             "info",
             "No wake probe",
-            "Place a probe behind the obstacle to estimate Strouhal number and shedding confidence.",
+            (
+                "Place a probe behind the obstacle to estimate "
+                "Strouhal number and shedding confidence."
+            ),
         ))
     if step_count < 1000 and re > 40:
         warnings.append(SanityWarning(
             "info",
             "Still developing",
-            "Run longer before using Cd/St; vortex wakes often need thousands of steps to settle.",
+            (
+                "Run longer before using Cd/St; vortex wakes often "
+                "need thousands of steps to settle."
+            ),
         ))
     return warnings

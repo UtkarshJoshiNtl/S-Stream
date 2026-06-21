@@ -229,7 +229,11 @@ def _draw_annotations(
     img_h: int,
     colormap: str,
 ) -> None:
-    from analysis.physics import characteristic_length, drag_coefficient, reynolds_number
+    from analysis.physics import (
+        characteristic_length,
+        drag_coefficient,
+        reynolds_number,
+    )
 
     length = characteristic_length(scene)
     re = reynolds_number(sim, obstacle_diameter=length)

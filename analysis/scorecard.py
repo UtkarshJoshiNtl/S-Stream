@@ -49,14 +49,22 @@ def compute_scorecard(
     if not scene.obstacles:
         summary = "Open flow: add an obstacle to compare drag or wake designs."
     elif regime.strouhal is not None:
-        summary = "Wake has a measurable rhythm; this is a good candidate for a visual/report export."
+        summary = (
+            "Wake has a measurable rhythm; "
+            "this is a good candidate for a visual/report export."
+        )
     else:
-        summary = "Flow is useful for intuition; run longer or add a wake probe for stronger metrics."
+        summary = (
+            "Flow is useful for intuition; "
+            "run longer or add a wake probe for stronger metrics."
+        )
     return DesignScorecard(
         drag_coefficient=float(cd),
         reynolds_number=float(re),
         wake_strength=wake_strength,
         pressure_drop=pressure_drop,
-        shedding_confidence=regime.confidence if "shedding" in regime.label.lower() else 0.0,
+        shedding_confidence=(
+            regime.confidence if "shedding" in regime.label.lower() else 0.0
+        ),
         summary=summary,
     )

@@ -13,7 +13,9 @@ def sim() -> LBM2DLiquid:
 @pytest.fixture
 def liq() -> LBM2DLiquid:
     """Larger grid with Shan-Chen-friendly omega (~1.0)."""
-    return LBM2DLiquid(width=64, height=64, viscosity=1.0 / 6.0, g=-8.0, g_adhesion=-5.0)
+    return LBM2DLiquid(
+        width=64, height=64, viscosity=1.0 / 6.0, g=-8.0, g_adhesion=-5.0
+    )
 
 
 class TestInit:
