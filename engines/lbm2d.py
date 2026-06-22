@@ -167,6 +167,9 @@ class LBM2D(SimEngine):
         self._y_coords = np.arange(height, dtype=np.float32)
 
         self.initialize(rho=1.0, u=0.1, v=0.0)
+        self._warmup_jit()
+
+    def _warmup_jit(self) -> None:
         self.step()
         self.initialize(rho=1.0, u=0.1, v=0.0)
 

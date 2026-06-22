@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections import deque
+
 import numpy as np
 
 from engines.base import SimEngine
@@ -11,7 +13,7 @@ MAX_HISTORY = 512
 class Probe:
     def __init__(self, spec: ProbeSpec) -> None:
         self.spec = spec
-        self.history: dict[str, list[float]] = {f: [] for f in spec.fields}
+        self.history: dict[str, deque[float]] = {f: deque(maxlen=MAX_HISTORY) for f in spec.fields}
         self._step = 0
 
     def record(self, sim: SimEngine) -> None:
@@ -37,8 +39,6 @@ class Probe:
             else:
                 continue
             self.history[f].append(val)
-            if len(self.history[f]) > MAX_HISTORY:
-                self.history[f].pop(0)
         self._step += 1
 
     @property

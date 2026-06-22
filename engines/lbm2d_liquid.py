@@ -174,6 +174,9 @@ class LBM2DLiquid(SimEngine):
         self._lap_buffer = np.empty_like(self.smoke)
 
         self.initialize()
+        self._warmup_jit()
+
+    def _warmup_jit(self) -> None:
         self.step()
         self.initialize()
 

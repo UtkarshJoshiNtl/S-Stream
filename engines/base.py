@@ -49,6 +49,7 @@ class SimEngine(ABC):
         ...
 
     # --- Tunable physical parameters (UI sliders write to these) ---
+    # Concrete subclasses MUST set these as instance attributes in __init__.
 
     viscosity: float
     u_inflow: float

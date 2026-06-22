@@ -14,7 +14,7 @@ class ObstacleSpec:
     name: str
 
     def apply(self, sim: SimEngine) -> None:
-        ...
+        raise NotImplementedError
 
 
 @dataclass

@@ -251,7 +251,7 @@ class Viewport(QOpenGLWidget):
             if cmap == "speed":
                 speed = np.sqrt(u.astype(np.float32) ** 2 + v.astype(np.float32) ** 2)
                 mx = max(
-                    self.sim.u_inflow * 1.5 if hasattr(self.sim, "u_inflow") else 0.0,
+                    self.sim.u_inflow * 1.5,
                     float(np.percentile(speed, 98)),
                     0.001,
                 )

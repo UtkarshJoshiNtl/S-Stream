@@ -127,6 +127,11 @@ class LBM2DGPU(SimEngine):
         self._kernel = cp.RawKernel(_KERNEL_SRC, "fused_step")
 
         self.initialize(rho=1.0, u=0.1, v=0.0)
+        self._warmup_jit()
+
+    def _warmup_jit(self) -> None:
+        self.step()
+        self.initialize(rho=1.0, u=0.1, v=0.0)
 
     # --- SimEngine interface ---
 

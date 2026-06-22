@@ -61,7 +61,7 @@ def _compute_field(sim: SimEngine, cmap: str) -> np.ndarray:
     if cmap == "speed":
         speed = np.sqrt(vel[:, :, 0] ** 2 + vel[:, :, 1] ** 2)
         mx = max(
-            sim.u_inflow * 1.5 if hasattr(sim, "u_inflow") else 0.0,
+            sim.u_inflow * 1.5,
             float(np.percentile(speed, 98)),
             0.001,
         )
