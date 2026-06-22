@@ -106,7 +106,6 @@ class ExportDialog(QDialog):
             self._img_colorbar.isChecked(),
             self._img_annotations.isChecked(),
         )
-        self.accept()
 
     # --- Video Tab ---
 
@@ -157,7 +156,6 @@ class ExportDialog(QDialog):
             return
         max_frames = self._vid_max.value() if self._vid_max.value() > 0 else 0
         self.start_recording.emit(path, self._vid_fps.value(), max_frames)
-        self.accept()
 
     # --- Data Tab ---
 
@@ -205,4 +203,3 @@ class ExportDialog(QDialog):
             return
         typ = "csv" if self._data_csv.isChecked() else "npz"
         self.export_data_requested.emit(typ, path)
-        self.accept()

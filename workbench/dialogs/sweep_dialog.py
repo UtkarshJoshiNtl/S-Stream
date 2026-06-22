@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QDialogButtonBox,
+    QDoubleSpinBox,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -78,17 +79,19 @@ class SweepDialog(QDialog):
                 self._param_combo.addItem(f"{obs.name}.h")
         form.addRow("Parameter:", self._param_combo)
 
-        self._min_val = QSpinBox()
-        self._min_val.setRange(0, 1000)
-        self._min_val.setSingleStep(1)
-        self._min_val.setValue(1)
-        form.addRow("Min value (×0.001):", self._min_val)
+        self._min_val = QDoubleSpinBox()
+        self._min_val.setRange(0.0, 10.0)
+        self._min_val.setSingleStep(0.01)
+        self._min_val.setDecimals(5)
+        self._min_val.setValue(0.001)
+        form.addRow("Min value:", self._min_val)
 
-        self._max_val = QSpinBox()
-        self._max_val.setRange(0, 1000)
-        self._max_val.setSingleStep(1)
-        self._max_val.setValue(200)
-        form.addRow("Max value (×0.001):", self._max_val)
+        self._max_val = QDoubleSpinBox()
+        self._max_val.setRange(0.0, 10.0)
+        self._max_val.setSingleStep(0.01)
+        self._max_val.setDecimals(5)
+        self._max_val.setValue(0.2)
+        form.addRow("Max value:", self._max_val)
 
         self._num_steps = QSpinBox()
         self._num_steps.setRange(2, 50)
@@ -165,8 +168,8 @@ class SweepDialog(QDialog):
         max_v = self._max_val.value()
         n = self._num_steps.value()
         if n <= 1:
-            return [min_v * 0.001]
-        return [(min_v + (max_v - min_v) * i / (n - 1)) * 0.001 for i in range(n)]
+            return [min_v]
+        return [min_v + (max_v - min_v) * i / (n - 1) for i in range(n)]
 
     def _update_estimate(self) -> None:
         n = self._num_steps.value()

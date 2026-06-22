@@ -630,7 +630,7 @@ class Viewport(QOpenGLWidget):
             self._drag_end = (gx, gy)
 
     def mouseDoubleClickEvent(self, event) -> None:
-        if self.draw_mode == "polygon" and len(self._poly_points) >= 2:
+        if self.draw_mode == "polygon" and len(self._poly_points) >= 3:
             pts = [
                 (int(round(x)), int(round(y)))
                 for x, y in self._poly_points

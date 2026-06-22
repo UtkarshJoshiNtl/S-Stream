@@ -133,6 +133,11 @@ class MainWindow(QMainWindow):
         self.play_btn.clicked.connect(self.toggle_pause)
         self.toolbar.addWidget(self.play_btn)
 
+        step_btn = QPushButton("Step")
+        step_btn.setToolTip("Advance one frame")
+        step_btn.clicked.connect(self.step_once)
+        self.toolbar.addWidget(step_btn)
+
         reset_btn = QPushButton("Reset")
         reset_btn.clicked.connect(self.reset)
         self.toolbar.addWidget(reset_btn)
@@ -376,7 +381,23 @@ class MainWindow(QMainWindow):
         self.paused = not self.paused
         self.play_btn.setText("Play" if self.paused else "Pause")
 
+    def step_once(self) -> None:
+        self.sim.step()
+        self.step_count += 1
+        self.analysis_panel.tick(1.0)
+        self.outcome_panel.update_outcome(self.step_count)
+        self.viewport.update()
+
     def reset(self) -> None:
+        if self.step_count > 0:
+            confirm = QMessageBox.question(
+                self, "Reset Simulation",
+                "Reset will clear all simulation state. Continue?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if confirm != QMessageBox.StandardButton.Yes:
+                return
         apply_to_sim(self.scene, self.sim)
         self.step_count = 0
         self.outcome_panel.update_outcome(self.step_count, force=True)
@@ -459,6 +480,7 @@ class MainWindow(QMainWindow):
         if name not in _COLORMAPS:
             name = _COLORMAPS[0]
         self.viewport.set_colormap(name)
+        self.analysis_panel.set_colormap(name)
         self.colormap_combo.setText(self._colormap_label(name))
 
     def _show_welcome_if_first(self) -> None:
@@ -515,17 +537,52 @@ class MainWindow(QMainWindow):
 
     def _open_recipes_dialog(self) -> None:
         dialog = RecipesDialog(self)
-        dialog.recipe_selected.connect(
-            lambda name: QMessageBox.information(
-                self,
-                "Recipe Selected",
-                (
-                    f"Recipe loaded: {name}\n\n"
-                    "Use the preset gallery or Sweep Re button to follow it."
-                ),
-            )
-        )
+        dialog.recipe_selected.connect(self._execute_recipe)
         dialog.exec()
+
+    def _execute_recipe(self, name: str) -> None:
+        presets = list_presets()
+        query = name.lower()
+        matched = None
+        for p in presets:
+            pn = p["name"].lower()
+            if any(kw in pn for kw in query.split()
+                   if kw not in ("a", "an", "the", "of", "to", "and", "or")):
+                matched = p
+                break
+        if matched is None and "vortex" in query:
+            for p in presets:
+                if "cylinder" in p["name"].lower() or "karman" in p["name"].lower():
+                    matched = p
+                    break
+        if matched is None and ("drag" in query or "shape" in query):
+            for p in presets:
+                if "bluff" in p["name"].lower():
+                    matched = p
+                    break
+        if matched is None and ("reynolds" in query or "explain" in query):
+            for p in presets:
+                if "channel" in p["name"].lower():
+                    matched = p
+                    break
+        if matched is None and (
+            "report" in query or "lab" in query or "figure" in query
+        ):
+            for p in presets:
+                if "cylinder" in p["name"].lower():
+                    matched = p
+                    break
+        if matched is not None:
+            self._load_preset_file(matched["file"])
+        else:
+            if "sweep" in query or "cd vs re" in query:
+                self._open_sweep_dialog()
+            else:
+                QMessageBox.information(
+                    self,
+                    "Recipe Selected",
+                    f"{name}\n\nUse the preset gallery to find a matching scene.",
+                )
 
     def _open_sweep_dialog(self) -> None:
         dialog = SweepDialog(self.scene, self)

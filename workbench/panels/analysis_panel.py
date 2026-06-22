@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import numpy as np
 import pyqtgraph as pg
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QComboBox,
     QFormLayout,
@@ -98,7 +100,13 @@ class AnalysisPanel(QWidget):
         self.probes_layout.setSpacing(4)
         self.probes_scroll.setWidget(self.probes_container)
 
+        self._no_probes_label = QLabel("No probes placed.\nClick Probe tool then click viewport to add one.")
+        self._no_probes_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._no_probes_label.setStyleSheet("color: #64748b; padding: 20px;")
+        self._no_probes_label.setVisible(True)
+
         pg = QVBoxLayout()
+        pg.addWidget(self._no_probes_label)
         pg.addWidget(self.probes_scroll)
         self.probes_group.setLayout(pg)
         layout.addWidget(self.probes_group, 1)
@@ -124,11 +132,15 @@ class AnalysisPanel(QWidget):
             self.probes_layout.removeWidget(w)
             w.deleteLater()
         self._probe_widgets.clear()
+        has_probes = len(self.probes) > 0
+        self._no_probes_label.setVisible(not has_probes)
+        self.probes_scroll.setVisible(has_probes)
         for i, probe in enumerate(self.probes):
             pw = _ProbePlot(probe, i)
             self.probes_layout.addWidget(pw)
             self._probe_widgets.append(pw)
-        self.probes_layout.addStretch()
+        if has_probes:
+            self.probes_layout.addStretch()
 
     def tick(self, dt: float = 1.0) -> None:
         self._tick_counter += 1
@@ -159,8 +171,19 @@ class AnalysisPanel(QWidget):
             St = strouhal_number(v_data, dt, diameter=diam, velocity=self.sim.u_inflow)
         self.st_label.setText(f"{St:.3f}" if St is not None else "—")
 
+    def set_colormap(self, cmap: str) -> None:
+        self._colormap = cmap
+
     def _update_field_stats(self) -> None:
-        smoke = self.sim.get_smoke()
-        self.min_label.setText(f"{smoke.min():.4f}")
-        self.max_label.setText(f"{smoke.max():.4f}")
-        self.mean_label.setText(f"{smoke.mean():.4f}")
+        cmap = getattr(self, "_colormap", "smoke")
+        if cmap == "smoke":
+            field = self.sim.get_smoke()
+        elif cmap in ("density", "phase", "pressure"):
+            rho = self.sim.get_density()
+            field = rho if cmap == "density" else rho - 1.0
+        else:
+            vel = self.sim.get_velocity()
+            field = np.sqrt(vel[:, :, 0] ** 2 + vel[:, :, 1] ** 2)
+        self.min_label.setText(f"{field.min():.4f}")
+        self.max_label.setText(f"{field.max():.4f}")
+        self.mean_label.setText(f"{field.mean():.4f}")
