@@ -120,38 +120,37 @@ exe = EXE(
     # icon="resources/icon.icns" if sys.platform == "darwin" else "resources/icon.ico",
 )
 
-coll = COLLECT(
-    exe,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
-    strip=False,
-    upx=True,
-    upx_exclude=[],
-    name="S-Stream",
-)
-
-# For onefile builds, uncomment the following and comment out the COLLECT block above
-# exe = EXE(
-#     pyz,
-#     a.scripts,
+# coll = COLLECT(
+#     exe,
 #     a.binaries,
 #     a.zipfiles,
 #     a.datas,
-#     [],
-#     name="S-Stream",
-#     debug=False,
-#     bootloader_ignore_signals=False,
 #     strip=False,
 #     upx=True,
 #     upx_exclude=[],
-#     runtime_tmpdir=None,
-#     console=False,
-#     disable_windowed_traceback=False,
-#     argv_emulation=False,
-#     target_arch=None,
-#     codesign_identity=None,
-#     entitlements_file=None,
-#     # Icon placeholder - uncomment when icon is available
-#     # icon="resources/icon.icns" if sys.platform == "darwin" else "resources/icon.ico",
+#     name="S-Stream",
 # )
+
+# One-file build (single .exe)
+exe = EXE(
+    pyz,
+    a.scripts,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    [],
+    name="S-Stream",
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    runtime_tmpdir=None,
+    console=False,
+    disable_windowed_traceback=False,
+    argv_emulation=False,
+    target_arch=None,
+    codesign_identity=None,
+    entitlements_file=None,
+    icon="resources/icon.ico",
+)
