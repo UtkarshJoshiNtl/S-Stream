@@ -66,6 +66,7 @@ from scene.scene import (  # noqa: E402
     RectObstacle,
     Scene,
 )
+from resources.colormaps import CMAP_LUTS, MODE_TO_CMAP  # noqa: E402
 
 _VERT_SRC = """
 #version 330 core
@@ -93,92 +94,6 @@ void main() {
     fragColor = vec4(c + glow, 1.0);
 }
 """
-
-# --- Colormap LUTs ---
-
-def _interp_cmap(stops, n=256):
-    pos = np.array([s[0] for s in stops], dtype=np.float64)
-    cols = np.array([s[1] for s in stops], dtype=np.float64)
-    x = np.linspace(0.0, 1.0, n)
-    return np.column_stack([
-        np.interp(x, pos, cols[:, i]) for i in range(3)
-    ]).astype(np.float32)
-
-_VIRIDIS_STOPS = [
-    (0.0, (0.267, 0.004, 0.329)),
-    (0.1, (0.282, 0.098, 0.460)),
-    (0.2, (0.254, 0.185, 0.551)),
-    (0.3, (0.207, 0.270, 0.602)),
-    (0.4, (0.163, 0.354, 0.619)),
-    (0.5, (0.128, 0.437, 0.609)),
-    (0.6, (0.135, 0.520, 0.572)),
-    (0.7, (0.206, 0.602, 0.508)),
-    (0.8, (0.368, 0.680, 0.401)),
-    (0.9, (0.603, 0.736, 0.242)),
-    (1.0, (0.993, 0.906, 0.144)),
-]
-
-_PLASMA_STOPS = [
-    (0.0, (0.050, 0.030, 0.528)),
-    (0.1, (0.215, 0.022, 0.593)),
-    (0.2, (0.385, 0.002, 0.601)),
-    (0.3, (0.539, 0.031, 0.554)),
-    (0.4, (0.670, 0.105, 0.470)),
-    (0.5, (0.780, 0.194, 0.367)),
-    (0.6, (0.872, 0.298, 0.252)),
-    (0.7, (0.950, 0.414, 0.132)),
-    (0.8, (0.990, 0.546, 0.051)),
-    (0.9, (0.966, 0.695, 0.119)),
-    (1.0, (0.940, 0.851, 0.212)),
-]
-
-_INFERNO_STOPS = [
-    (0.0, (0.001, 0.000, 0.014)),
-    (0.1, (0.088, 0.025, 0.174)),
-    (0.2, (0.210, 0.036, 0.388)),
-    (0.3, (0.356, 0.043, 0.569)),
-    (0.4, (0.512, 0.065, 0.679)),
-    (0.5, (0.661, 0.126, 0.714)),
-    (0.6, (0.794, 0.209, 0.668)),
-    (0.7, (0.910, 0.315, 0.549)),
-    (0.8, (0.980, 0.444, 0.384)),
-    (0.9, (0.987, 0.590, 0.203)),
-    (1.0, (0.940, 0.782, 0.057)),
-]
-
-_COOLWARM_STOPS = [
-    (0.0, (0.231, 0.299, 0.754)),
-    (0.25, (0.490, 0.620, 0.890)),
-    (0.5, (0.865, 0.865, 0.865)),
-    (0.75, (0.890, 0.560, 0.440)),
-    (1.0, (0.706, 0.016, 0.150)),
-]
-
-_BLUES_STOPS = [
-    (0.0, (0.02, 0.02, 0.08)),
-    (0.3, (0.03, 0.06, 0.20)),
-    (0.5, (0.05, 0.20, 0.50)),
-    (0.7, (0.10, 0.50, 0.80)),
-    (0.85, (0.30, 0.75, 0.95)),
-    (1.0, (0.80, 0.95, 1.0)),
-]
-
-_CMAP_LUTS: dict[str, np.ndarray] = {
-    "viridis": _interp_cmap(_VIRIDIS_STOPS),
-    "plasma": _interp_cmap(_PLASMA_STOPS),
-    "inferno": _interp_cmap(_INFERNO_STOPS),
-    "coolwarm": _interp_cmap(_COOLWARM_STOPS),
-    "blues": _interp_cmap(_BLUES_STOPS),
-}
-
-_MODE_TO_CMAP: dict[str, str] = {
-    "smoke": "viridis",
-    "speed": "plasma",
-    "vorticity": "coolwarm",
-    "pressure": "coolwarm",
-    "density": "inferno",
-    "phase": "blues",
-}
 
 
 class Viewport(QOpenGLWidget):
@@ -392,8 +307,8 @@ class Viewport(QOpenGLWidget):
             glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, fmt, pix_type, upload)
 
     def _upload_colormap(self) -> None:
-        cmap_name = _MODE_TO_CMAP.get(self._colormap, "viridis")
-        lut = _CMAP_LUTS.get(cmap_name, _CMAP_LUTS["viridis"])
+        cmap_name = MODE_TO_CMAP.get(self._colormap, "viridis")
+        lut = CMAP_LUTS.get(cmap_name, CMAP_LUTS["viridis"])
         data = np.clip(lut * 255, 0, 255).astype(np.uint8).reshape(256, 1, 3)
         glBindTexture(GL_TEXTURE_2D, self._cmap_tex)
         glTexImage2D(
@@ -435,11 +350,14 @@ class Viewport(QOpenGLWidget):
                 else 1
             )
             er = max(4, 4 * s)
+            label_font = QFont("monospace", 9)
             for emit in self.scene.emitters:
                 wx, wy = self._grid_to_widget(emit.x, emit.y)
                 painter.drawEllipse(
                     int(wx - er), int(wy - er), int(er * 2), int(er * 2)
                 )
+                painter.setFont(label_font)
+                painter.drawText(int(wx + er + 4), int(wy + 4), emit.name)
 
         if self._show_quiver and vel is not None:
             self._draw_quiver(painter, vel)
@@ -493,53 +411,66 @@ class Viewport(QOpenGLWidget):
                 and self.scene.name == "Untitled"
                 and len(self.scene.obstacles) == 0):
             painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QColor(10, 10, 30, 180))
+            painter.setBrush(QColor(15, 23, 42, 200))
             painter.drawRoundedRect(self.rect().adjusted(40, 40, -40, -40), 12, 12)
-            painter.setPen(QColor(200, 200, 220, 240))
+            painter.setPen(QColor(56, 189, 248))
             font = painter.font()
-            font.setPointSize(18)
+            font.setPointSize(22)
             font.setBold(True)
             painter.setFont(font)
             painter.drawText(
                 self.rect().adjusted(0, 0, 0, -40),
                 Qt.AlignmentFlag.AlignCenter,
-                "Welcome to SStream",
+                "SStream",
             )
-            font.setPointSize(12)
+            font.setPointSize(13)
             font.setBold(False)
             painter.setFont(font)
-            painter.setPen(QColor(180, 180, 200, 220))
+            painter.setPen(QColor(148, 163, 184))
             painter.drawText(
                 self.rect().adjusted(60, 40, -60, -60),
                 Qt.AlignmentFlag.AlignCenter,
-                "Click Presets in the toolbar to start a guided flow story,\n"
-                "or draw an obstacle (Circle, Rect, Freehand) to see the flow adapt.",
+                "Click Presets to start a guided flow story,\n"
+                "or draw an obstacle to see the flow adapt.",
             )
 
         painter.end()
 
     def _draw_obstacle_shape(self, painter: QPainter, obs: ObstacleSpec) -> None:
+        s = 1
+        if self.scene and self.scene.width > 0 and self.scene.height > 0:
+            s = min(self.width() / self.scene.width,
+                    self.height() / self.scene.height)
+        label_font = QFont("monospace", 10)
+        label_font.setBold(True)
         if isinstance(obs, CircleObstacle):
             cx, cy = self._grid_to_widget(obs.x, obs.y)
-            if self.scene:
-                sx = self.width() / self.scene.width
-                sy = self.height() / self.scene.height
-                s = min(sx, sy)
-            else:
-                s = 1
             r = obs.radius * s
             painter.drawEllipse(int(cx - r), int(cy - r), int(r * 2), int(r * 2))
+            painter.setFont(label_font)
+            painter.drawText(int(cx + r + 4), int(cy + 4), obs.name)
         elif isinstance(obs, RectObstacle):
             x1, y1 = self._grid_to_widget(obs.x, obs.y)
             x2, y2 = self._grid_to_widget(obs.x + obs.w, obs.y + obs.h)
-            painter.drawRect(self._widget_rect(x1, y1, x2, y2))
+            rect = self._widget_rect(x1, y1, x2, y2)
+            painter.drawRect(rect)
+            painter.setFont(label_font)
+            painter.drawText(rect.topRight() + QPointF(4, 14), obs.name)
         elif isinstance(obs, PolygonObstacle) and len(obs.points) > 1:
             pts = [self._grid_to_widget(px, py) for px, py in obs.points]
-            for i in range(len(pts)):
-                j = (i + 1) % len(pts)
-                x0, y0 = int(pts[i][0]), int(pts[i][1])
-                x1, y1 = int(pts[j][0]), int(pts[j][1])
-                painter.drawLine(x0, y0, x1, y1)
+            qt_pts = [QPointF(*pt) for pt in pts]
+            if len(pts) >= 3:
+                painter.drawPolygon(qt_pts)
+            else:
+                for i in range(len(pts)):
+                    j = (i + 1) % len(pts)
+                    x0, y0 = int(pts[i][0]), int(pts[i][1])
+                    x1, y1 = int(pts[j][0]), int(pts[j][1])
+                    painter.drawLine(x0, y0, x1, y1)
+            cx = sum(p[0] for p in pts) / len(pts)
+            cy = sum(p[1] for p in pts) / len(pts)
+            painter.setFont(label_font)
+            painter.drawText(int(cx + 4), int(cy + 4), obs.name)
 
     @staticmethod
     def _widget_rect(x1: float, y1: float, x2: float, y2: float):
@@ -652,13 +583,13 @@ class Viewport(QOpenGLWidget):
     # --- colorbar ---
 
     def _draw_colorbar(self, painter: QPainter) -> None:
-        bar_w = 16
-        bar_h = min(160, self.height() - 40)
-        bx = self.width() - bar_w - 16
-        by = 20
+        bar_w = 18
+        bar_h = min(180, self.height() - 40)
+        bx = self.width() - bar_w - 20
+        by = 24
 
-        cmap_name = _MODE_TO_CMAP.get(self._colormap, "viridis")
-        lut = _CMAP_LUTS.get(cmap_name, _CMAP_LUTS["viridis"])
+        cmap_name = MODE_TO_CMAP.get(self._colormap, "viridis")
+        lut = CMAP_LUTS.get(cmap_name, CMAP_LUTS["viridis"])
 
         for i in range(bar_h):
             t = 1.0 - i / (bar_h - 1) if bar_h > 1 else 0.0
@@ -667,13 +598,14 @@ class Viewport(QOpenGLWidget):
             painter.setPen(QColor(int(r * 255), int(g * 255), int(b * 255)))
             painter.drawLine(bx, by + i, bx + bar_w - 1, by + i)
 
-        painter.setPen(QPen(QColor(180, 180, 200), 1))
+        painter.setPen(QPen(QColor(100, 110, 140, 180), 1))
         painter.drawRect(bx, by, bar_w, bar_h)
-        font = QFont("monospace", 8)
+        font = QFont("monospace", 9)
         painter.setFont(font)
-        painter.drawText(bx + bar_w + 4, by + 8, "1.0")
-        painter.drawText(bx + bar_w + 4, by + bar_h // 2 + 3, "0.5")
-        painter.drawText(bx + bar_w + 4, by + bar_h + 4, "0.0")
+        painter.setPen(QColor(180, 190, 210))
+        painter.drawText(bx + bar_w + 6, by + 9, "1.0")
+        painter.drawText(bx + bar_w + 6, by + bar_h // 2 + 3, "0.5")
+        painter.drawText(bx + bar_w + 6, by + bar_h + 4, "0.0")
 
     # --- mouse events ---
 
