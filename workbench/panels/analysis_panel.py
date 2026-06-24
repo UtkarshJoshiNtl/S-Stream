@@ -100,7 +100,9 @@ class AnalysisPanel(QWidget):
         self.probes_layout.setSpacing(4)
         self.probes_scroll.setWidget(self.probes_container)
 
-        self._no_probes_label = QLabel("No probes placed.\nClick Probe tool then click viewport to add one.")
+        self._no_probes_label = QLabel(
+            "No probes placed.\nClick Probe tool then click viewport to add one."
+        )
         self._no_probes_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._no_probes_label.setStyleSheet("color: #64748b; padding: 20px;")
         self._no_probes_label.setVisible(True)

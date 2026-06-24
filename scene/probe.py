@@ -13,7 +13,9 @@ MAX_HISTORY = 512
 class Probe:
     def __init__(self, spec: ProbeSpec) -> None:
         self.spec = spec
-        self.history: dict[str, deque[float]] = {f: deque(maxlen=MAX_HISTORY) for f in spec.fields}
+        self.history: dict[str, deque[float]] = {
+            f: deque(maxlen=MAX_HISTORY) for f in spec.fields
+        }
         self._step = 0
 
     def record(self, sim: SimEngine) -> None:
