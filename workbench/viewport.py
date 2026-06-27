@@ -6,6 +6,9 @@ import math
 import numpy as np
 import OpenGL.platform as _ogl_plat
 
+# Workaround for PyOpenGL 3.1.x + PySide6 context detection incompatibility.
+# PyOpenGL's GetCurrentContext fails to find the PySide6 GL context, so we
+# provide a dummy to allow the rest of the binding machinery to proceed.
 _ogl_plat.GetCurrentContext = lambda: object()
 
 from OpenGL.GL import (  # noqa: E402

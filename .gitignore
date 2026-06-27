@@ -39,10 +39,18 @@ Thumbs.db
 *.blend1
 *.blend2
 
-# AI configuration (local, not committed)
+# Virtual environment
+venv/
+.env/
+
+# Tooling configuration (local)
+.opencode/
 AGENTS.md
 PLAN.md
 
 # Qt settings
-CuFloda___Fluid_Simulation.ini
+S-Stream___Fluid_Simulation.ini
 *.ini
+
+# Stale build artifacts
+S-Stream.spec

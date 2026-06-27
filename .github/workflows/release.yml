@@ -1,0 +1,91 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -r requirements.txt
+      - run: pip install pyinstaller
+      - name: Build Linux binary
+        run: |
+          pyinstaller --onefile --name "S-Stream" --windowed \
+            --add-data "presets/scenes:presets/scenes" \
+            --add-data "resources:resources" \
+            --hidden-import PySide6.QtOpenGL \
+            --hidden-import PySide6.QtOpenGLWidgets \
+            --hidden-import OpenGL \
+            --hidden-import OpenGL.GL \
+            --hidden-import OpenGL.GLU \
+            --hidden-import imageio \
+            --hidden-import imageio.plugins.ffmpeg \
+            --hidden-import imageio.plugins.pillow \
+            --hidden-import pyqtgraph \
+            --hidden-import numba \
+            --exclude cupy --exclude cupyx --exclude cupy_backends \
+            main.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: S-Stream-linux
+          path: dist/S-Stream
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -r requirements.txt
+      - run: pip install pyinstaller
+      - name: Build Windows executable
+        run: |
+          pyinstaller --onefile --name "S-Stream" --windowed `
+            --add-data "presets/scenes;presets/scenes" `
+            --add-data "resources;resources" `
+            --hidden-import PySide6.QtOpenGL `
+            --hidden-import PySide6.QtOpenGLWidgets `
+            --hidden-import OpenGL `
+            --hidden-import OpenGL.GL `
+            --hidden-import OpenGL.GLU `
+            --hidden-import imageio `
+            --hidden-import imageio.plugins.ffmpeg `
+            --hidden-import imageio.plugins.pillow `
+            --hidden-import pyqtgraph `
+            --hidden-import numba `
+            --exclude cupy --exclude cupyx --exclude cupy_backends `
+            --icon resources\icon.ico `
+            main.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: S-Stream-windows
+          path: dist/S-Stream.exe
+
+  release:
+    needs: [build-linux, build-windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: S-Stream-linux
+          path: artifacts/
+      - uses: actions/download-artifact@v4
+        with:
+          name: S-Stream-windows
+          path: artifacts/
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/S-Stream
+            artifacts/S-Stream.exe

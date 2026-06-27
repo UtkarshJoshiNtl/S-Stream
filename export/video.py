@@ -72,4 +72,4 @@ class VideoRecorder:
         w, h = img.width(), img.height()
         ptr = img.bits()
         arr = np.frombuffer(ptr, dtype=np.uint8).reshape(h, w, 3).copy()
-        return arr[..., ::-1]  # RGB → BGR for imageio
+        return arr

@@ -40,7 +40,6 @@ from workbench.panels.outcome_panel import OutcomePanel
 from workbench.panels.scene_panel import ScenePanel
 from workbench.viewport import Viewport
 
-
 _COLORMAPS = ["speed", "smoke", "vorticity", "pressure", "density", "phase"]
 
 
@@ -391,7 +390,8 @@ class MainWindow(QMainWindow):
     def reset(self) -> None:
         if self.step_count > 0:
             confirm = QMessageBox.question(
-                self, "Reset Simulation",
+                self,
+                "Reset Simulation",
                 "Reset will clear all simulation state. Continue?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
@@ -546,8 +546,11 @@ class MainWindow(QMainWindow):
         matched = None
         for p in presets:
             pn = p["name"].lower()
-            if any(kw in pn for kw in query.split()
-                   if kw not in ("a", "an", "the", "of", "to", "and", "or")):
+            if any(
+                kw in pn
+                for kw in query.split()
+                if kw not in ("a", "an", "the", "of", "to", "and", "or")
+            ):
                 matched = p
                 break
         if matched is None and "vortex" in query:
@@ -665,9 +668,7 @@ class MainWindow(QMainWindow):
         else:
             self._open_export_dialog()
 
-    def _start_video_recording(
-        self, path: str, fps: int, max_frames: int
-    ) -> None:
+    def _start_video_recording(self, path: str, fps: int, max_frames: int) -> None:
         try:
             max_f = max_frames if max_frames > 0 else None
             self._recorder = VideoRecorder(path, fps=fps, max_frames=max_f)
@@ -682,8 +683,10 @@ class MainWindow(QMainWindow):
             return
         try:
             self._recorder.close()
-        except Exception:
-            pass
+        except Exception as e:
+            QMessageBox.warning(
+                self, "Recording Error", f"Failed to finalize video: {e}"
+            )
         self._recorder = None
         self.record_btn.setText("Record")
         self.record_btn.setChecked(False)

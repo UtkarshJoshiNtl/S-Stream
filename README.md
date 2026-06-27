@@ -4,7 +4,10 @@
 Designed for engineers, students, and educators who need a fluid dynamics answer in under two minutes.
 
 ```bash
-pip install -r requirements.txt && python main.py
+python3 -m venv venv
+source venv/bin/activate     # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+python main.py
 ```
 
 ## Quick Start
@@ -138,14 +141,50 @@ All enforce 88-char line length.
 
 ## Building
 
-```bash
-# Build using PyInstaller spec file (recommended)
-pyinstaller sstream.spec              # Build as directory
-pyinstaller sstream.spec --onefile    # Build as single executable
+### Linux
 
-# Or use the convenience script
-python scripts/build.py                # Build for current platform
-python scripts/build.py --onefile      # Single executable
+```bash
+# Activate venv first
+source venv/bin/activate
+
+# Single executable (recommended for distribution)
+pyinstaller --onefile \
+    --name "S-Stream" --windowed \
+    --add-data "presets/scenes:presets/scenes" \
+    --add-data "resources:resources" \
+    --hidden-import PySide6.QtOpenGL \
+    --hidden-import PySide6.QtOpenGLWidgets \
+    --hidden-import OpenGL --hidden-import numba \
+    --exclude cupy --exclude cupyx --exclude cupy_backends \
+    main.py
+# Output: dist/S-Stream
+
+# Or use the spec file (directory layout)
+pyinstaller sstream.spec
+# Output: dist/S-Stream/
+```
+
+### Windows (from cmd/PowerShell)
+
+```bat
+:: Copy project to Windows, then:
+python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
+pip install pyinstaller
+
+:: Single .exe
+pyinstaller --onefile ^
+    --name "S-Stream" --windowed ^
+    --add-data "presets/scenes;presets/scenes" ^
+    --add-data "resources;resources" ^
+    --hidden-import PySide6.QtOpenGL ^
+    --hidden-import PySide6.QtOpenGLWidgets ^
+    --hidden-import OpenGL --hidden-import numba ^
+    --exclude cupy --exclude cupyx --exclude cupy_backends ^
+    --icon resources\icon.ico ^
+    main.py
+:: Output: dist\S-Stream.exe
 ```
 
 ## License

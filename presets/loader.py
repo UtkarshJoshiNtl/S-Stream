@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from scene.scene import Scene
 from scene.serializer import load as scene_load
+
+logger = logging.getLogger(__name__)
 
 _PRESETS_DIR = Path(__file__).parent / "scenes"
 
@@ -14,16 +17,18 @@ def list_presets() -> list[dict]:
         try:
             scene = scene_load(f)
             thumb = f.with_suffix(".png")
-            presets.append({
-                "name": scene.name,
-                "file": str(f),
-                "description": scene.description,
-                "thumbnail": str(thumb) if thumb.exists() else "",
-                "headline": scene.product.lesson_headline,
-                "recipe": scene.product.recipe,
-            })
-        except Exception:
-            continue
+            presets.append(
+                {
+                    "name": scene.name,
+                    "file": str(f),
+                    "description": scene.description,
+                    "thumbnail": str(thumb) if thumb.exists() else "",
+                    "headline": scene.product.lesson_headline,
+                    "recipe": scene.product.recipe,
+                }
+            )
+        except Exception as e:
+            logger.warning("Failed to load preset %s: %s", f, e)
     return presets
 
 

@@ -27,9 +27,13 @@ def main() -> None:
         sim = LBM2DLiquid(width=args.width, height=args.height)
     elif args.gpu:
         if LBM2DGPU is None:
-            print("CuPy not available, install with: pip install cupy-cuda12x")
-            sys.exit(1)
-        sim = LBM2DGPU(width=args.width, height=args.height)
+            print(
+                "Warning: CuPy not available (install with: pip install"
+                " cupy-cuda12x). Falling back to CPU engine."
+            )
+            sim = LBM2D(width=args.width, height=args.height)
+        else:
+            sim = LBM2DGPU(width=args.width, height=args.height)
     else:
         sim = LBM2D(width=args.width, height=args.height)
 
@@ -42,7 +46,7 @@ def main() -> None:
     app = QApplication(sys.argv)
     app.setStyleSheet(APP_STYLESHEET)
 
-    icon_path = Path(__file__).parent / "workbench" / "icon.svg"
+    icon_path = Path(__file__).parent / "resources" / "icon.svg"
     if icon_path.exists():
         app.setWindowIcon(QIcon(str(icon_path)))
 

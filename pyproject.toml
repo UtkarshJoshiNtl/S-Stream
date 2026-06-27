@@ -28,6 +28,10 @@ s-stream = "main:main"
 [tool.setuptools]
 py-modules = ["main"]
 packages = { find = { include = ["engines*", "scene*", "analysis*", "export*", "presets*", "workbench*"] } }
+include-package-data = true
+
+[tool.setuptools.package-data]
+"*" = ["*.json", "*.png", "*.svg", "*.ico", "*.qss"]
 
 [tool.black]
 line-length = 88
