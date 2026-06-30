@@ -41,7 +41,12 @@ Thumbs.db
 
 # Virtual environment
 venv/
+.venv/
 .env/
+
+# Cache
+.pytest_cache/
+.mypy_cache/
 
 # Tooling configuration (local)
 .opencode/
