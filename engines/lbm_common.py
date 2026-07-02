@@ -15,20 +15,25 @@ class Lattice2D:
     opp: np.ndarray
 
     def equilibrium(self, rho: np.ndarray, u: np.ndarray, v: np.ndarray) -> np.ndarray:
-        cu = self.cx[:, np.newaxis, np.newaxis] * u[np.newaxis, :, :] + \
-             self.cy[:, np.newaxis, np.newaxis] * v[np.newaxis, :, :]
+        cu = (
+            self.cx[:, np.newaxis, np.newaxis] * u[np.newaxis, :, :]
+            + self.cy[:, np.newaxis, np.newaxis] * v[np.newaxis, :, :]
+        )
         u2 = u**2 + v**2
-        return self.w[:, np.newaxis, np.newaxis] * rho[np.newaxis, :, :] * \
-            (1 + 3 * cu + 4.5 * cu**2 - 1.5 * u2[np.newaxis, :, :])
+        return (
+            self.w[:, np.newaxis, np.newaxis]
+            * rho[np.newaxis, :, :]
+            * (1 + 3 * cu + 4.5 * cu**2 - 1.5 * u2[np.newaxis, :, :])
+        )
 
     @staticmethod
     def omega_from_viscosity(nu: float) -> float:
         return 1.0 / (3.0 * nu + 0.5)
 
     def assert_stable(self, nu: float, omega: float) -> None:
-        assert 0 < omega < 2, (
-            f"omega={omega:.3f} outside stable range (0, 2) for viscosity={nu}"
-        )
+        assert (
+            0 < omega < 2
+        ), f"omega={omega:.3f} outside stable range (0, 2) for viscosity={nu}"
 
 
 LATTICE_2D = Lattice2D(

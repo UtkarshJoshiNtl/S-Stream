@@ -19,10 +19,17 @@ def _psi(r: float) -> float:
 
 @njit(parallel=True)
 def _compute_force_nb(
-    rho, obstacles, w, cx, cy,
-    g: float, g_adhesion: float,
-    height: int, width: int,
-    fx_out, fy_out,
+    rho,
+    obstacles,
+    w,
+    cx,
+    cy,
+    g: float,
+    g_adhesion: float,
+    height: int,
+    width: int,
+    fx_out,
+    fy_out,
 ):
     for y in prange(height):
         for x in range(width):
@@ -57,11 +64,20 @@ def _compute_force_nb(
 
 @njit(parallel=True)
 def _fused_step_liquid_nb(
-    f, rho, u, v,
-    fx, fy, obstacles,
-    opp, w, cx, cy,
+    f,
+    rho,
+    u,
+    v,
+    fx,
+    fy,
+    obstacles,
+    opp,
+    w,
+    cx,
+    cy,
     omega: float,
-    height: int, width: int,
+    height: int,
+    width: int,
 ):
     tau = 1.0 / omega
     f_new = np.empty_like(f)
@@ -115,9 +131,7 @@ def _fused_step_liquid_nb(
             u2 = u_eq * u_eq + v_eq * v_eq
             for i in range(9):
                 cu = cx[i] * u_eq + cy[i] * v_eq
-                feq = w[i] * r * (
-                    1.0 + 3.0 * cu + 4.5 * cu * cu - 1.5 * u2
-                )
+                feq = w[i] * r * (1.0 + 3.0 * cu + 4.5 * cu * cu - 1.5 * u2)
                 f_new[i, y, x] = fi[i] * (1.0 - omega) + feq * omega
 
             rho[y, x] = r
@@ -207,7 +221,7 @@ class LBM2DLiquid(SimEngine):
         cx = self.width // 2
         cy = self.height // 2
         y_grid, x_grid = np.ogrid[: self.height, : self.width]
-        mask = (x_grid - cx) ** 2 + (y_grid - cy) ** 2 <= radius ** 2
+        mask = (x_grid - cx) ** 2 + (y_grid - cy) ** 2 <= radius**2
         self.rho[mask] = 2.0
 
         self.f = self.lattice.equilibrium(self.rho, self.u, self.v)
@@ -217,18 +231,33 @@ class LBM2DLiquid(SimEngine):
 
     def step(self) -> None:
         _compute_force_nb(
-            self.rho, self.obstacles,
-            self.lattice.w, self.lattice.cx, self.lattice.cy,
-            self.g, self.g_adhesion,
-            self.height, self.width,
-            self.fx, self.fy,
+            self.rho,
+            self.obstacles,
+            self.lattice.w,
+            self.lattice.cx,
+            self.lattice.cy,
+            self.g,
+            self.g_adhesion,
+            self.height,
+            self.width,
+            self.fx,
+            self.fy,
         )
         _fused_step_liquid_nb(
-            self.f, self.rho, self.u, self.v,
-            self.fx, self.fy, self.obstacles,
-            self.lattice.opp, self.lattice.w,
-            self.lattice.cx, self.lattice.cy,
-            self.omega, self.height, self.width,
+            self.f,
+            self.rho,
+            self.u,
+            self.v,
+            self.fx,
+            self.fy,
+            self.obstacles,
+            self.lattice.opp,
+            self.lattice.w,
+            self.lattice.cx,
+            self.lattice.cy,
+            self.omega,
+            self.height,
+            self.width,
         )
         self.apply_emitters()
         self.advect_smoke()
@@ -257,7 +286,7 @@ class LBM2DLiquid(SimEngine):
 
     def add_obstacle(self, x: int, y: int, radius: int = 5) -> None:
         y_grid, x_grid = np.ogrid[: self.height, : self.width]
-        mask = (x_grid - x) ** 2 + (y_grid - y) ** 2 <= radius ** 2
+        mask = (x_grid - x) ** 2 + (y_grid - y) ** 2 <= radius**2
         self.obstacles[mask] = True
 
     def clear_obstacles(self) -> None:

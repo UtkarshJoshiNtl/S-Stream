@@ -9,7 +9,19 @@ from engines.lbm_common import LATTICE_2D
 
 @njit(parallel=True)
 def _fused_step_nb(
-    f, rho, u, v, obstacles, opp, w, cx, cy, omega, u_inflow, height, width,
+    f,
+    rho,
+    u,
+    v,
+    obstacles,
+    opp,
+    w,
+    cx,
+    cy,
+    omega,
+    u_inflow,
+    height,
+    width,
 ):
     f_new = np.empty_like(f)
     for y in prange(height):
@@ -200,12 +212,19 @@ class LBM2D(SimEngine):
 
     def step(self) -> None:
         _fused_step_nb(
-            self.f, self.rho, self.u, self.v,
+            self.f,
+            self.rho,
+            self.u,
+            self.v,
             self.obstacles,
-            self.lattice.opp, self.lattice.w,
-            self.lattice.cx, self.lattice.cy,
-            self.omega, self.u_inflow,
-            self.height, self.width,
+            self.lattice.opp,
+            self.lattice.w,
+            self.lattice.cx,
+            self.lattice.cy,
+            self.omega,
+            self.u_inflow,
+            self.height,
+            self.width,
         )
         self.f[:, :, -1] = self.f[:, :, -2]
         self.apply_emitters()
@@ -251,9 +270,16 @@ class LBM2D(SimEngine):
 
     def collision(self) -> None:
         _collide_nb(
-            self.f, self.rho, self.u, self.v,
-            self.lattice.w, self.lattice.cx, self.lattice.cy,
-            self.omega, self.height, self.width,
+            self.f,
+            self.rho,
+            self.u,
+            self.v,
+            self.lattice.w,
+            self.lattice.cx,
+            self.lattice.cy,
+            self.omega,
+            self.height,
+            self.width,
         )
 
     def streaming(self) -> None:

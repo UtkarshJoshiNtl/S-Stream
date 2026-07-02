@@ -20,7 +20,6 @@ from PySide6.QtWidgets import (
 from analysis.sweep import SweepResult, run_sweep
 from scene.scene import Scene
 
-
 _SWEEP_PARAMS = [
     "viscosity",
     "u_inflow",
@@ -187,9 +186,7 @@ class SweepDialog(QDialog):
         meas = [self._measure_combo.currentText()]
         steps = self._sim_steps.value()
 
-        self._worker = _SweepWorker(
-            self._scene, param, values, meas, steps
-        )
+        self._worker = _SweepWorker(self._scene, param, values, meas, steps)
         self._worker.progress.connect(self._on_progress)
         self._worker.finished.connect(self._on_result)
         self._worker.start()

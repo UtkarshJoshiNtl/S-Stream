@@ -6,8 +6,8 @@ import numpy as np
 
 from engines.base import SimEngine
 
-
 # --- Obstacle specs ---
+
 
 @dataclass
 class ObstacleSpec:
@@ -26,7 +26,7 @@ class CircleObstacle(ObstacleSpec):
     def apply(self, sim: SimEngine) -> None:
         obs = sim.obstacles  # type: ignore[attr-defined]
         y_grid, x_grid = np.ogrid[: sim.grid_shape[0], : sim.grid_shape[1]]
-        mask = (x_grid - self.x) ** 2 + (y_grid - self.y) ** 2 <= self.radius ** 2
+        mask = (x_grid - self.x) ** 2 + (y_grid - self.y) ** 2 <= self.radius**2
         obs[mask] = True
 
 
@@ -77,6 +77,7 @@ def _point_in_poly(px: int, py: int, poly: list[tuple[int, int]]) -> bool:
 
 # --- Emitter spec ---
 
+
 @dataclass
 class EmitterSpec:
     name: str
@@ -87,6 +88,7 @@ class EmitterSpec:
 
 # --- Probe spec ---
 
+
 @dataclass
 class ProbeSpec:
     name: str
@@ -96,6 +98,7 @@ class ProbeSpec:
 
 
 # --- Scene ---
+
 
 @dataclass
 class SceneProductMeta:

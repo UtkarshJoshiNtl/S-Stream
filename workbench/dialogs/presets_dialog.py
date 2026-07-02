@@ -55,9 +55,7 @@ class _PresetCard(QWidget):
         layout.addWidget(name_label)
 
         headline = (
-            preset.get("headline")
-            or preset.get("recipe")
-            or "Ready-made flow story"
+            preset.get("headline") or preset.get("recipe") or "Ready-made flow story"
         )
         headline_label = QLabel(headline)
         headline_label.setWordWrap(True)

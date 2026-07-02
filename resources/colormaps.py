@@ -7,9 +7,9 @@ def _interp_cmap(stops, n=256):
     pos = np.array([s[0] for s in stops], dtype=np.float64)
     cols = np.array([s[1] for s in stops], dtype=np.float64)
     x = np.linspace(0.0, 1.0, n)
-    return np.column_stack([
-        np.interp(x, pos, cols[:, i]) for i in range(3)
-    ]).astype(np.float32)
+    return np.column_stack([np.interp(x, pos, cols[:, i]) for i in range(3)]).astype(
+        np.float32
+    )
 
 
 _VIRIDIS_STOPS = [

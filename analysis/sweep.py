@@ -45,8 +45,7 @@ _MEASUREMENT_FUNCS: dict[str, Callable] = {
     "drag_coefficient": lambda sim, obs: drag_coefficient(sim),
     "max_speed": lambda sim, obs: float(
         np.sqrt(
-            sim.get_velocity()[:, :, 0] ** 2
-            + sim.get_velocity()[:, :, 1] ** 2
+            sim.get_velocity()[:, :, 0] ** 2 + sim.get_velocity()[:, :, 1] ** 2
         ).max()
     ),
     "max_vorticity": lambda sim, obs: _max_vorticity(sim),

@@ -109,9 +109,7 @@ class ScenePanel(QWidget):
         btn_row = QHBoxLayout()
         self.add_btn = QPushButton("Add")
         add_menu = QMenu(self)
-        add_menu.addAction(
-            "Circle Obstacle", lambda: self._add_obstacle("Circle")
-        )
+        add_menu.addAction("Circle Obstacle", lambda: self._add_obstacle("Circle"))
         add_menu.addAction(
             "Rectangle Obstacle", lambda: self._add_obstacle("Rectangle")
         )

@@ -648,7 +648,7 @@ class MainWindow(QMainWindow):
                 include_colorbar=colorbar,
                 include_annotations=annotations,
                 step_count=self.step_count,
-                colormap=self.viewport._colormap,
+                colormap=self.viewport.get_colormap(),
             )
         except Exception as e:
             QMessageBox.warning(self, "Export Failed", str(e))

@@ -9,7 +9,6 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-
 RECIPES = {
     "Show vortex shedding": (
         "Open Cylinder Wake, run the demo, switch to vorticity, "
@@ -20,8 +19,7 @@ RECIPES = {
         "then compare Cd and wake strength."
     ),
     "Generate Cd vs Re": (
-        "Use Sweep Re to vary inlet/viscosity "
-        "and export the plotted drag trend."
+        "Use Sweep Re to vary inlet/viscosity " "and export the plotted drag trend."
     ),
     "Explain Reynolds number": (
         "Start with Channel Flow, change viscosity, "

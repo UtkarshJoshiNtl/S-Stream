@@ -132,6 +132,9 @@ class Viewport(QOpenGLWidget):
     def set_probes(self, probes: list[Probe]) -> None:
         self.probes = probes
 
+    def get_colormap(self) -> str:
+        return self._colormap
+
     def set_colormap(self, name: str) -> None:
         self._colormap = name
         self._upload_colormap()
@@ -189,12 +192,30 @@ class Viewport(QOpenGLWidget):
         self._cmap_tex = glGenTextures(1)
         verts = np.array(
             [
-                -1.0, -1.0, 0.0, 0.0,
-                1.0, -1.0, 1.0, 0.0,
-                1.0, 1.0, 1.0, 1.0,
-                -1.0, -1.0, 0.0, 0.0,
-                1.0, 1.0, 1.0, 1.0,
-                -1.0, 1.0, 0.0, 1.0,
+                -1.0,
+                -1.0,
+                0.0,
+                0.0,
+                1.0,
+                -1.0,
+                1.0,
+                0.0,
+                1.0,
+                1.0,
+                1.0,
+                1.0,
+                -1.0,
+                -1.0,
+                0.0,
+                0.0,
+                1.0,
+                1.0,
+                1.0,
+                1.0,
+                -1.0,
+                1.0,
+                0.0,
+                1.0,
             ],
             dtype=np.float32,
         )
@@ -324,9 +345,7 @@ class Viewport(QOpenGLWidget):
         u = getattr(self.sim, "u", None)
         v = getattr(self.sim, "v", None)
         if u is not None and v is not None:
-            return np.stack(
-                [np.ascontiguousarray(u), np.ascontiguousarray(v)], axis=2
-            )
+            return np.stack([np.ascontiguousarray(u), np.ascontiguousarray(v)], axis=2)
         return None
 
     def _draw_overlay(self, vel: np.ndarray | None = None) -> None:
@@ -410,9 +429,11 @@ class Viewport(QOpenGLWidget):
 
         self._draw_colorbar(painter)
 
-        if (self.scene is not None
-                and self.scene.name == "Untitled"
-                and len(self.scene.obstacles) == 0):
+        if (
+            self.scene is not None
+            and self.scene.name == "Untitled"
+            and len(self.scene.obstacles) == 0
+        ):
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(QColor(15, 23, 42, 200))
             painter.drawRoundedRect(self.rect().adjusted(40, 40, -40, -40), 12, 12)
@@ -442,8 +463,7 @@ class Viewport(QOpenGLWidget):
     def _draw_obstacle_shape(self, painter: QPainter, obs: ObstacleSpec) -> None:
         s = 1
         if self.scene and self.scene.width > 0 and self.scene.height > 0:
-            s = min(self.width() / self.scene.width,
-                    self.height() / self.scene.height)
+            s = min(self.width() / self.scene.width, self.height() / self.scene.height)
         label_font = QFont("monospace", 10)
         label_font.setBold(True)
         if isinstance(obs, CircleObstacle):
@@ -478,6 +498,7 @@ class Viewport(QOpenGLWidget):
     @staticmethod
     def _widget_rect(x1: float, y1: float, x2: float, y2: float):
         from PySide6.QtCore import QRect
+
         x, y = int(min(x1, x2)), int(min(y1, y2))
         w, h = int(abs(x2 - x1)), int(abs(y2 - y1))
         return QRect(x, y, w, h)
@@ -512,9 +533,7 @@ class Viewport(QOpenGLWidget):
                 angle = math.atan2(v, u)
                 dx = math.cos(angle) * length
                 dy = math.sin(angle) * length
-                painter.drawLine(
-                    int(cx - dx), int(cy - dy), int(cx + dx), int(cy + dy)
-                )
+                painter.drawLine(int(cx - dx), int(cy - dy), int(cx + dx), int(cy + dy))
                 hl = length * 0.35
                 ha = 0.5
                 ax1 = cx + dx - math.cos(angle - ha) * hl
@@ -566,9 +585,7 @@ class Viewport(QOpenGLWidget):
             if len(pts) > 1:
                 painter.setPen(QPen(QColor(255, 255, 255, 55), 1))
                 for i in range(len(pts) - 1):
-                    painter.drawLine(
-                        pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1]
-                    )
+                    painter.drawLine(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1])
 
     @staticmethod
     def _bilerp(field: np.ndarray, x: float, y: float) -> float:
@@ -634,10 +651,7 @@ class Viewport(QOpenGLWidget):
 
     def mouseDoubleClickEvent(self, event) -> None:
         if self.draw_mode == "polygon" and len(self._poly_points) >= 3:
-            pts = [
-                (int(round(x)), int(round(y)))
-                for x, y in self._poly_points
-            ]
+            pts = [(int(round(x)), int(round(y))) for x, y in self._poly_points]
             obs = PolygonObstacle(name="Polygon", points=pts)
             self.obstacle_created.emit(obs)
             self._poly_points = []
@@ -654,10 +668,7 @@ class Viewport(QOpenGLWidget):
             return
         if event.key() in (Qt.Key_Return, Qt.Key_Enter):
             if self.draw_mode == "polygon" and len(self._poly_points) >= 3:
-                pts = [
-                    (int(round(x)), int(round(y)))
-                    for x, y in self._poly_points
-                ]
+                pts = [(int(round(x)), int(round(y))) for x, y in self._poly_points]
                 obs = PolygonObstacle(name="Polygon", points=pts)
                 self.obstacle_created.emit(obs)
                 self._poly_points = []
@@ -684,10 +695,7 @@ class Viewport(QOpenGLWidget):
             return
         if self.draw_mode == "polygon":
             if len(self._poly_points) >= 3:
-                pts = [
-                    (int(round(x)), int(round(y)))
-                    for x, y in self._poly_points
-                ]
+                pts = [(int(round(x)), int(round(y))) for x, y in self._poly_points]
                 obs = PolygonObstacle(name="Polygon", points=pts)
                 self.obstacle_created.emit(obs)
             self._poly_points = []

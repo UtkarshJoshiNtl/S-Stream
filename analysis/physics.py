@@ -16,9 +16,7 @@ def characteristic_length(scene: Scene) -> float:
     return float(scene.width)
 
 
-def reynolds_number(
-    sim: SimEngine, obstacle_diameter: float | None = None
-) -> float:
+def reynolds_number(sim: SimEngine, obstacle_diameter: float | None = None) -> float:
     L = obstacle_diameter or float(sim.grid_shape[1])
     U = sim.u_inflow
     nu = sim.viscosity

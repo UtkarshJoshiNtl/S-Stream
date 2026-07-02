@@ -90,9 +90,7 @@ class ExportDialog(QDialog):
         return w
 
     def _browse_img(self) -> None:
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Export Image", "", "PNG (*.png)"
-        )
+        path, _ = QFileDialog.getSaveFileName(self, "Export Image", "", "PNG (*.png)")
         if path:
             self._img_path.setText(path)
 
@@ -191,9 +189,7 @@ class ExportDialog(QDialog):
 
     def _browse_data(self) -> None:
         filt = "CSV (*.csv)" if self._data_csv.isChecked() else "NPZ (*.npz)"
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Export Data", "", filt
-        )
+        path, _ = QFileDialog.getSaveFileName(self, "Export Data", "", filt)
         if path:
             self._data_path.setText(path)
 

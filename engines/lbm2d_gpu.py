@@ -6,7 +6,6 @@ import numpy as np
 from engines.base import SimEngine
 from engines.lbm_common import LATTICE_2D
 
-
 _KERNEL_SRC = r"""
 extern "C" __global__
 void fused_step(
@@ -153,12 +152,16 @@ class LBM2DGPU(SimEngine):
         self.rho[:] = rho
         self.u[:] = u
         self.v[:] = v
-        cu = (self._cx[:, cp.newaxis, cp.newaxis] * self.u[cp.newaxis, :, :]
-              + self._cy[:, cp.newaxis, cp.newaxis] * self.v[cp.newaxis, :, :])
+        cu = (
+            self._cx[:, cp.newaxis, cp.newaxis] * self.u[cp.newaxis, :, :]
+            + self._cy[:, cp.newaxis, cp.newaxis] * self.v[cp.newaxis, :, :]
+        )
         u2 = self.u**2 + self.v**2
-        self.f = (self._w[:, cp.newaxis, cp.newaxis]
-                  * self.rho[cp.newaxis, :, :]
-                  * (1 + 3 * cu + 4.5 * cu**2 - 1.5 * u2[cp.newaxis, :, :]))
+        self.f = (
+            self._w[:, cp.newaxis, cp.newaxis]
+            * self.rho[cp.newaxis, :, :]
+            * (1 + 3 * cu + 4.5 * cu**2 - 1.5 * u2[cp.newaxis, :, :])
+        )
         self.smoke[:] = 0.0
         self.emitters.clear()
         self.clear_obstacles()
@@ -170,13 +173,24 @@ class LBM2DGPU(SimEngine):
             (self.height + 15) // 16,
         )
         self._kernel(
-            blocks, threads,
-            (self._f_swap, self.f,
-             self.rho, self.u, self.v,
-             self.obstacles,
-             self._opp, self._w, self._cx, self._cy,
-             self.omega, self.u_inflow,
-             self.height, self.width),
+            blocks,
+            threads,
+            (
+                self._f_swap,
+                self.f,
+                self.rho,
+                self.u,
+                self.v,
+                self.obstacles,
+                self._opp,
+                self._w,
+                self._cx,
+                self._cy,
+                self.omega,
+                self.u_inflow,
+                self.height,
+                self.width,
+            ),
         )
         self._f_swap[:, :, -1] = self._f_swap[:, :, -2]
         self.f, self._f_swap = self._f_swap, self.f

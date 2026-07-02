@@ -27,9 +27,10 @@ def build_ai_context(
     length = characteristic_length(scene)
     re = reynolds_number(sim, length)
     cd = drag_coefficient(sim)
-    warning_lines = "\n".join(
-        f"- {w.level.upper()}: {w.title} - {w.message}" for w in warnings
-    ) or "- None"
+    warning_lines = (
+        "\n".join(f"- {w.level.upper()}: {w.title} - {w.message}" for w in warnings)
+        or "- None"
+    )
     regime_text = (
         f"{regime.label} ({regime.confidence:.0%}): {regime.explanation}"
         if regime

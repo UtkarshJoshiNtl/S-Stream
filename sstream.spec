@@ -41,7 +41,7 @@ a = Analysis(
         "analysis.ai_context", "analysis.sweep", "analysis.physics",
         "export.image", "export.report", "export.video", "export.data",
         "scene.scene", "scene.serializer", "scene.probe",
-        "engines.base", "engines.lbm_common", "engines.lbm2d",
+        "engines.base", "engines.lbm_common", "engines.lbm2d", "engines.lbm2d_liquid",
         "workbench.app", "workbench.viewport",
         "workbench.panels.scene_panel", "workbench.panels.analysis_panel",
         "workbench.panels.outcome_panel",
