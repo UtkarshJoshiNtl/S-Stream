@@ -7,7 +7,7 @@ from pathlib import Path
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
-from engines import LBM2D, LBM2DGPU, LBM2DLiquid
+from engines import LBM2D, LBM2DGPU, LBM2DLiquid, LBM2DMultiComponent
 from resources.theme import APP_STYLESHEET
 
 
@@ -16,6 +16,11 @@ def main() -> None:
     parser.add_argument("--gpu", action="store_true", help="Use GPU (CuPy) backend")
     parser.add_argument(
         "--liquid", action="store_true", help="Use liquid multiphase engine"
+    )
+    parser.add_argument(
+        "--multicomponent",
+        action="store_true",
+        help="Use two-component Shan-Chen engine (oil-water separation)",
     )
     parser.add_argument("--width", type=int, default=128, help="Grid width")
     parser.add_argument("--height", type=int, default=128, help="Grid height")
@@ -28,7 +33,9 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=8080, help="API server port")
     args = parser.parse_args()
 
-    if args.liquid:
+    if args.multicomponent:
+        sim = LBM2DMultiComponent(width=args.width, height=args.height)
+    elif args.liquid:
         sim = LBM2DLiquid(width=args.width, height=args.height)
     elif args.gpu:
         if LBM2DGPU is None:

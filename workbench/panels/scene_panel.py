@@ -228,6 +228,7 @@ class ScenePanel(QWidget):
         layout.addWidget(group)
 
         self._build_particle_group(layout)
+        self._build_engine_specific_group(layout)
 
     def _build_particle_group(self, layout: QVBoxLayout) -> None:
         group = QGroupBox("Particles")
@@ -262,6 +263,175 @@ class ScenePanel(QWidget):
 
         group.setLayout(form)
         layout.addWidget(group)
+
+    def _build_engine_specific_group(self, layout: QVBoxLayout) -> None:
+        engine_name = type(self.sim).__name__
+        if engine_name == "LBM2DLiquid":
+            self._build_liquid_params(layout)
+        elif engine_name == "LBM2DMultiComponent":
+            self._build_multicomponent_params(layout)
+
+    def _build_liquid_params(self, layout: QVBoxLayout) -> None:
+        group = QGroupBox("Liquid Parameters (Shan-Chen)")
+        form = QFormLayout()
+        form.setContentsMargins(4, 4, 4, 4)
+
+        self._param_g = QDoubleSpinBox()
+        self._param_g.setRange(-15.0, 15.0)
+        self._param_g.setSingleStep(0.5)
+        self._param_g.setDecimals(2)
+        self._param_g.setValue(self.sim.g)
+        self._param_g.valueChanged.connect(self._on_param_g)
+        self._param_g.setToolTip(
+            "Shan-Chen cohesion strength (g).\n"
+            "g < 0 gives cohesion → spontaneous liquid/vapor separation.\n"
+            "Magnitude controls surface tension and density contrast.\n"
+            "Typical: -3 to -8"
+        )
+        form.addRow("Cohesion (g)", self._param_g)
+
+        self._param_g_adhesion_liquid = QDoubleSpinBox()
+        self._param_g_adhesion_liquid.setRange(-15.0, 15.0)
+        self._param_g_adhesion_liquid.setSingleStep(0.5)
+        self._param_g_adhesion_liquid.setDecimals(2)
+        self._param_g_adhesion_liquid.setValue(self.sim.g_adhesion)
+        self._param_g_adhesion_liquid.valueChanged.connect(
+            self._on_param_g_adhesion_liquid
+        )
+        self._param_g_adhesion_liquid.setToolTip(
+            "Wall adhesion strength (g_adhesion).\n"
+            "g < 0 = wetting (liquid clings to walls).\n"
+            "g > 0 = non-wetting (liquid repelled from walls).\n"
+            "g = 0 = neutral"
+        )
+        form.addRow("Wall Adhesion", self._param_g_adhesion_liquid)
+
+        self._param_droplet = QDoubleSpinBox()
+        self._param_droplet.setRange(0.0, 100.0)
+        self._param_droplet.setSingleStep(1.0)
+        self._param_droplet.setDecimals(0)
+        self._param_droplet.setSpecialValueText("auto (1/4 height)")
+        droplet_val = self.sim.droplet_radius if self.sim.droplet_radius else 0.0
+        self._param_droplet.setValue(droplet_val)
+        self._param_droplet.valueChanged.connect(self._on_param_droplet)
+        self._param_droplet.setToolTip(
+            "Initial high-density droplet radius (lattice units).\n"
+            "0 = auto (1/4 of grid height).\n"
+            "The droplet is placed at the domain center and "
+            "separates into liquid/vapor over time."
+        )
+        form.addRow("Droplet Radius", self._param_droplet)
+
+        group.setLayout(form)
+        layout.addWidget(group)
+
+    def _build_multicomponent_params(self, layout: QVBoxLayout) -> None:
+        group = QGroupBox("Multi-Component Parameters")
+        form = QFormLayout()
+        form.setContentsMargins(4, 4, 4, 4)
+
+        self._param_g11 = QDoubleSpinBox()
+        self._param_g11.setRange(-15.0, 15.0)
+        self._param_g11.setSingleStep(0.5)
+        self._param_g11.setDecimals(2)
+        self._param_g11.setValue(self.sim.g11)
+        self._param_g11.valueChanged.connect(self._on_param_g11)
+        self._param_g11.setToolTip(
+            "Intra-component cohesion for component 1 (e.g. oil).\n"
+            "g < 0 = cohesive (forms droplets).\n"
+            "Typical: -3 to -8"
+        )
+        form.addRow("g11 (cohesion 1)", self._param_g11)
+
+        self._param_g22 = QDoubleSpinBox()
+        self._param_g22.setRange(-15.0, 15.0)
+        self._param_g22.setSingleStep(0.5)
+        self._param_g22.setDecimals(2)
+        self._param_g22.setValue(self.sim.g22)
+        self._param_g22.valueChanged.connect(self._on_param_g22)
+        self._param_g22.setToolTip(
+            "Intra-component cohesion for component 2 (e.g. water).\n"
+            "g < 0 = cohesive (forms droplets).\n"
+            "Typical: -3 to -8"
+        )
+        form.addRow("g22 (cohesion 2)", self._param_g22)
+
+        self._param_g12 = QDoubleSpinBox()
+        self._param_g12.setRange(-15.0, 15.0)
+        self._param_g12.setSingleStep(0.5)
+        self._param_g12.setDecimals(2)
+        self._param_g12.setValue(self.sim.g12)
+        self._param_g12.valueChanged.connect(self._on_param_g12)
+        self._param_g12.setToolTip(
+            "Inter-component repulsion strength.\n"
+            "g > 0 = repel (immiscible, forms separate phases).\n"
+            "g = 0 = miscible (mix freely).\n"
+            "g < 0 = attract (unusual).\n"
+            "Typical: +3 to +8"
+        )
+        form.addRow("g12 (repulsion)", self._param_g12)
+
+        self._param_sigma = QDoubleSpinBox()
+        self._param_sigma.setRange(0.0, 0.5)
+        self._param_sigma.setSingleStep(0.01)
+        self._param_sigma.setDecimals(3)
+        self._param_sigma.setValue(self.sim.sigma)
+        self._param_sigma.valueChanged.connect(self._on_param_sigma)
+        self._param_sigma.setToolTip(
+            "Color gradient perturbation strength.\n"
+            "Sharpens the interface between components.\n"
+            "0 = off, 0.05 = moderate, 0.1+ = strong.\n"
+            "Too high causes numerical instability."
+        )
+        form.addRow("Interface (sigma)", self._param_sigma)
+
+        self._param_mc_adhesion = QDoubleSpinBox()
+        self._param_mc_adhesion.setRange(-15.0, 15.0)
+        self._param_mc_adhesion.setSingleStep(0.5)
+        self._param_mc_adhesion.setDecimals(2)
+        self._param_mc_adhesion.setValue(self.sim.g_adhesion)
+        self._param_mc_adhesion.valueChanged.connect(self._on_param_mc_adhesion)
+        self._param_mc_adhesion.setToolTip(
+            "Wall adhesion for both components.\n"
+            "g < 0 = wetting, g > 0 = non-wetting.\n"
+            "Affects both components equally."
+        )
+        form.addRow("Wall Adhesion", self._param_mc_adhesion)
+
+        group.setLayout(form)
+        layout.addWidget(group)
+
+    def _on_param_g(self, val: float) -> None:
+        self.sim.g = val
+        self.parameters_changed.emit()
+
+    def _on_param_g_adhesion_liquid(self, val: float) -> None:
+        self.sim.g_adhesion = val
+        self.parameters_changed.emit()
+
+    def _on_param_droplet(self, val: float) -> None:
+        self.sim.droplet_radius = int(val) if val > 0 else None
+        self.parameters_changed.emit()
+
+    def _on_param_g11(self, val: float) -> None:
+        self.sim.g11 = val
+        self.parameters_changed.emit()
+
+    def _on_param_g22(self, val: float) -> None:
+        self.sim.g22 = val
+        self.parameters_changed.emit()
+
+    def _on_param_g12(self, val: float) -> None:
+        self.sim.g12 = val
+        self.parameters_changed.emit()
+
+    def _on_param_sigma(self, val: float) -> None:
+        self.sim.sigma = val
+        self.parameters_changed.emit()
+
+    def _on_param_mc_adhesion(self, val: float) -> None:
+        self.sim.g_adhesion = val
+        self.parameters_changed.emit()
 
     def _on_param_visc(self, val: float) -> None:
         self.scene.viscosity = val

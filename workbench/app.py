@@ -41,7 +41,10 @@ from workbench.panels.outcome_panel import OutcomePanel
 from workbench.panels.scene_panel import ScenePanel
 from workbench.viewport import Viewport
 
-_COLORMAPS = ["speed", "smoke", "vorticity", "pressure", "density", "phase", "temperature"]
+_COLORMAPS = [
+    "speed", "smoke", "vorticity", "pressure", "density", "phase",
+    "temperature", "component1", "component2", "color",
+]
 
 
 class MainWindow(QMainWindow):
@@ -383,6 +386,8 @@ class MainWindow(QMainWindow):
         cmap = self.scene.product.recommended_colormap
         if type(self.sim).__name__ == "LBM2DLiquid" and cmap == "smoke":
             cmap = "density"
+        if type(self.sim).__name__ == "LBM2DMultiComponent" and cmap == "smoke":
+            cmap = "component1"
         self._set_colormap(cmap)
         self.outcome_panel.set_scene(self.scene)
         self._demo_target = self.scene.product.autorun_steps
@@ -479,6 +484,9 @@ class MainWindow(QMainWindow):
         if name == "LBM2DLiquid":
             self.viewport.set_colormap("density")
             self.colormap_combo.setText(self._colormap_label("density"))
+        elif name == "LBM2DMultiComponent":
+            self.viewport.set_colormap("component1")
+            self.colormap_combo.setText(self._colormap_label("component1"))
 
     @staticmethod
     def _colormap_label(name: str) -> str:

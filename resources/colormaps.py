@@ -73,12 +73,22 @@ _BLUES_STOPS = [
     (1.0, (0.80, 0.95, 1.0)),
 ]
 
+_REDS_STOPS = [
+    (0.0, (0.08, 0.02, 0.02)),
+    (0.3, (0.20, 0.06, 0.03)),
+    (0.5, (0.50, 0.20, 0.05)),
+    (0.7, (0.80, 0.40, 0.10)),
+    (0.85, (0.95, 0.65, 0.30)),
+    (1.0, (1.0, 0.90, 0.80)),
+]
+
 CMAP_LUTS: dict[str, np.ndarray] = {
     "viridis": _interp_cmap(_VIRIDIS_STOPS),
     "plasma": _interp_cmap(_PLASMA_STOPS),
     "inferno": _interp_cmap(_INFERNO_STOPS),
     "coolwarm": _interp_cmap(_COOLWARM_STOPS),
     "blues": _interp_cmap(_BLUES_STOPS),
+    "reds": _interp_cmap(_REDS_STOPS),
 }
 
 MODE_TO_CMAP: dict[str, str] = {
@@ -146,6 +156,25 @@ FIELD_REGISTRY: dict[str, FieldInfo] = {
         colormap="inferno",
         tooltip="Temperature field (thermal LBM only). "
         "Coupled to flow via Boussinesq buoyancy approximation.",
+        symmetric=True,
+    ),
+    "component1": FieldInfo(
+        label="Component 1",
+        colormap="blues",
+        tooltip="Density of fluid component 1 (multi-component model only). "
+        "Shows where component 1 (e.g. oil) is present.",
+    ),
+    "component2": FieldInfo(
+        label="Component 2",
+        colormap="reds",
+        tooltip="Density of fluid component 2 (multi-component model only). "
+        "Shows where component 2 (e.g. water) is present.",
+    ),
+    "color": FieldInfo(
+        label="Color",
+        colormap="coolwarm",
+        tooltip="Color field C = (rho1 - rho2) / (rho1 + rho2) for multi-component. "
+        "Blue = component 2 dominant, red = component 1 dominant.",
         symmetric=True,
     ),
 }

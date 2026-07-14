@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "name": "Oil-Water Separation",
+  "width": 128,
+  "height": 128,
+  "viscosity": 0.02,
+  "u_inflow": 0.0,
+  "smoke_diffusion": 0.05,
+  "smoke_decay": 0.999,
+  "description": "Two immiscible fluids (oil and water) separate under Shan-Chen inter-component repulsion. A high-density oil droplet placed in water spontaneously separates into distinct phases. Demonstrates multiphase interface dynamics and surface tension.",
+  "obstacles": [],
+  "emitters": [],
+  "probes": [
+    {"name": "Center", "x": 64, "y": 64, "fields": ["component1", "component2", "color"]}
+  ],
+  "product": {
+    "recommended_colormap": "component1",
+    "autorun_steps": 5000,
+    "lesson_headline": "Immiscible fluids spontaneously separate under inter-particle repulsion.",
+    "expected_ranges": {},
+    "flow_regime_labels": ["two-phase separation", "Shan-Chen multiphase"],
+    "export_caption": "Oil-water separation: two components form distinct phases.",
+    "classroom_prompts": [
+      "What happens when you change g12 (inter-component repulsion)?",
+      "How does the interface sharpness change with sigma?",
+      "Why do the phases separate into flat layers instead of droplets?"
+    ],
+    "recipe": "Explore multiphase flow"
+  }
+}
