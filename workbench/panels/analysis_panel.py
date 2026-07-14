@@ -146,8 +146,10 @@ class AnalysisPanel(QWidget):
 
     def tick(self, dt: float = 1.0) -> None:
         self._tick_counter += 1
-        for probe in self.probes:
-            probe.record(self.sim)
+
+        if self._tick_counter % 2 == 0:
+            for probe in self.probes:
+                probe.record(self.sim)
 
         if self._tick_counter % 5 == 0:
             self._update_physics(dt)

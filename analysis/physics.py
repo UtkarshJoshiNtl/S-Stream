@@ -63,7 +63,8 @@ def strouhal_number(
 ) -> float | None:
     if len(v_history) < 32:
         return None
-    arr = np.array(v_history[-256:])
+    recent = list(v_history)[-256:]
+    arr = np.array(recent)
     arr = arr - np.mean(arr)
     n = len(arr)
     if n < 4:

@@ -129,6 +129,12 @@ class Viewport(QOpenGLWidget):
         self._drag_start: tuple[float, float] | None = None
         self._drag_end: tuple[float, float] | None = None
         self._poly_points: list[tuple[float, float]] = []
+        self._overlay_frame = 0
+        self._streamline_cache: list | None = None
+        self._contour_cache: tuple[list, int] | None = None
+        self._particle_cache: tuple | None = None
+        self._colorbar_pixmap = None
+        self._colorbar_cmap: str | None = None
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
@@ -261,6 +267,7 @@ class Viewport(QOpenGLWidget):
     def paintGL(self) -> None:
         if self.sim is None:
             return
+        self._overlay_frame += 1
         glClearColor(0.08, 0.08, 0.14, 1.0)
         glClear(GL_COLOR_BUFFER_BIT)
 
@@ -279,7 +286,8 @@ class Viewport(QOpenGLWidget):
         glUseProgram(0)
 
         vel = self._get_vel()
-        self._draw_overlay(vel)
+        obs = self.sim.get_obstacles()
+        self._draw_overlay(vel, obs)
 
     def _upload_smoke(self) -> None:
         cmap = self._colormap
@@ -323,9 +331,11 @@ class Viewport(QOpenGLWidget):
     # --- overlay ---
 
     def _get_vel(self) -> np.ndarray | None:
-        return self.sim.get_velocity()
+        return self.sim.get_velocity_view()
 
-    def _draw_overlay(self, vel: np.ndarray | None = None) -> None:
+    def _draw_overlay(
+        self, vel: np.ndarray | None = None, obs: np.ndarray | None = None
+    ) -> None:
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
@@ -359,13 +369,13 @@ class Viewport(QOpenGLWidget):
                 painter.drawText(int(wx + er + 4), int(wy + 4), emit.name)
 
         if self._show_quiver and vel is not None:
-            self._draw_quiver(painter, vel)
+            self._draw_quiver(painter, vel, obs)
         if self._show_streamlines and vel is not None:
-            self._draw_streamlines(painter, vel)
+            self._draw_streamlines(painter, vel, obs)
         if self._show_contours:
             self._draw_pressure_contours(painter)
         if self._show_force_arrows and vel is not None:
-            self._draw_force_arrows(painter, vel)
+            self._draw_force_arrows(painter, vel, obs)
         if self._show_particles:
             self._draw_particles(painter)
 
@@ -461,7 +471,7 @@ class Viewport(QOpenGLWidget):
             rect = self._widget_rect(x1, y1, x2, y2)
             painter.drawRect(rect)
             painter.setFont(label_font)
-            painter.drawText(rect.topRight() + QPointF(4, 14), obs.name)
+            painter.drawText(QPointF(rect.topRight()) + QPointF(4, 14), obs.name)
         elif isinstance(obs, PolygonObstacle) and len(obs.points) > 1:
             pts = [self._grid_to_widget(px, py) for px, py in obs.points]
             qt_pts = [QPointF(*pt) for pt in pts]
@@ -508,14 +518,14 @@ class Viewport(QOpenGLWidget):
             rect = self._widget_rect(x1, y1, x2, y2)
             painter.drawRect(rect)
             painter.setFont(label_font)
-            painter.drawText(rect.topRight() + QPointF(4, 14), obs.name)
+            painter.drawText(QPointF(rect.topRight()) + QPointF(4, 14), obs.name)
         elif isinstance(obs, LatticeObstacle):
             x1, y1 = self._grid_to_widget(obs.x, obs.y)
             x2, y2 = self._grid_to_widget(obs.x + obs.w, obs.y + obs.h)
             rect = self._widget_rect(x1, y1, x2, y2)
             painter.drawRect(rect)
             painter.setFont(label_font)
-            painter.drawText(rect.topRight() + QPointF(4, 14), obs.name)
+            painter.drawText(QPointF(rect.topRight()) + QPointF(4, 14), obs.name)
 
     @staticmethod
     def _widget_rect(x1: float, y1: float, x2: float, y2: float):
@@ -527,7 +537,9 @@ class Viewport(QOpenGLWidget):
 
     # --- quiver plot ---
 
-    def _draw_quiver(self, painter: QPainter, vel: np.ndarray) -> None:
+    def _draw_quiver(
+        self, painter: QPainter, vel: np.ndarray, obs: np.ndarray | None = None
+    ) -> None:
         h, w = vel.shape[:2]
         spacing = max(2, min(h, w) // 16)
         sw = self.width() / w
@@ -542,7 +554,7 @@ class Viewport(QOpenGLWidget):
 
         for y in range(spacing // 2, h, spacing):
             for x in range(spacing // 2, w, spacing):
-                if self.sim.get_obstacles()[y, x]:
+                if obs is not None and obs[y, x]:
                     continue
                 u = float(vel[y, x, 0])
                 v = float(vel[y, x, 1])
@@ -570,71 +582,132 @@ class Viewport(QOpenGLWidget):
 
     # --- streamlines ---
 
-    def _draw_streamlines(self, painter: QPainter, vel: np.ndarray) -> None:
+    def _draw_streamlines(
+        self, painter: QPainter, vel: np.ndarray, obs: np.ndarray | None = None
+    ) -> None:
         h, w = vel.shape[:2]
         sw = self.width() / w
         sh = self.height() / h
-        obs = self.sim.get_obstacles()
+
+        if self._overlay_frame % 6 != 0 and self._streamline_cache is not None:
+            pen = QPen(QColor(255, 255, 255, 55), 1)
+            painter.setPen(pen)
+            for pts in self._streamline_cache:
+                for i in range(len(pts) - 1):
+                    painter.drawLine(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1])
+            return
 
         num_seeds = max(4, h // 8)
         seed_ys = np.linspace(2, h - 3, num_seeds)
-
         max_steps = 400
-        step = 0.5
+        step_size = 0.5
 
-        for sy in seed_ys:
-            x, y = 1.0, float(sy)
-            pts = []
-            for _ in range(max_steps):
-                ix = max(0, min(int(x), w - 2))
-                iy = max(0, min(int(y), h - 2))
-                if obs is not None and obs[iy, ix]:
-                    break
+        xs = np.ones(num_seeds, dtype=np.float64)
+        ys = seed_ys.copy()
+        alive = np.ones(num_seeds, dtype=bool)
+        all_pts: list[list[tuple[int, int]]] = [[] for _ in range(num_seeds)]
 
-                u = self._bilerp(vel[:, :, 0], x, y)
-                v = self._bilerp(vel[:, :, 1], x, y)
-                speed = math.sqrt(u * u + v * v)
-                if speed < 0.0001:
-                    break
+        for _ in range(max_steps):
+            if not alive.any():
+                break
+            idx_alive = np.where(alive)[0]
+            cur_x = xs[alive]
+            cur_y = ys[alive]
 
-                pts.append((int(x * sw), int(y * sh)))
-                x += (u / speed) * step
-                y += (v / speed) * step
+            ix = np.clip(cur_x.astype(int), 0, w - 2)
+            iy = np.clip(cur_y.astype(int), 0, h - 2)
+            fx = cur_x - ix
+            fy = cur_y - iy
 
-                if x < 0 or x >= w - 1 or y < 0 or y >= h - 1:
-                    break
+            u_interp = (
+                vel[iy, ix, 0] * (1 - fx) * (1 - fy)
+                + vel[iy, ix + 1, 0] * fx * (1 - fy)
+                + vel[iy + 1, ix, 0] * (1 - fx) * fy
+                + vel[iy + 1, ix + 1, 0] * fx * fy
+            )
+            v_interp = (
+                vel[iy, ix, 1] * (1 - fx) * (1 - fy)
+                + vel[iy, ix + 1, 1] * fx * (1 - fy)
+                + vel[iy + 1, ix, 1] * (1 - fx) * fy
+                + vel[iy + 1, ix + 1, 1] * fx * fy
+            )
+            speed = np.sqrt(u_interp ** 2 + v_interp ** 2)
 
-            if len(pts) > 1:
-                painter.setPen(QPen(QColor(255, 255, 255, 55), 1))
-                for i in range(len(pts) - 1):
-                    painter.drawLine(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1])
+            too_slow = speed < 0.0001
+            oob = (cur_x < 0) | (cur_x >= w - 1) | (cur_y < 0) | (cur_y >= h - 1)
+            if obs is not None:
+                hit_obs = obs[iy, ix]
+            else:
+                hit_obs = np.zeros(len(cur_x), dtype=bool)
 
-    @staticmethod
-    def _bilerp(field: np.ndarray, x: float, y: float) -> float:
-        ix = max(0, min(int(x), field.shape[1] - 2))
-        iy = max(0, min(int(y), field.shape[0] - 2))
-        fx = x - ix
-        fy = y - iy
-        return float(
-            field[iy, ix] * (1 - fx) * (1 - fy)
-            + field[iy, ix + 1] * fx * (1 - fy)
-            + field[iy + 1, ix] * (1 - fx) * fy
-            + field[iy + 1, ix + 1] * fx * fy
-        )
+            dead = too_slow | oob | hit_obs
+            cur_alive = ~dead
+            alive[idx_alive[dead]] = False
+
+            safe_speed = np.where(cur_alive, speed, 1.0)
+            for i_local in range(len(idx_alive)):
+                i_global = idx_alive[i_local]
+                px = int(xs[i_global] * sw)
+                py = int(ys[i_global] * sh)
+                all_pts[i_global].append((px, py))
+
+            xs[alive] += (u_interp[cur_alive] / safe_speed[cur_alive]) * step_size
+            ys[alive] += (v_interp[cur_alive] / safe_speed[cur_alive]) * step_size
+
+        self._streamline_cache = all_pts
+        pen = QPen(QColor(255, 255, 255, 55), 1)
+        painter.setPen(pen)
+        for pts in all_pts:
+            for i in range(len(pts) - 1):
+                painter.drawLine(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1])
 
     # --- pressure contour lines ---
 
     def _draw_pressure_contours(self, painter: QPainter) -> None:
+        if self._overlay_frame % 6 != 0 and self._contour_cache is not None:
+            pen = QPen(QColor(255, 255, 255, 60), 1)
+            painter.setPen(pen)
+            lines, sw, sh = self._contour_cache
+            for ex1, ey1, ex2, ey2 in lines:
+                x1, y1 = int(ex1 * sw), int(ey1 * sh)
+                x2, y2 = int(ex2 * sw), int(ey2 * sh)
+                painter.drawLine(x1, y1, x2, y2)
+            return
+
         p = self.sim.get_pressure()
         h, w = p.shape
         sw = self.width() / w
         sh = self.height() / h
         mx = max(float(np.percentile(np.abs(p), 95)), 0.001)
         levels = np.linspace(-mx, mx, 11)
+        all_lines = []
+        for level in levels:
+            tl = p[:-1:2, :-1:2]
+            tr = p[:-1:2, 1::2]
+            br = p[1::2, 1::2]
+            bl = p[1::2, :-1:2]
+            idx = (
+                ((tl >= level).astype(np.int32) << 3)
+                | ((tr >= level).astype(np.int32) << 2)
+                | ((br >= level).astype(np.int32) << 1)
+                | ((bl >= level).astype(np.int32))
+            )
+            active = (idx > 0) & (idx < 15)
+            cell_ys, cell_xs = np.where(active)
+            for cy, cx in zip(cell_ys, cell_xs):
+                x2, y2 = cx * 2, cy * 2
+                tl_v = p[y2, x2]
+                tr_v = p[y2, x2 + 1]
+                br_v = p[y2 + 1, x2 + 1]
+                bl_v = p[y2 + 1, x2]
+                cell_idx = int(idx[cy, cx])
+                edges = self._ms_edges(cell_idx, level, tl_v, tr_v, br_v, bl_v, x2, y2)
+                all_lines.extend(edges)
+        self._contour_cache = (all_lines, sw, sh)
         pen = QPen(QColor(255, 255, 255, 60), 1)
         painter.setPen(pen)
-        for level in levels:
-            self._marching_squares_contour(painter, p, level, sw, sh)
+        for ex1, ey1, ex2, ey2 in all_lines:
+            painter.drawLine(int(ex1 * sw), int(ey1 * sh), int(ex2 * sw), int(ey2 * sh))
 
     def _marching_squares_contour(
         self,
@@ -705,13 +778,16 @@ class Viewport(QOpenGLWidget):
 
     # --- force arrows on obstacles ---
 
-    def _draw_force_arrows(self, painter: QPainter, vel: np.ndarray) -> None:
+    def _draw_force_arrows(
+        self, painter: QPainter, vel: np.ndarray, obs: np.ndarray | None = None
+    ) -> None:
         if not self.scene or not self.scene.obstacles:
             return
         h, w = vel.shape[:2]
         sw = self.width() / w
         sh = self.height() / h
-        obs = self.sim.get_obstacles()
+        if obs is None:
+            obs = self.sim.get_obstacles()
         u_inflow = getattr(self.sim, "u_inflow", 0.15)
 
         for obs_spec in self.scene.obstacles:
@@ -755,9 +831,17 @@ class Viewport(QOpenGLWidget):
 
     @staticmethod
     def _obstacle_bounds(obs: ObstacleSpec) -> tuple[int, int, int, int]:
-        if hasattr(obs, "x") and hasattr(obs, "y") and hasattr(obs, "w") and hasattr(obs, "h"):
+        has_rect = (
+            hasattr(obs, "x") and hasattr(obs, "y")
+            and hasattr(obs, "w") and hasattr(obs, "h")
+        )
+        if has_rect:
             return obs.x, obs.y, obs.w, obs.h
-        if hasattr(obs, "x") and hasattr(obs, "y") and hasattr(obs, "radius"):
+        has_circle = (
+            hasattr(obs, "x") and hasattr(obs, "y")
+            and hasattr(obs, "radius")
+        )
+        if has_circle:
             r = obs.radius
             return obs.x - r, obs.y - r, 2 * r, 2 * r
         return 0, 0, 0, 0
@@ -795,26 +879,56 @@ class Viewport(QOpenGLWidget):
         if tracer is None or tracer.count == 0:
             return
 
-        h, w = self.scene.height, self.scene.width if self.scene else (self.sim.grid_shape[-1], self.sim.grid_shape[-2])
+        h, w = (
+            self.scene.height,
+            self.scene.width if self.scene
+            else (self.sim.grid_shape[-1], self.sim.grid_shape[-2])
+        )
         sw = self.width() / w
         sh = self.height() / h
 
+        if self._overlay_frame % 4 != 0 and self._particle_cache is not None:
+            trail_lines, dot_positions = self._particle_cache
+            pen = QPen(QColor(100, 220, 255, 100), 1)
+            painter.setPen(pen)
+            for line in trail_lines:
+                painter.drawLine(int(line[0]), int(line[1]), int(line[2]), int(line[3]))
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor(255, 255, 255, 220))
+            dot_r = max(2, min(4, int(min(sw, sh) * 0.3)))
+            for px, py in dot_positions:
+                x0 = int(px - dot_r)
+                y0 = int(py - dot_r)
+                painter.drawEllipse(x0, y0, dot_r * 2, dot_r * 2)
+            return
+
         trails = tracer.get_trails()
+        trail_lines = []
         if trails is not None and trails.shape[0] > 1 and trails.shape[1] > 0:
             trail_len = trails.shape[0]
             n = trails.shape[1]
-            for i in range(n):
-                px_list = trails[:, i, 0] * sw
-                py_list = trails[:, i, 1] * sh
-                for t in range(trail_len - 1):
-                    alpha = int(40 + 180 * (t / (trail_len - 1)))
-                    pen = QPen(QColor(100, 220, 255, alpha), 1)
-                    painter.setPen(pen)
-                    x0, y0 = float(px_list[t]), float(py_list[t])
-                    x1, y1 = float(px_list[t + 1]), float(py_list[t + 1])
-                    if abs(x1 - x0) < w * sw and abs(y1 - y0) < h * sh:
-                        painter.drawLine(int(x0), int(y0), int(x1), int(y1))
+            num_alpha_buckets = 5
+            for bucket in range(num_alpha_buckets):
+                t_min = bucket / num_alpha_buckets
+                t_max = (bucket + 1) / num_alpha_buckets
+                alpha = int(40 + 180 * (t_min + t_max) / 2)
+                pen = QPen(QColor(100, 220, 255, alpha), 1)
+                painter.setPen(pen)
+                t_start = max(0, int(t_min * (trail_len - 1)))
+                t_end = min(trail_len - 1, int(t_max * (trail_len - 1)))
+                for t in range(t_start, t_end):
+                    px_list = trails[t, :, 0] * sw
+                    py_list = trails[t, :, 1] * sh
+                    px_list_next = trails[t + 1, :, 0] * sw
+                    py_list_next = trails[t + 1, :, 1] * sh
+                    for i in range(n):
+                        x0, y0 = float(px_list[i]), float(py_list[i])
+                        x1, y1 = float(px_list_next[i]), float(py_list_next[i])
+                        if abs(x1 - x0) < w * sw and abs(y1 - y0) < h * sh:
+                            trail_lines.append((x0, y0, x1, y1))
+                            painter.drawLine(int(x0), int(y0), int(x1), int(y1))
 
+        dot_positions = []
         positions = tracer.get_positions()
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QColor(255, 255, 255, 220))
@@ -822,11 +936,15 @@ class Viewport(QOpenGLWidget):
         for i in range(len(positions)):
             px = positions[i, 0] * sw
             py = positions[i, 1] * sh
+            dot_positions.append((px, py))
             painter.drawEllipse(int(px - dot_r), int(py - dot_r), dot_r * 2, dot_r * 2)
+
+        self._particle_cache = (trail_lines, dot_positions)
 
     # --- colorbar ---
 
     def _draw_colorbar(self, painter: QPainter) -> None:
+        from PySide6.QtGui import QPixmap
         from resources.colormaps import FIELD_REGISTRY
 
         bar_w = 18
@@ -835,15 +953,22 @@ class Viewport(QOpenGLWidget):
         by = 24
 
         cmap_name = MODE_TO_CMAP.get(self._colormap, "viridis")
-        lut = CMAP_LUTS.get(cmap_name, CMAP_LUTS["viridis"])
+        if self._colorbar_cmap != cmap_name or self._colorbar_pixmap is None:
+            pm = QPixmap(bar_w, bar_h)
+            pm.fill(QColor(0, 0, 0, 0))
+            pm_paint = QPainter(pm)
+            lut = CMAP_LUTS.get(cmap_name, CMAP_LUTS["viridis"])
+            for i in range(bar_h):
+                t = 1.0 - i / (bar_h - 1) if bar_h > 1 else 0.0
+                idx = int(t * 255)
+                r, g, b = lut[idx]
+                pm_paint.setPen(QColor(int(r * 255), int(g * 255), int(b * 255)))
+                pm_paint.drawLine(0, i, bar_w - 1, i)
+            pm_paint.end()
+            self._colorbar_pixmap = pm
+            self._colorbar_cmap = cmap_name
 
-        for i in range(bar_h):
-            t = 1.0 - i / (bar_h - 1) if bar_h > 1 else 0.0
-            idx = int(t * 255)
-            r, g, b = lut[idx]
-            painter.setPen(QColor(int(r * 255), int(g * 255), int(b * 255)))
-            painter.drawLine(bx, by + i, bx + bar_w - 1, by + i)
-
+        painter.drawPixmap(bx, by, self._colorbar_pixmap)
         painter.setPen(QPen(QColor(100, 110, 140, 180), 1))
         painter.drawRect(bx, by, bar_w, bar_h)
         font = QFont("monospace", 9)

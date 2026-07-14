@@ -24,9 +24,7 @@ class Probe:
         y = int(np.clip(y, 0, h - 1))
         x = int(np.clip(x, 0, w - 1))
 
-        vel = sim.get_velocity()
-        u_val = float(vel[y, x, 0])
-        v_val = float(vel[y, x, 1])
+        u_val, v_val = sim.get_velocity_at(x, y)
 
         for f in self.spec.fields:
             if f == "u":

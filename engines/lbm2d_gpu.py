@@ -222,6 +222,9 @@ class LBM2DGPU(SimEngine, SmokeMixin):
     def get_velocity(self) -> np.ndarray:
         return cp.asnumpy(cp.stack([self.u, self.v], axis=2))
 
+    def get_velocity_at(self, x: int, y: int) -> tuple[float, float]:
+        return float(cp.asnumpy(self.u[y, x])), float(cp.asnumpy(self.v[y, x]))
+
     def get_smoke(self) -> np.ndarray:
         return cp.asnumpy(self.smoke)
 

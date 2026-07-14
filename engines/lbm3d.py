@@ -216,6 +216,14 @@ class LBM3D(SimEngine, SmokeMixin, ThermalMixin):
         self.xp = np
 
         self._particle_tracer = ParticleTracer(width, height, depth, trail_length=20)
+        self._vel_buf = np.empty((depth, height, width, 3), dtype=np.float32)
+
+        # EMA normalization caches
+        self._ema_smoke_max = 0.001
+        self._ema_speed_max = 0.001
+        self._ema_vort_max = 0.001
+        self._ema_pres_max = 0.001
+        self._ema_alpha = 0.05
 
         self.initialize(rho=1.0, u=0.1, v=0.0, w=0.0)
         self._warmup_jit()
@@ -260,7 +268,7 @@ class LBM3D(SimEngine, SmokeMixin, ThermalMixin):
         self.diffuse_smoke()
         self.smoke[self.obstacles] = 0.0
         self.decay_smoke()
-        vel = np.stack([self.u, self.v, self.w_vel], axis=3)
+        vel = self.get_velocity_view()
         self._particle_tracer.step(vel)
 
     def apply_boundary_conditions(self) -> None:
@@ -276,7 +284,15 @@ class LBM3D(SimEngine, SmokeMixin, ThermalMixin):
         return self.rho.copy()
 
     def get_velocity(self) -> np.ndarray:
-        return np.stack([self.u, self.v, self.w_vel], axis=3)
+        np.stack([self.u, self.v, self.w_vel], axis=3, out=self._vel_buf)
+        return self._vel_buf.copy()
+
+    def get_velocity_view(self) -> np.ndarray:
+        np.stack([self.u, self.v, self.w_vel], axis=3, out=self._vel_buf)
+        return self._vel_buf
+
+    def get_velocity_at(self, x: int, y: int) -> tuple[float, float]:
+        return float(self.u[0, y, x]), float(self.v[0, y, x])
 
     def get_smoke(self) -> np.ndarray:
         return self.smoke.copy()
@@ -300,15 +316,22 @@ class LBM3D(SimEngine, SmokeMixin, ThermalMixin):
         return names
 
     def get_field(self, name: str) -> np.ndarray:
-        vel3d = self.get_velocity()
+        vel3d = self.get_velocity_view()
         u, v, w = vel3d[..., 0], vel3d[..., 1], vel3d[..., 2]
+        a = self._ema_alpha
         if name == "smoke":
-            field = self.smoke.copy()
-            mx = max(float(np.percentile(field, 98)), 0.001)
-            return np.clip(field / mx, 0, 1).astype(np.float32)
+            cur_max = max(float(np.max(self.smoke)), 0.001)
+            self._ema_smoke_max = (1 - a) * self._ema_smoke_max + a * cur_max
+            return np.clip(self.smoke / self._ema_smoke_max, 0, 1).astype(np.float32)
         if name == "speed":
-            speed = np.sqrt(u.astype(np.float32) ** 2 + v.astype(np.float32) ** 2 + w.astype(np.float32) ** 2)
-            mx = max(self.u_inflow * 1.5, float(np.percentile(speed, 98)), 0.001)
+            speed = np.sqrt(
+                u.astype(np.float32) ** 2
+                + v.astype(np.float32) ** 2
+                + w.astype(np.float32) ** 2
+            )
+            cur_max = max(float(np.max(speed)), 0.001)
+            self._ema_speed_max = (1 - a) * self._ema_speed_max + a * cur_max
+            mx = max(self.u_inflow * 1.5, self._ema_speed_max, 0.001)
             return np.clip(speed / mx, 0, 1).astype(np.float32)
         if name == "vorticity":
             dvdx = np.zeros_like(u, dtype=np.float32)
@@ -316,12 +339,16 @@ class LBM3D(SimEngine, SmokeMixin, ThermalMixin):
             dvdx[:, :, 1:-1] = (v[:, :, 2:] - v[:, :, :-2]) * 0.5
             dudy[:, 1:-1, :] = (u[:, 2:, :] - u[:, :-2, :]) * 0.5
             vort = dvdx - dudy
-            mx = max(float(np.percentile(np.abs(vort), 98)), 0.001)
-            return np.clip(vort / mx * 0.5 + 0.5, 0, 1).astype(np.float32)
+            cur_max = max(float(np.max(np.abs(vort))), 0.001)
+            self._ema_vort_max = (1 - a) * self._ema_vort_max + a * cur_max
+            return np.clip(
+                vort / self._ema_vort_max * 0.5 + 0.5, 0, 1
+            ).astype(np.float32)
         if name == "pressure":
             p = (self.rho - 1.0).astype(np.float32)
-            mx = max(float(np.percentile(np.abs(p), 98)), 0.001)
-            return np.clip(p / mx * 0.5 + 0.5, 0, 1).astype(np.float32)
+            cur_max = max(float(np.max(np.abs(p))), 0.001)
+            self._ema_pres_max = (1 - a) * self._ema_pres_max + a * cur_max
+            return np.clip(p / self._ema_pres_max * 0.5 + 0.5, 0, 1).astype(np.float32)
         if name == "density":
             lo, hi = float(np.min(self.rho)), float(np.max(self.rho))
             if hi - lo < 0.001:
@@ -335,7 +362,9 @@ class LBM3D(SimEngine, SmokeMixin, ThermalMixin):
                     return np.full_like(T, 0.5, dtype=np.float32)
                 return np.clip((T - lo) / (hi - lo), 0, 1).astype(np.float32)
             return np.full(self.grid_shape, 0.5, dtype=np.float32)
-        raise ValueError(f"Unknown field: {name!r}. Available: {self.get_field_names()}")
+        raise ValueError(
+            f"Unknown field: {name!r}. Available: {self.get_field_names()}"
+        )
 
     def get_emitter_count(self) -> int:
         return len(self.emitters)

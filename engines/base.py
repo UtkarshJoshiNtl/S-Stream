@@ -75,6 +75,24 @@ class SimEngine(ABC):
         """
         ...
 
+    def get_velocity_view(self) -> np.ndarray:
+        """Return a pre-allocated velocity buffer (no copy).
+
+        The returned array is reused between calls — callers must not store
+        references across frames. Prefer this over get_velocity() when the
+        data is only read (e.g. rendering, particle advection).
+        """
+        return self.get_velocity()
+
+    def get_velocity_at(self, x: int, y: int) -> tuple[float, float]:
+        """Return velocity at a single grid cell without full-array allocation.
+
+        Subclasses should override this for O(1) access. Default falls back to
+        get_velocity() which allocates a full copy.
+        """
+        vel = self.get_velocity()
+        return float(vel[y, x, 0]), float(vel[y, x, 1])
+
     @abstractmethod
     def get_smoke(self) -> np.ndarray:
         """Return a copy of the smoke (passive scalar) field as a NumPy array."""

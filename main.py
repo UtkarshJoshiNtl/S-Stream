@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 from PySide6.QtGui import QIcon
+from PySide6.QtGui import QSurfaceFormat
 from PySide6.QtWidgets import QApplication
 
 from engines import LBM2D, LBM2DGPU, LBM2DLiquid, LBM2DMultiComponent
@@ -64,6 +65,14 @@ def main() -> None:
             sim.run(args.steps)
         print(f"Simulation: {sim.grid_shape[1]}x{sim.grid_shape[0]}")
         return
+
+    fmt = QSurfaceFormat()
+    fmt.setVersion(3, 3)
+    fmt.setProfile(QSurfaceFormat.OpenGLContextProfile.CoreProfile)
+    fmt.setSwapBehavior(QSurfaceFormat.SwapBehavior.DoubleBuffer)
+    fmt.setDepthBufferSize(0)
+    fmt.setSamples(0)
+    QSurfaceFormat.setDefaultFormat(fmt)
 
     app = QApplication(sys.argv)
     app.setStyleSheet(APP_STYLESHEET)

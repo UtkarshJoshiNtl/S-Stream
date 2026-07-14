@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer
@@ -62,6 +63,7 @@ class MainWindow(QMainWindow):
         self._demo_target = 0
         self._demo_running = False
         self._expert_mode = False
+        self._frame_start = 0.0
 
         self.setWindowTitle("SStream - Fluid Workbench")
         self.resize(1320, 840)
@@ -447,6 +449,9 @@ class MainWindow(QMainWindow):
         self._fps_count += 1
         fps_str = f"{self._fps_value:.0f}"
         self.status_label.setText(f"Step {self.step_count}  |  FPS: {fps_str}")
+        elapsed = time.perf_counter() - self._frame_start
+        self.timer.start(max(1, 33 - int(elapsed * 1000)))
+        self._frame_start = time.perf_counter()
 
     def _set_draw_mode(self, mode: str | None, sender: QPushButton) -> None:
         for btn in self._draw_group:
@@ -673,7 +678,11 @@ class MainWindow(QMainWindow):
         )
         if not path:
             return
-        self._export_image(path, scale=3, colorbar=True, annotations=True, field_name=self.viewport.get_colormap())
+        self._export_image(
+            path, scale=3, colorbar=True,
+            annotations=True,
+            field_name=self.viewport.get_colormap()
+        )
         try:
             export_markdown_report(
                 Path(path).with_suffix(".md"),

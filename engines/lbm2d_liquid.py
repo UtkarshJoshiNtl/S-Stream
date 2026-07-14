@@ -191,6 +191,14 @@ class LBM2DLiquid(SimEngine, SmokeMixin):
         self.xp = np
 
         self._particle_tracer = ParticleTracer(width, height, trail_length=20)
+        self._vel_buf = np.empty((height, width, 2), dtype=np.float32)
+
+        # EMA normalization caches
+        self._ema_smoke_max = 0.001
+        self._ema_speed_max = 0.001
+        self._ema_vort_max = 0.001
+        self._ema_pres_max = 0.001
+        self._ema_alpha = 0.05
 
         self.initialize()
         self._warmup_jit()
@@ -269,7 +277,7 @@ class LBM2DLiquid(SimEngine, SmokeMixin):
         self.diffuse_smoke()
         self.smoke[self.obstacles] = 0.0
         self.decay_smoke()
-        vel = np.stack([self.u, self.v], axis=2)
+        vel = self.get_velocity_view()
         self._particle_tracer.step(vel)
 
     def run(self, steps: int) -> None:
@@ -280,7 +288,15 @@ class LBM2DLiquid(SimEngine, SmokeMixin):
         return self.rho.copy()
 
     def get_velocity(self) -> np.ndarray:
-        return np.stack([self.u, self.v], axis=2)
+        np.stack([self.u, self.v], axis=2, out=self._vel_buf)
+        return self._vel_buf.copy()
+
+    def get_velocity_view(self) -> np.ndarray:
+        np.stack([self.u, self.v], axis=2, out=self._vel_buf)
+        return self._vel_buf
+
+    def get_velocity_at(self, x: int, y: int) -> tuple[float, float]:
+        return float(self.u[y, x]), float(self.v[y, x])
 
     def get_smoke(self) -> np.ndarray:
         return self.smoke.copy()
@@ -301,26 +317,34 @@ class LBM2DLiquid(SimEngine, SmokeMixin):
         return ["smoke", "speed", "vorticity", "pressure", "density", "phase"]
 
     def get_field(self, name: str) -> np.ndarray:
+        a = self._ema_alpha
         if name == "smoke":
-            field = self.smoke.copy()
-            mx = max(float(np.percentile(field, 98)), 0.001)
-            return np.clip(field / mx, 0, 1).astype(np.float32)
+            cur_max = max(float(np.max(self.smoke)), 0.001)
+            self._ema_smoke_max = (1 - a) * self._ema_smoke_max + a * cur_max
+            return np.clip(self.smoke / self._ema_smoke_max, 0, 1).astype(np.float32)
         if name == "speed":
-            speed = np.sqrt(self.u.astype(np.float32) ** 2 + self.v.astype(np.float32) ** 2)
-            mx = max(float(np.percentile(speed, 98)), 0.001)
-            return np.clip(speed / mx, 0, 1).astype(np.float32)
+            speed = np.sqrt(
+                self.u.astype(np.float32) ** 2 + self.v.astype(np.float32) ** 2
+            )
+            cur_max = max(float(np.max(speed)), 0.001)
+            self._ema_speed_max = (1 - a) * self._ema_speed_max + a * cur_max
+            return np.clip(speed / self._ema_speed_max, 0, 1).astype(np.float32)
         if name == "vorticity":
             dvdx = np.zeros_like(self.u, dtype=np.float32)
             dudy = np.zeros_like(self.u, dtype=np.float32)
             dvdx[:, 1:-1] = (self.v[:, 2:] - self.v[:, :-2]) * 0.5
             dudy[1:-1, :] = (self.u[2:, :] - self.u[:-2, :]) * 0.5
             vort = dvdx - dudy
-            mx = max(float(np.percentile(np.abs(vort), 98)), 0.001)
-            return np.clip(vort / mx * 0.5 + 0.5, 0, 1).astype(np.float32)
+            cur_max = max(float(np.max(np.abs(vort))), 0.001)
+            self._ema_vort_max = (1 - a) * self._ema_vort_max + a * cur_max
+            return np.clip(
+                vort / self._ema_vort_max * 0.5 + 0.5, 0, 1
+            ).astype(np.float32)
         if name == "pressure":
             p = (self.rho - 1.0).astype(np.float32)
-            mx = max(float(np.percentile(np.abs(p), 98)), 0.001)
-            return np.clip(p / mx * 0.5 + 0.5, 0, 1).astype(np.float32)
+            cur_max = max(float(np.max(np.abs(p))), 0.001)
+            self._ema_pres_max = (1 - a) * self._ema_pres_max + a * cur_max
+            return np.clip(p / self._ema_pres_max * 0.5 + 0.5, 0, 1).astype(np.float32)
         if name == "density":
             lo, hi = float(np.min(self.rho)), float(np.max(self.rho))
             if hi - lo < 0.001:
@@ -329,7 +353,9 @@ class LBM2DLiquid(SimEngine, SmokeMixin):
         if name == "phase":
             field = 1.0 / (1.0 + np.exp(-15 * (self.rho - 0.5)))
             return np.clip(field, 0, 1).astype(np.float32)
-        raise ValueError(f"Unknown field: {name!r}. Available: {self.get_field_names()}")
+        raise ValueError(
+            f"Unknown field: {name!r}. Available: {self.get_field_names()}"
+        )
 
     def get_emitter_count(self) -> int:
         return len(self.emitters)

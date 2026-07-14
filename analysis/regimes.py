@@ -37,7 +37,7 @@ def _probe_oscillation(probes: list[Probe]) -> tuple[float, float | None]:
     v_history = probes[0].history.get("v", [])
     if len(v_history) < 32:
         return 0.0, None
-    recent = np.asarray(v_history[-256:], dtype=float)
+    recent = np.asarray(list(v_history)[-256:], dtype=float)
     amplitude = float(np.std(recent))
     return amplitude, strouhal_number(v_history, dt=1.0)
 
