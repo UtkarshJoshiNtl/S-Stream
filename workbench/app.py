@@ -35,6 +35,7 @@ from workbench.dialogs.export_dialog import ExportDialog
 from workbench.dialogs.presets_dialog import PresetsDialog
 from workbench.dialogs.recipes_dialog import RecipesDialog
 from workbench.dialogs.sweep_dialog import SweepDialog
+from workbench.dialogs.wizard_dialog import WizardDialog, WizardTemplate
 from workbench.panels.analysis_panel import AnalysisPanel
 from workbench.panels.outcome_panel import OutcomePanel
 from workbench.panels.scene_panel import ScenePanel
@@ -298,6 +299,11 @@ class MainWindow(QMainWindow):
         open_preset_action.triggered.connect(self._open_preset_dialog)
         file_menu.addAction(open_preset_action)
 
+        wizard_action = QAction("Setup &Wizard...", self)
+        wizard_action.setShortcut(QKeySequence("Ctrl+W"))
+        wizard_action.triggered.connect(self._open_wizard)
+        file_menu.addAction(wizard_action)
+
         recipes_action = QAction("&Recipes...", self)
         recipes_action.triggered.connect(self._open_recipes_dialog)
         file_menu.addAction(recipes_action)
@@ -522,7 +528,22 @@ class MainWindow(QMainWindow):
         if settings.value("welcome_shown", False, type=bool):
             return
         settings.setValue("welcome_shown", True)
-        self._open_preset_dialog()
+        self._open_wizard()
+
+    def _open_wizard(self) -> None:
+        dialog = WizardDialog(self)
+        dialog.template_selected.connect(self._on_wizard_template)
+        dialog.exec()
+
+    def _on_wizard_template(self, template: WizardTemplate) -> None:
+        self.scene = template.scene
+        self._file_path = None
+        self._apply_and_refresh()
+        if self.scene.product.autorun_steps:
+            self._run_guided_demo()
+        if template.tips:
+            tip_text = "\n".join(f"  {i+1}. {t}" for i, t in enumerate(template.tips))
+            self.status.showMessage(f"Tips: {template.tips[0]}", 8000)
 
     def _open_preset_dialog(self) -> None:
         presets = list_presets()
