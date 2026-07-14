@@ -6,6 +6,7 @@ from numba import njit, prange
 from engines.base import SimEngine
 from engines.collision import BGKCollision, CollisionOperator
 from engines.lbm_common import LATTICE_3D_Q19, Lattice3D
+from engines.particle_tracer import ParticleTracer
 from engines.smoke_mixin import SmokeMixin
 from engines.thermal_mixin import ThermalMixin
 
@@ -214,6 +215,8 @@ class LBM3D(SimEngine, SmokeMixin, ThermalMixin):
         self._z_coords = np.arange(depth, dtype=np.float32)
         self.xp = np
 
+        self._particle_tracer = ParticleTracer(width, height, depth, trail_length=20)
+
         self.initialize(rho=1.0, u=0.1, v=0.0, w=0.0)
         self._warmup_jit()
 
@@ -257,6 +260,8 @@ class LBM3D(SimEngine, SmokeMixin, ThermalMixin):
         self.diffuse_smoke()
         self.smoke[self.obstacles] = 0.0
         self.decay_smoke()
+        vel = np.stack([self.u, self.v, self.w_vel], axis=3)
+        self._particle_tracer.step(vel)
 
     def apply_boundary_conditions(self) -> None:
         self.apply_obstacles()
@@ -334,6 +339,9 @@ class LBM3D(SimEngine, SmokeMixin, ThermalMixin):
 
     def get_emitter_count(self) -> int:
         return len(self.emitters)
+
+    def get_particle_tracer(self) -> ParticleTracer:
+        return self._particle_tracer
 
     def add_obstacle(self, x: int, y: int, z: int, radius: int = 5) -> None:
         z_grid, y_grid, x_grid = np.ogrid[: self.depth, : self.height, : self.width]

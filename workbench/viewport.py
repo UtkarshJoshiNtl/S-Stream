@@ -124,6 +124,7 @@ class Viewport(QOpenGLWidget):
         self._show_streamlines = False
         self._show_contours = False
         self._show_force_arrows = False
+        self._show_particles = False
         self.draw_mode: str | None = None
         self._drag_start: tuple[float, float] | None = None
         self._drag_end: tuple[float, float] | None = None
@@ -166,6 +167,10 @@ class Viewport(QOpenGLWidget):
 
     def set_show_force_arrows(self, show: bool) -> None:
         self._show_force_arrows = show
+        self.update()
+
+    def set_show_particles(self, show: bool) -> None:
+        self._show_particles = show
         self.update()
 
     def set_draw_mode(self, mode: str | None) -> None:
@@ -361,6 +366,8 @@ class Viewport(QOpenGLWidget):
             self._draw_pressure_contours(painter)
         if self._show_force_arrows and vel is not None:
             self._draw_force_arrows(painter, vel)
+        if self._show_particles:
+            self._draw_particles(painter)
 
         if self._drag_start is not None and self._drag_end is not None:
             pen = QPen(QColor(255, 255, 255, 200), 2)
@@ -778,6 +785,44 @@ class Viewport(QOpenGLWidget):
         drag_x = float(np.sum(region_u[interior]))
         drag_y = float(np.sum(region_v[interior]))
         return -drag_x, -drag_y
+
+    # --- particles ---
+
+    def _draw_particles(self, painter: QPainter) -> None:
+        if self.sim is None:
+            return
+        tracer = self.sim.get_particle_tracer()
+        if tracer is None or tracer.count == 0:
+            return
+
+        h, w = self.scene.height, self.scene.width if self.scene else (self.sim.grid_shape[-1], self.sim.grid_shape[-2])
+        sw = self.width() / w
+        sh = self.height() / h
+
+        trails = tracer.get_trails()
+        if trails is not None and trails.shape[0] > 1 and trails.shape[1] > 0:
+            trail_len = trails.shape[0]
+            n = trails.shape[1]
+            for i in range(n):
+                px_list = trails[:, i, 0] * sw
+                py_list = trails[:, i, 1] * sh
+                for t in range(trail_len - 1):
+                    alpha = int(40 + 180 * (t / (trail_len - 1)))
+                    pen = QPen(QColor(100, 220, 255, alpha), 1)
+                    painter.setPen(pen)
+                    x0, y0 = float(px_list[t]), float(py_list[t])
+                    x1, y1 = float(px_list[t + 1]), float(py_list[t + 1])
+                    if abs(x1 - x0) < w * sw and abs(y1 - y0) < h * sh:
+                        painter.drawLine(int(x0), int(y0), int(x1), int(y1))
+
+        positions = tracer.get_positions()
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(255, 255, 255, 220))
+        dot_r = max(2, min(4, int(min(sw, sh) * 0.3)))
+        for i in range(len(positions)):
+            px = positions[i, 0] * sw
+            py = positions[i, 1] * sh
+            painter.drawEllipse(int(px - dot_r), int(py - dot_r), dot_r * 2, dot_r * 2)
 
     # --- colorbar ---
 

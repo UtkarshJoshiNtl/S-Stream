@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING
 
 import numpy as np
+
+if TYPE_CHECKING:
+    from engines.particle_tracer import ParticleTracer
 
 
 class SimEngine(ABC):
@@ -153,3 +157,9 @@ class SimEngine(ABC):
     def get_emitter_count(self) -> int:
         """Return the number of active emitters."""
         ...
+
+    # --- Particle tracer ---
+
+    def get_particle_tracer(self) -> ParticleTracer | None:
+        """Return the particle tracer, or None if not supported."""
+        return None

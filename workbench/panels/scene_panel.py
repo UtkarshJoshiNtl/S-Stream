@@ -227,6 +227,42 @@ class ScenePanel(QWidget):
         group.setLayout(form)
         layout.addWidget(group)
 
+        self._build_particle_group(layout)
+
+    def _build_particle_group(self, layout: QVBoxLayout) -> None:
+        group = QGroupBox("Particles")
+        form = QFormLayout()
+        form.setContentsMargins(4, 4, 4, 4)
+
+        self._trail_spin = QSpinBox()
+        self._trail_spin.setRange(1, 100)
+        self._trail_spin.setValue(20)
+        self._trail_spin.valueChanged.connect(self._on_trail_length)
+        self._trail_spin.setToolTip(
+            "Number of past positions kept per particle for trail rendering.\n"
+            "Higher = longer trails, more visual memory of the flow path.\n"
+            "Range: 1 (dots only) to 100 (very long trails)"
+        )
+        form.addRow("Trail Length", self._trail_spin)
+
+        btn_row = QHBoxLayout()
+        add_random_btn = QPushButton("Add Random")
+        add_random_btn.setToolTip("Add 50 particles at random positions in the domain")
+        add_random_btn.clicked.connect(self._add_particles_random)
+        btn_row.addWidget(add_random_btn)
+
+        clear_btn = QPushButton("Clear All")
+        clear_btn.setToolTip("Remove all particles")
+        clear_btn.clicked.connect(self._clear_particles)
+        btn_row.addWidget(clear_btn)
+        form.addRow(btn_row)
+
+        self._particle_count_label = QLabel("0 particles")
+        form.addRow(self._particle_count_label)
+
+        group.setLayout(form)
+        layout.addWidget(group)
+
     def _on_param_visc(self, val: float) -> None:
         self.scene.viscosity = val
         self.sim.viscosity = val
@@ -253,6 +289,29 @@ class ScenePanel(QWidget):
         self._param_u_inflow.setValue(self.scene.u_inflow)
         self._param_diff.setValue(self.scene.smoke_diffusion)
         self._param_decay.setValue(self.scene.smoke_decay)
+
+    def _on_trail_length(self, val: int) -> None:
+        tracer = self.sim.get_particle_tracer()
+        if tracer is not None:
+            tracer.set_trail_length(val)
+
+    def _add_particles_random(self) -> None:
+        tracer = self.sim.get_particle_tracer()
+        if tracer is not None:
+            tracer.add_particles_random(50)
+            self._particle_count_label.setText(f"{tracer.count} particles")
+
+    def _clear_particles(self) -> None:
+        tracer = self.sim.get_particle_tracer()
+        if tracer is not None:
+            tracer.clear()
+            self._particle_count_label.setText("0 particles")
+
+    def update_particle_count(self) -> None:
+        """Update the particle count label (call from timer)."""
+        tracer = self.sim.get_particle_tracer()
+        if tracer is not None:
+            self._particle_count_label.setText(f"{tracer.count} particles")
 
     def set_expert_mode(self, expert: bool) -> None:
         """Toggle between beginner and expert mode."""

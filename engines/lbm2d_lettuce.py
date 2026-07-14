@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from engines.particle_tracer import ParticleTracer
+
 try:
     import torch
     from lettuce import Lattice, UnitConversion
@@ -97,6 +99,8 @@ class LBM2DLettuce(SimEngine, SmokeMixin):
         self._y_coords = np.arange(height, dtype=np.float32)
         self.xp = np
 
+        self._particle_tracer = ParticleTracer(width, height, trail_length=20)
+
         # Initialize collision operator
         self._collision = LettuceBGK(
             lattice=self._lattice,
@@ -160,6 +164,9 @@ class LBM2DLettuce(SimEngine, SmokeMixin):
         self.diffuse_smoke()
         self.smoke[self.obstacles] = 0.0
         self.decay_smoke()
+
+        vel = self.get_velocity()
+        self._particle_tracer.step(vel)
 
     def run(self, steps: int) -> None:
         for _ in range(steps):
@@ -225,6 +232,9 @@ class LBM2DLettuce(SimEngine, SmokeMixin):
 
     def get_emitter_count(self) -> int:
         return len(self.emitters)
+
+    def get_particle_tracer(self) -> ParticleTracer:
+        return self._particle_tracer
 
     def add_obstacle(self, x: int, y: int, radius: int = 5) -> None:
         y_grid, x_grid = np.ogrid[: self.height, : self.width]

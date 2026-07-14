@@ -231,6 +231,11 @@ class MainWindow(QMainWindow):
         self.force_btn.clicked.connect(self._toggle_force_arrows)
         self.toolbar.addWidget(self.force_btn)
 
+        self.particles_btn = QPushButton("Particles")
+        self.particles_btn.setCheckable(True)
+        self.particles_btn.clicked.connect(self._toggle_particles)
+        self.toolbar.addWidget(self.particles_btn)
+
         self.toolbar.addSeparator()
 
         self.colormap_combo = QPushButton(self._colormap_label("speed"))
@@ -499,6 +504,9 @@ class MainWindow(QMainWindow):
 
     def _toggle_force_arrows(self, checked: bool) -> None:
         self.viewport.set_show_force_arrows(checked)
+
+    def _toggle_particles(self, checked: bool) -> None:
+        self.viewport.set_show_particles(checked)
 
     def _set_colormap(self, name: str) -> None:
         if name not in _COLORMAPS:

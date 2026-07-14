@@ -7,6 +7,7 @@ from numba import njit, prange
 
 from engines.base import SimEngine
 from engines.lbm_common import LATTICE_2D
+from engines.particle_tracer import ParticleTracer
 from engines.smoke_mixin import SmokeMixin
 
 _FORCE_CLIP = 0.3
@@ -189,6 +190,8 @@ class LBM2DLiquid(SimEngine, SmokeMixin):
         self._lap_buffer = np.empty_like(self.smoke)
         self.xp = np
 
+        self._particle_tracer = ParticleTracer(width, height, trail_length=20)
+
         self.initialize()
         self._warmup_jit()
 
@@ -266,6 +269,8 @@ class LBM2DLiquid(SimEngine, SmokeMixin):
         self.diffuse_smoke()
         self.smoke[self.obstacles] = 0.0
         self.decay_smoke()
+        vel = np.stack([self.u, self.v], axis=2)
+        self._particle_tracer.step(vel)
 
     def run(self, steps: int) -> None:
         for _ in range(steps):
@@ -328,6 +333,9 @@ class LBM2DLiquid(SimEngine, SmokeMixin):
 
     def get_emitter_count(self) -> int:
         return len(self.emitters)
+
+    def get_particle_tracer(self) -> ParticleTracer:
+        return self._particle_tracer
 
     def add_obstacle(self, x: int, y: int, radius: int = 5) -> None:
         y_grid, x_grid = np.ogrid[: self.height, : self.width]
