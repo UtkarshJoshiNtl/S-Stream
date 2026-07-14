@@ -7,6 +7,7 @@ from engines.base import SimEngine
 from engines.collision import BGKCollision, CollisionOperator
 from engines.lbm_common import LATTICE_3D_Q19, Lattice3D
 from engines.smoke_mixin import SmokeMixin
+from engines.thermal_mixin import ThermalMixin
 
 
 @njit(parallel=True, cache=True, fastmath=True, boundscheck=False)
@@ -161,7 +162,7 @@ def _diffuse_smoke_3d_nb(smoke, out, diffusion, depth, height, width):
                 out[z, y, x] = center + diffusion * laplacian
 
 
-class LBM3D(SimEngine, SmokeMixin):
+class LBM3D(SimEngine, SmokeMixin, ThermalMixin):
     """D3Q19 Lattice Boltzmann fluid simulation with Numba-accelerated solver.
 
     3D extension of LBM2D with the same pluggable collision operator interface.

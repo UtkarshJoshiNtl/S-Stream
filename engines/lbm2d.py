@@ -7,6 +7,7 @@ from engines.base import SimEngine
 from engines.collision import BGKCollision, CollisionOperator
 from engines.lbm_common import LATTICE_2D
 from engines.smoke_mixin import SmokeMixin
+from engines.thermal_mixin import ThermalMixin
 
 
 @njit(parallel=True, cache=True, fastmath=True, boundscheck=False)
@@ -147,7 +148,7 @@ def _bounce_back_nb(f, mask, opp, height, width):
                         f[opp_i, y, x] = tmp
 
 
-class LBM2D(SimEngine, SmokeMixin):
+class LBM2D(SimEngine, SmokeMixin, ThermalMixin):
     """D2Q9 Lattice Boltzmann fluid simulation with Numba-accelerated solver."""
 
     def __init__(

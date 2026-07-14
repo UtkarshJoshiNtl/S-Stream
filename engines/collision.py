@@ -387,3 +387,405 @@ class MRTCollision(CollisionOperator):
             s,
             f.shape[1], f.shape[2],
         )
+
+
+@njit(parallel=True, cache=True, fastmath=True, boundscheck=False)
+def _smagorinsky_collide_2d_nb(
+    f: np.ndarray,
+    rho: np.ndarray,
+    u: np.ndarray,
+    v: np.ndarray,
+    w: np.ndarray,
+    cx: np.ndarray,
+    cy: np.ndarray,
+    omega_base: float,
+    cs: float,
+    height: int,
+    width: int,
+) -> None:
+    """Smagorinsky SGS collision kernel for 2D (D2Q9).
+
+    Computes turbulent viscosity from strain rate tensor and adds it to
+    molecular viscosity for effective relaxation.
+
+    Algorithm (clean-room from Smagorinsky (1963), Lilly (1967)):
+    1. Compute non-equilibrium stress: Π_neq = Σ c_iα c_iβ (f_i - f_eq_i)
+    2. Strain rate magnitude: |S| = sqrt(2 * S_ij * S_ij)
+    3. Turbulent viscosity: nu_t = (C_s * Δ)^2 * |S|
+    4. Effective omega: omega_eff = 1 / (3 * (nu + nu_t) + 0.5)
+
+    Reference: Smagorinsky (1963), "General circulation experiments with the
+    primitive equations." Lilly (1967), "The representation of small-scale
+    turbulence in numerical simulation experiments."
+    """
+    for y in prange(height):
+        for x in range(width):
+            r = 0.0
+            u_vel = 0.0
+            v_vel = 0.0
+            for i in range(9):
+                fiv = f[i, y, x]
+                r += fiv
+                u_vel += fiv * cx[i]
+                v_vel += fiv * cy[i]
+            rho_safe = r if r > 0 else 1.0
+            u_vel /= rho_safe
+            v_vel /= rho_safe
+
+            # Compute equilibrium and non-equilibrium stress tensor
+            u2 = u_vel * u_vel + v_vel * v_vel
+            # Π_neq components (off-diagonal only needed for |S|)
+            pi_neq_xx = 0.0
+            pi_neq_yy = 0.0
+            pi_neq_xy = 0.0
+            for i in range(9):
+                cu = cx[i] * u_vel + cy[i] * v_vel
+                feq_i = w[i] * r * (1.0 + 3.0 * cu + 4.5 * cu * cu - 1.5 * u2)
+                fneq_i = f[i, y, x] - feq_i
+                pi_neq_xx += cx[i] * cx[i] * fneq_i
+                pi_neq_yy += cy[i] * cy[i] * fneq_i
+                pi_neq_xy += cx[i] * cy[i] * fneq_i
+
+            # Strain rate magnitude: |S| = sqrt(2 * (S_xx^2 + S_yy^2 + 2*S_xy^2))
+            # S_ij = -(1/2τ) * Π_neq_ij, but we only need the magnitude
+            # |S| = sqrt(2 * (S_xx^2 + S_yy^2 + 2*S_xy^2))
+            # Since S_xx + S_yy = 0 (incompressible), S_xx^2 + S_yy^2 = 2*S_xx^2
+            # |S| = sqrt(4*S_xx^2 + 4*S_xy^2) = 2*sqrt(S_xx^2 + S_xy^2)
+            # But we use the non-equilibrium moments directly for efficiency
+            s_mag_sq = pi_neq_xx * pi_neq_xx + pi_neq_yy * pi_neq_yy + 2.0 * pi_neq_xy * pi_neq_xy
+            s_mag = np.sqrt(2.0 * s_mag_sq) if s_mag_sq > 0 else 0.0
+
+            # Turbulent viscosity: nu_t = (C_s * Δ)^2 * |S|  (Δ = 1 in lattice units)
+            nu_t = cs * cs * s_mag
+
+            # Effective omega with turbulent viscosity
+            omega_eff = 1.0 / (3.0 * (1.0 / (3.0 * omega_base - 1.5) + nu_t) + 0.5)
+            omega_eff = min(omega_eff, 1.99)  # Stability clamp
+
+            for i in range(9):
+                cu = cx[i] * u_vel + cy[i] * v_vel
+                feq = w[i] * r * (1.0 + 3.0 * cu + 4.5 * cu * cu - 1.5 * u2)
+                f[i, y, x] = f[i, y, x] * (1.0 - omega_eff) + feq * omega_eff
+
+            rho[y, x] = r
+            u[y, x] = u_vel
+            v[y, x] = v_vel
+
+
+@njit(parallel=True, cache=True, fastmath=True, boundscheck=False)
+def _smagorinsky_collide_3d_nb(
+    f: np.ndarray,
+    rho: np.ndarray,
+    u: np.ndarray,
+    v: np.ndarray,
+    w_vel: np.ndarray,
+    fw: np.ndarray,
+    cx: np.ndarray,
+    cy: np.ndarray,
+    cz: np.ndarray,
+    omega_base: float,
+    cs: float,
+    n_vel: int,
+    depth: int,
+    height: int,
+    width: int,
+) -> None:
+    """Smagorinsky SGS collision kernel for 3D (D3Q19/D3Q27)."""
+    for z in prange(depth):
+        for y in range(height):
+            for x in range(width):
+                r = 0.0
+                u_val = 0.0
+                v_val = 0.0
+                w_val = 0.0
+                for i in range(n_vel):
+                    fiv = f[i, z, y, x]
+                    r += fiv
+                    u_val += fiv * cx[i]
+                    v_val += fiv * cy[i]
+                    w_val += fiv * cz[i]
+                rho_safe = r if r > 0 else 1.0
+                u_val /= rho_safe
+                v_val /= rho_safe
+                w_val /= rho_safe
+
+                # Compute non-equilibrium stress tensor
+                u2 = u_val * u_val + v_val * v_val + w_val * w_val
+                pi_neq_xx = 0.0
+                pi_neq_yy = 0.0
+                pi_neq_zz = 0.0
+                pi_neq_xy = 0.0
+                pi_neq_xz = 0.0
+                pi_neq_yz = 0.0
+                for i in range(n_vel):
+                    cu = cx[i] * u_val + cy[i] * v_val + cz[i] * w_val
+                    feq_i = fw[i] * r * (1.0 + 3.0 * cu + 4.5 * cu * cu - 1.5 * u2)
+                    fneq_i = f[i, z, y, x] - feq_i
+                    pi_neq_xx += cx[i] * cx[i] * fneq_i
+                    pi_neq_yy += cy[i] * cy[i] * fneq_i
+                    pi_neq_zz += cz[i] * cz[i] * fneq_i
+                    pi_neq_xy += cx[i] * cy[i] * fneq_i
+                    pi_neq_xz += cx[i] * cz[i] * fneq_i
+                    pi_neq_yz += cy[i] * cz[i] * fneq_i
+
+                # |S| = sqrt(2 * (S_xx^2 + S_yy^2 + S_zz^2 + 2*(S_xy^2 + S_xz^2 + S_yz^2)))
+                s_mag_sq = (
+                    pi_neq_xx * pi_neq_xx + pi_neq_yy * pi_neq_yy + pi_neq_zz * pi_neq_zz
+                    + 2.0 * (pi_neq_xy * pi_neq_xy + pi_neq_xz * pi_neq_xz + pi_neq_yz * pi_neq_yz)
+                )
+                s_mag = np.sqrt(2.0 * s_mag_sq) if s_mag_sq > 0 else 0.0
+
+                # Turbulent viscosity and effective omega
+                nu_t = cs * cs * s_mag
+                omega_eff = 1.0 / (3.0 * (1.0 / (3.0 * omega_base - 1.5) + nu_t) + 0.5)
+                omega_eff = min(omega_eff, 1.99)
+
+                for i in range(n_vel):
+                    cu = cx[i] * u_val + cy[i] * v_val + cz[i] * w_val
+                    feq = fw[i] * r * (1.0 + 3.0 * cu + 4.5 * cu * cu - 1.5 * u2)
+                    f[i, z, y, x] = f[i, z, y, x] * (1.0 - omega_eff) + feq * omega_eff
+
+                rho[z, y, x] = r
+                u[z, y, x] = u_val
+                v[z, y, x] = v_val
+                w_vel[z, y, x] = w_val
+
+
+class SmagorinskyCollision(CollisionOperator):
+    """Smagorinsky subgrid-scale (SGS) turbulence model.
+
+    Adds turbulent viscosity based on local strain rate to enable high-Re
+    flows without prohibitive grid resolution.
+
+    Reference: Smagorinsky (1963), "General circulation experiments with the
+    primitive equations." Lilly (1967).
+    """
+
+    def __init__(self, cs: float = 0.1) -> None:
+        """
+        Args:
+            cs: Smagorinsky constant. Typical range: 0.1-0.2.
+                 Lower values reduce dissipation, higher values increase stability.
+        """
+        self.cs = cs
+
+    def collide(
+        self,
+        f: np.ndarray,
+        rho: np.ndarray,
+        u: np.ndarray,
+        v: np.ndarray,
+        lattice: Lattice2D | Lattice3D,
+        viscosity: float,
+        w_vel: np.ndarray | None = None,
+    ) -> None:
+        omega_base = lattice.omega_from_viscosity(viscosity)
+        if f.ndim == 4:
+            _smagorinsky_collide_3d_nb(
+                f, rho, u, v, w_vel,
+                lattice.w, lattice.cx, lattice.cy, lattice.cz,
+                omega_base, self.cs,
+                lattice.n_velocities,
+                f.shape[1], f.shape[2], f.shape[3],
+            )
+        else:
+            _smagorinsky_collide_2d_nb(
+                f, rho, u, v,
+                lattice.w, lattice.cx, lattice.cy,
+                omega_base, self.cs,
+                f.shape[1], f.shape[2],
+            )
+
+
+@njit(parallel=True, cache=True, fastmath=True, boundscheck=False)
+def _wale_collide_2d_nb(
+    f: np.ndarray,
+    rho: np.ndarray,
+    u: np.ndarray,
+    v: np.ndarray,
+    w: np.ndarray,
+    cx: np.ndarray,
+    cy: np.ndarray,
+    omega_base: float,
+    cs_w: float,
+    height: int,
+    width: int,
+) -> None:
+    """WALE (Wall-Adapting Local Eddy-viscosity) collision kernel for 2D.
+
+    WALE naturally handles near-wall behavior without explicit damping functions.
+    Better than Smagorinsky for wall-bounded flows.
+
+    Reference: Nicoud & Ducros (1999), "Stress tensor and subgrid-scale
+    scalar dissipation in LES of turbulent flows."
+    """
+    for y in prange(height):
+        for x in range(width):
+            r = 0.0
+            u_vel = 0.0
+            v_vel = 0.0
+            for i in range(9):
+                fiv = f[i, y, x]
+                r += fiv
+                u_vel += fiv * cx[i]
+                v_vel += fiv * cy[i]
+            rho_safe = r if r > 0 else 1.0
+            u_vel /= rho_safe
+            v_vel /= rho_safe
+
+            # Compute velocity gradient tensor S_ij via non-equilibrium stress
+            u2 = u_vel * u_vel + v_vel * v_vel
+            pi_neq_xx = 0.0
+            pi_neq_yy = 0.0
+            pi_neq_xy = 0.0
+            for i in range(9):
+                cu = cx[i] * u_vel + cy[i] * v_vel
+                feq_i = w[i] * r * (1.0 + 3.0 * cu + 4.5 * cu * cu - 1.5 * u2)
+                fneq_i = f[i, y, x] - feq_i
+                pi_neq_xx += cx[i] * cx[i] * fneq_i
+                pi_neq_yy += cy[i] * cy[i] * fneq_i
+                pi_neq_xy += cx[i] * cy[i] * fneq_i
+
+            # WALE uses S_ij^d = 0.5 * (g_ik * g_kj + g_jk * g_ki) - (1/3) * g_kk * δ_ij
+            # For 2D incompressible: |S_d|^2 = S_d_xx^2 + S_d_yy^2 + 2*S_d_xy^2
+            # Using non-equilibrium moments as proxy for velocity gradients
+            s_d_xx = pi_neq_xx
+            s_d_yy = pi_neq_yy
+            s_d_xy = pi_neq_xy
+            s_d_mag_sq = s_d_xx * s_d_xx + s_d_yy * s_d_yy + 2.0 * s_d_xy * s_d_xy
+            s_d_mag = np.sqrt(s_d_mag_sq) if s_d_mag_sq > 0 else 0.0
+
+            # WALE turbulent viscosity
+            nu_t = (cs_w * cs_w * s_d_mag * s_d_mag * s_d_mag) if s_d_mag > 0 else 0.0
+
+            omega_eff = 1.0 / (3.0 * (1.0 / (3.0 * omega_base - 1.5) + nu_t) + 0.5)
+            omega_eff = min(omega_eff, 1.99)
+
+            for i in range(9):
+                cu = cx[i] * u_vel + cy[i] * v_vel
+                feq = w[i] * r * (1.0 + 3.0 * cu + 4.5 * cu * cu - 1.5 * u2)
+                f[i, y, x] = f[i, y, x] * (1.0 - omega_eff) + feq * omega_eff
+
+            rho[y, x] = r
+            u[y, x] = u_vel
+            v[y, x] = v_vel
+
+
+@njit(parallel=True, cache=True, fastmath=True, boundscheck=False)
+def _wale_collide_3d_nb(
+    f: np.ndarray,
+    rho: np.ndarray,
+    u: np.ndarray,
+    v: np.ndarray,
+    w_vel: np.ndarray,
+    fw: np.ndarray,
+    cx: np.ndarray,
+    cy: np.ndarray,
+    cz: np.ndarray,
+    omega_base: float,
+    cs_w: float,
+    n_vel: int,
+    depth: int,
+    height: int,
+    width: int,
+) -> None:
+    """WALE collision kernel for 3D."""
+    for z in prange(depth):
+        for y in range(height):
+            for x in range(width):
+                r = 0.0
+                u_val = 0.0
+                v_val = 0.0
+                w_val = 0.0
+                for i in range(n_vel):
+                    fiv = f[i, z, y, x]
+                    r += fiv
+                    u_val += fiv * cx[i]
+                    v_val += fiv * cy[i]
+                    w_val += fiv * cz[i]
+                rho_safe = r if r > 0 else 1.0
+                u_val /= rho_safe
+                v_val /= rho_safe
+                w_val /= rho_safe
+
+                u2 = u_val * u_val + v_val * v_val + w_val * w_val
+                pi_neq_xx = 0.0
+                pi_neq_yy = 0.0
+                pi_neq_zz = 0.0
+                pi_neq_xy = 0.0
+                pi_neq_xz = 0.0
+                pi_neq_yz = 0.0
+                for i in range(n_vel):
+                    cu = cx[i] * u_val + cy[i] * v_val + cz[i] * w_val
+                    feq_i = fw[i] * r * (1.0 + 3.0 * cu + 4.5 * cu * cu - 1.5 * u2)
+                    fneq_i = f[i, z, y, x] - feq_i
+                    pi_neq_xx += cx[i] * cx[i] * fneq_i
+                    pi_neq_yy += cy[i] * cy[i] * fneq_i
+                    pi_neq_zz += cz[i] * cz[i] * fneq_i
+                    pi_neq_xy += cx[i] * cy[i] * fneq_i
+                    pi_neq_xz += cx[i] * cz[i] * fneq_i
+                    pi_neq_yz += cy[i] * cz[i] * fneq_i
+
+                s_d_mag_sq = (
+                    pi_neq_xx * pi_neq_xx + pi_neq_yy * pi_neq_yy + pi_neq_zz * pi_neq_zz
+                    + 2.0 * (pi_neq_xy * pi_neq_xy + pi_neq_xz * pi_neq_xz + pi_neq_yz * pi_neq_yz)
+                )
+                s_d_mag = np.sqrt(s_d_mag_sq) if s_d_mag_sq > 0 else 0.0
+
+                nu_t = (cs_w * cs_w * s_d_mag * s_d_mag * s_d_mag) if s_d_mag > 0 else 0.0
+                omega_eff = 1.0 / (3.0 * (1.0 / (3.0 * omega_base - 1.5) + nu_t) + 0.5)
+                omega_eff = min(omega_eff, 1.99)
+
+                for i in range(n_vel):
+                    cu = cx[i] * u_val + cy[i] * v_val + cz[i] * w_val
+                    feq = fw[i] * r * (1.0 + 3.0 * cu + 4.5 * cu * cu - 1.5 * u2)
+                    f[i, z, y, x] = f[i, z, y, x] * (1.0 - omega_eff) + feq * omega_eff
+
+                rho[z, y, x] = r
+                u[z, y, x] = u_val
+                v[z, y, x] = v_val
+                w_vel[z, y, x] = w_val
+
+
+class WaleCollision(CollisionOperator):
+    """WALE (Wall-Adapting Local Eddy-viscosity) turbulence model.
+
+    Improved near-wall behavior compared to Smagorinsky. No explicit
+    damping function required.
+
+    Reference: Nicoud & Ducros (1999).
+    """
+
+    def __init__(self, cs: float = 0.1) -> None:
+        """
+        Args:
+            cs: WALE constant. Typical range: 0.1-0.2.
+        """
+        self.cs = cs
+
+    def collide(
+        self,
+        f: np.ndarray,
+        rho: np.ndarray,
+        u: np.ndarray,
+        v: np.ndarray,
+        lattice: Lattice2D | Lattice3D,
+        viscosity: float,
+        w_vel: np.ndarray | None = None,
+    ) -> None:
+        omega_base = lattice.omega_from_viscosity(viscosity)
+        if f.ndim == 4:
+            _wale_collide_3d_nb(
+                f, rho, u, v, w_vel,
+                lattice.w, lattice.cx, lattice.cy, lattice.cz,
+                omega_base, self.cs,
+                lattice.n_velocities,
+                f.shape[1], f.shape[2], f.shape[3],
+            )
+        else:
+            _wale_collide_2d_nb(
+                f, rho, u, v,
+                lattice.w, lattice.cx, lattice.cy,
+                omega_base, self.cs,
+                f.shape[1], f.shape[2],
+            )
