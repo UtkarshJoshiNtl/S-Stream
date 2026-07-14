@@ -1,0 +1,84 @@
+# Third-Party Licenses
+
+S-Stream depends on the following open-source packages. Their licenses are
+included below for compliance and attribution purposes.
+
+## PySide6 (LGPL v3)
+
+PySide6 is licensed under the GNU Lesser General Public License v3 (LGPL-3.0).
+S-Stream dynamically links to PySide6 via pip; users may replace PySide6 with
+a compatible version. No PySide6 source code is modified or statically linked.
+
+- Homepage: https://doc.qt.io/qtforpython-6/
+- License: https://www.gnu.org/licenses/lgpl-3.0.html
+
+## NumPy (BSD-3-Clause)
+
+Copyright (c) 2005-2024, NumPy Developers. All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+1. Redistributions of source code must retain the above copyright notice,
+   this list of conditions and the following disclaimer.
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+3. Neither the name of the copyright holder nor the names of its contributors
+   may be used to endorse or promote products derived from this software
+   without specific prior written permission.
+
+- Homepage: https://numpy.org
+
+## Numba (BSD-2-Clause)
+
+Copyright (c) 2012-2024, Anaconda, Inc. and Numba Contributors. All rights reserved.
+
+- Homepage: https://numba.pydata.org
+
+## PyOpenGL (BSD-3-Clause)
+
+- Homepage: https://pyopengl.sourceforge.net
+
+## pyqtgraph (MIT)
+
+Copyright (c) 2012-2024, pyqtgraph authors. All rights reserved.
+
+- Homepage: https://www.pyqtgraph.org
+
+## imageio (BSD-2-Clause)
+
+- Homepage: https://imageio.readthedocs.io
+
+## imageio-ffmpeg (BSD-2-Clause)
+
+- Homepage: https://github.com/imageio/imageio-ffmpeg
+
+## trimesh (MIT)
+
+- Homepage: https://trimesh.org
+
+## CuPy (MIT)
+
+- Homepage: https://cupy.dev
+
+## PyTorch (BSD-3-Clause)
+
+Copyright (c) 2016-2024, Facebook, Inc. and its affiliates. All rights reserved.
+
+- Homepage: https://pytorch.org
+
+## Lettuce (MIT)
+
+- Homepage: https://lettuce-project.github.io
+
+## matplotlib (PSF-Based / BSD)
+
+- Homepage: https://matplotlib.org
+
+## FastAPI (MIT)
+
+- Homepage: https://fastapi.tiangolo.com
+
+## Uvicorn (BSD-3-Clause)
+
+- Homepage: https://www.uvicorn.org

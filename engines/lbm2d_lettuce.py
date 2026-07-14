@@ -1,7 +1,7 @@
 """Lettuce (PyTorch) GPU backend for S-Stream.
 
 This engine provides an alternative GPU backend using Lettuce's PyTorch-based LBM.
-Lettuce is MIT licensed: https://github.comlettuce-project/lettuce
+Lettuce is MIT licensed: https://github.com/lettuce-project/lettuce
 
 Legal Reference: Can incorporate directly with attribution (MIT license).
 """
