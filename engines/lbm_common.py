@@ -79,7 +79,8 @@ class Lattice3D:
         cu = (
             self.cx[:, np.newaxis, np.newaxis, np.newaxis] * u[np.newaxis, :, :, :]
             + self.cy[:, np.newaxis, np.newaxis, np.newaxis] * v[np.newaxis, :, :, :]
-            + self.cz[:, np.newaxis, np.newaxis, np.newaxis] * w_vel[np.newaxis, :, :, :]
+            + self.cz[:, np.newaxis, np.newaxis, np.newaxis]
+            * w_vel[np.newaxis, :, :, :]
         )
         u2 = u**2 + v**2 + w_vel**2
         return (
@@ -186,9 +187,7 @@ def _build_d3q19() -> Lattice3D:
     opp[15], opp[16] = 16, 15  # (0,1,1) ↔ (0,-1,-1)
     opp[17], opp[18] = 18, 17  # (0,1,-1) ↔ (0,-1,1)
 
-    return Lattice3D(
-        w=w, cx=cx, cy=cy, cz=cz, opp=opp, n_velocities=19
-    )
+    return Lattice3D(w=w, cx=cx, cy=cy, cz=cz, opp=opp, n_velocities=19)
 
 
 def _build_d3q27() -> Lattice3D:
@@ -231,9 +230,7 @@ def _build_d3q27() -> Lattice3D:
         j = velocities.index(target)
         opp[i] = j
 
-    return Lattice3D(
-        w=w, cx=cx, cy=cy, cz=cz, opp=opp, n_velocities=27
-    )
+    return Lattice3D(w=w, cx=cx, cy=cy, cz=cz, opp=opp, n_velocities=27)
 
 
 LATTICE_3D_Q19 = _build_d3q19()

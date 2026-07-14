@@ -16,8 +16,7 @@ class BoundaryCondition(ABC):
         obstacles: np.ndarray,
         lattice: Lattice2D,
         **kwargs,
-    ) -> None:
-        ...
+    ) -> None: ...
 
 
 @njit(parallel=True)
@@ -47,9 +46,7 @@ class BounceBack(BoundaryCondition):
         lattice: Lattice2D,
         **kwargs,
     ) -> None:
-        _bounce_back_nb(
-            f, obstacles, lattice.opp, f.shape[1], f.shape[2]
-        )
+        _bounce_back_nb(f, obstacles, lattice.opp, f.shape[1], f.shape[2])
 
 
 class EquilibriumInflow(BoundaryCondition):

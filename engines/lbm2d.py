@@ -309,16 +309,14 @@ class LBM2D(SimEngine, SmokeMixin, ThermalMixin):
             vort = dvdx - dudy
             cur_max = max(float(np.max(np.abs(vort))), 0.001)
             self._ema_vort_max = (1 - a) * self._ema_vort_max + a * cur_max
-            return np.clip(
-                vort / self._ema_vort_max * 0.5 + 0.5, 0, 1
-            ).astype(np.float32)
+            return np.clip(vort / self._ema_vort_max * 0.5 + 0.5, 0, 1).astype(
+                np.float32
+            )
         if name == "pressure":
             p = (self.rho - 1.0).astype(np.float32)
             cur_max = max(float(np.max(np.abs(p))), 0.001)
             self._ema_pres_max = (1 - a) * self._ema_pres_max + a * cur_max
-            return np.clip(
-                p / self._ema_pres_max * 0.5 + 0.5, 0, 1
-            ).astype(np.float32)
+            return np.clip(p / self._ema_pres_max * 0.5 + 0.5, 0, 1).astype(np.float32)
         if name == "density":
             lo, hi = float(np.min(self.rho)), float(np.max(self.rho))
             if hi - lo < 0.001:
@@ -389,5 +387,3 @@ class LBM2D(SimEngine, SmokeMixin, ThermalMixin):
                 tmp_bot = self.f[i, -1, :].copy()
                 self.f[i, -1, :] = self.f[opp_i, -1, :]
                 self.f[opp_i, -1, :] = tmp_bot
-
-

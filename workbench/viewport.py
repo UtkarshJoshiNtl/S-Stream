@@ -491,9 +491,7 @@ class Viewport(QOpenGLWidget):
             cx, cy = self._grid_to_widget(obs.x, obs.y)
             rx = obs.rx * s
             ry = obs.ry * s
-            painter.drawEllipse(
-                int(cx - rx), int(cy - ry), int(rx * 2), int(ry * 2)
-            )
+            painter.drawEllipse(int(cx - rx), int(cy - ry), int(rx * 2), int(ry * 2))
             painter.setFont(label_font)
             painter.drawText(int(cx + rx + 4), int(cy + 4), obs.name)
         elif isinstance(obs, STLObstacle):
@@ -509,9 +507,7 @@ class Viewport(QOpenGLWidget):
             cx, cy = self._grid_to_widget(obs.x, obs.y)
             painter.setFont(label_font)
             painter.drawText(int(cx + 10), int(cy), obs.name)
-            painter.drawText(
-                int(cx + 10), int(cy + 14), f"NACA {obs.naca_code}"
-            )
+            painter.drawText(int(cx + 10), int(cy + 14), f"NACA {obs.naca_code}")
         elif isinstance(obs, ChannelObstacle):
             x1, y1 = self._grid_to_widget(obs.x, obs.y)
             x2, y2 = self._grid_to_widget(obs.x + obs.w, obs.y + obs.h)
@@ -631,7 +627,7 @@ class Viewport(QOpenGLWidget):
                 + vel[iy + 1, ix, 1] * (1 - fx) * fy
                 + vel[iy + 1, ix + 1, 1] * fx * fy
             )
-            speed = np.sqrt(u_interp ** 2 + v_interp ** 2)
+            speed = np.sqrt(u_interp**2 + v_interp**2)
 
             too_slow = speed < 0.0001
             oob = (cur_x < 0) | (cur_x >= w - 1) | (cur_y < 0) | (cur_y >= h - 1)
@@ -736,17 +732,24 @@ class Viewport(QOpenGLWidget):
                 if idx == 0 or idx == 15:
                     continue
                 edges = self._ms_edges(idx, level, tl, tr, br, bl, x, y)
-                for (ex1, ey1, ex2, ey2) in edges:
+                for ex1, ey1, ex2, ey2 in edges:
                     painter.drawLine(
-                        int(ex1 * sw), int(ey1 * sh),
-                        int(ex2 * sw), int(ey2 * sh),
+                        int(ex1 * sw),
+                        int(ey1 * sh),
+                        int(ex2 * sw),
+                        int(ey2 * sh),
                     )
 
     @staticmethod
     def _ms_edges(
-        idx: int, level: float,
-        tl: float, tr: float, br: float, bl: float,
-        x: float, y: float,
+        idx: int,
+        level: float,
+        tl: float,
+        tr: float,
+        br: float,
+        bl: float,
+        x: float,
+        y: float,
     ) -> list[tuple[float, float, float, float]]:
         def lerp(a: float, b: float) -> float:
             d = b - a
@@ -797,7 +800,7 @@ class Viewport(QOpenGLWidget):
             force_x, force_y = self._estimate_obstacle_force(
                 vel, obs, cx, cy, cw, ch, u_inflow
             )
-            magnitude = math.sqrt(force_x ** 2 + force_y ** 2)
+            magnitude = math.sqrt(force_x**2 + force_y**2)
             if magnitude < 1e-6:
                 continue
             px = (cx + cw / 2) * sw
@@ -832,15 +835,14 @@ class Viewport(QOpenGLWidget):
     @staticmethod
     def _obstacle_bounds(obs: ObstacleSpec) -> tuple[int, int, int, int]:
         has_rect = (
-            hasattr(obs, "x") and hasattr(obs, "y")
-            and hasattr(obs, "w") and hasattr(obs, "h")
+            hasattr(obs, "x")
+            and hasattr(obs, "y")
+            and hasattr(obs, "w")
+            and hasattr(obs, "h")
         )
         if has_rect:
             return obs.x, obs.y, obs.w, obs.h
-        has_circle = (
-            hasattr(obs, "x") and hasattr(obs, "y")
-            and hasattr(obs, "radius")
-        )
+        has_circle = hasattr(obs, "x") and hasattr(obs, "y") and hasattr(obs, "radius")
         if has_circle:
             r = obs.radius
             return obs.x - r, obs.y - r, 2 * r, 2 * r
@@ -850,7 +852,10 @@ class Viewport(QOpenGLWidget):
     def _estimate_obstacle_force(
         vel: np.ndarray,
         obs: np.ndarray,
-        cx: int, cy: int, cw: int, ch: int,
+        cx: int,
+        cy: int,
+        cw: int,
+        ch: int,
         u_inflow: float,
     ) -> tuple[float, float]:
         h, w = vel.shape[:2]
@@ -881,8 +886,11 @@ class Viewport(QOpenGLWidget):
 
         h, w = (
             self.scene.height,
-            self.scene.width if self.scene
-            else (self.sim.grid_shape[-1], self.sim.grid_shape[-2])
+            (
+                self.scene.width
+                if self.scene
+                else (self.sim.grid_shape[-1], self.sim.grid_shape[-2])
+            ),
         )
         sw = self.width() / w
         sh = self.height() / h

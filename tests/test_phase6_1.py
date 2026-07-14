@@ -1,4 +1,5 @@
 """Tests for Phase 6.1: Multi-Component Shan-Chen LBM Engine."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -20,8 +21,14 @@ class TestMultiComponentInit:
 
     def test_custom_params(self) -> None:
         sim = LBM2DMultiComponent(
-            width=32, height=32, g11=-3.0, g22=-4.0, g12=6.0,
-            sigma=0.1, g_adhesion=-2.0, droplet_radius=5,
+            width=32,
+            height=32,
+            g11=-3.0,
+            g22=-4.0,
+            g12=6.0,
+            sigma=0.1,
+            g_adhesion=-2.0,
+            droplet_radius=5,
         )
         assert sim.g11 == -3.0
         assert sim.g22 == -4.0

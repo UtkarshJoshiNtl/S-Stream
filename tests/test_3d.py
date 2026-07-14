@@ -154,7 +154,8 @@ class TestCollision3D:
                 np.zeros((16, 16, 16), dtype=np.float32),
                 np.zeros((16, 16, 16), dtype=np.float32),
                 np.zeros((16, 16, 16), dtype=np.float32),
-                LATTICE_3D_Q19, 0.02,
+                LATTICE_3D_Q19,
+                0.02,
                 w_vel=np.zeros((16, 16, 16), dtype=np.float32),
             )
 
@@ -166,7 +167,8 @@ class TestCollision3D:
                 np.zeros((16, 16, 16), dtype=np.float32),
                 np.zeros((16, 16, 16), dtype=np.float32),
                 np.zeros((16, 16, 16), dtype=np.float32),
-                LATTICE_3D_Q19, 0.02,
+                LATTICE_3D_Q19,
+                0.02,
                 w_vel=np.zeros((16, 16, 16), dtype=np.float32),
             )
 

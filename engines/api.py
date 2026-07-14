@@ -19,6 +19,7 @@ Endpoints:
     POST /obstacle            — Add obstacle
     DELETE /obstacles         — Clear all obstacles
 """
+
 from __future__ import annotations
 
 import base64
@@ -32,6 +33,7 @@ try:
     from fastapi import FastAPI, HTTPException, Query
     from fastapi.responses import Response
     from pydantic import BaseModel
+
     HAS_FASTAPI = True
 except ImportError:
     HAS_FASTAPI = False
@@ -107,7 +109,9 @@ def create_app(sim: SimEngine) -> Any:
         }
 
     @app.get("/field")
-    def get_field(type: str = Query("speed", description="Field name")) -> dict[str, Any]:
+    def get_field(
+        type: str = Query("speed", description="Field name")
+    ) -> dict[str, Any]:
         try:
             field = sim.get_field(type)
         except ValueError as e:

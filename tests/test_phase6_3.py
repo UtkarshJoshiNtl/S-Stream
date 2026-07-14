@@ -1,4 +1,5 @@
 """Tests for Phase 6.3: Lagrangian Particle Tracer."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -137,7 +138,7 @@ class TestParticleAdvection:
         y_grid, x_grid = np.mgrid[:size, :size]
         dx = x_grid - cx
         dy = y_grid - cy
-        r = np.sqrt(dx ** 2 + dy ** 2) + 1e-6
+        r = np.sqrt(dx**2 + dy**2) + 1e-6
         speed = 0.2
         vel[:, :, 0] = -speed * dy / r
         vel[:, :, 1] = speed * dx / r

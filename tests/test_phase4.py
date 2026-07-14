@@ -61,7 +61,15 @@ class TestEllipseObstacle:
 
     def test_ellipse_serialization(self) -> None:
         obs = EllipseObstacle(name="E", x=32, y=32, rx=10, ry=5, rotation=45.0)
-        d = {"type": "ellipse", "name": "E", "x": 32, "y": 32, "rx": 10, "ry": 5, "rotation": 45.0}
+        d = {
+            "type": "ellipse",
+            "name": "E",
+            "x": 32,
+            "y": 32,
+            "rx": 10,
+            "ry": 5,
+            "rotation": 45.0,
+        }
         restored = dict_to_scene(
             {
                 "width": 64,
@@ -106,9 +114,7 @@ class TestSTLObstacle:
             "offset_y": 20,
             "filled": True,
         }
-        restored = dict_to_scene(
-            {"width": 64, "height": 64, "obstacles": [d]}
-        )
+        restored = dict_to_scene({"width": 64, "height": 64, "obstacles": [d]})
         assert isinstance(restored.obstacles[0], STLObstacle)
         assert restored.obstacles[0].scale == 2.0
         assert restored.obstacles[0].path == "/tmp/test.stl"
@@ -171,9 +177,7 @@ class TestImageObstacle:
             "scale_x": 2.0,
             "scale_y": 2.0,
         }
-        restored = dict_to_scene(
-            {"width": 64, "height": 64, "obstacles": [d]}
-        )
+        restored = dict_to_scene({"width": 64, "height": 64, "obstacles": [d]})
         assert isinstance(restored.obstacles[0], ImageObstacle)
         assert restored.obstacles[0].threshold == 200
         assert restored.obstacles[0].invert is True
@@ -222,16 +226,16 @@ class TestAirfoilObstacle:
             "angle_of_attack": 5.0,
             "naca_code": "2412",
         }
-        restored = dict_to_scene(
-            {"width": 64, "height": 64, "obstacles": [d]}
-        )
+        restored = dict_to_scene({"width": 64, "height": 64, "obstacles": [d]})
         assert isinstance(restored.obstacles[0], AirfoilObstacle)
         assert restored.obstacles[0].naca_code == "2412"
 
 
 class TestChannelObstacle:
     def test_channel_creates_obstacle(self, sim: LBM2D) -> None:
-        obs = ChannelObstacle(name="Ch", x=10, y=10, w=40, h=30, inlet_ratio=0.5, outlet_ratio=0.5)
+        obs = ChannelObstacle(
+            name="Ch", x=10, y=10, w=40, h=30, inlet_ratio=0.5, outlet_ratio=0.5
+        )
         obs.apply(sim)
         mask = sim.get_obstacles()
         assert mask.any()
@@ -267,9 +271,7 @@ class TestChannelObstacle:
             "inlet_ratio": 0.6,
             "outlet_ratio": 1.0,
         }
-        restored = dict_to_scene(
-            {"width": 64, "height": 64, "obstacles": [d]}
-        )
+        restored = dict_to_scene({"width": 64, "height": 64, "obstacles": [d]})
         assert isinstance(restored.obstacles[0], ChannelObstacle)
         assert restored.obstacles[0].inlet_ratio == 0.6
 
@@ -284,7 +286,9 @@ class TestLatticeObstacle:
         assert mask.sum() < total_cells
 
     def test_lattice_has_holes(self, sim: LBM2D) -> None:
-        obs = LatticeObstacle(name="Lat", x=10, y=10, w=32, h=32, cell_size=8, wall_thickness=1)
+        obs = LatticeObstacle(
+            name="Lat", x=10, y=10, w=32, h=32, cell_size=8, wall_thickness=1
+        )
         obs.apply(sim)
         mask = sim.get_obstacles()
         assert not mask[14, 14]
@@ -300,9 +304,7 @@ class TestLatticeObstacle:
             "cell_size": 8,
             "wall_thickness": 2,
         }
-        restored = dict_to_scene(
-            {"width": 64, "height": 64, "obstacles": [d]}
-        )
+        restored = dict_to_scene({"width": 64, "height": 64, "obstacles": [d]})
         assert isinstance(restored.obstacles[0], LatticeObstacle)
         assert restored.obstacles[0].wall_thickness == 2
 

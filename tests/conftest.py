@@ -1,4 +1,5 @@
 """Shared test fixtures and markers for S-Stream test suite."""
+
 from __future__ import annotations
 
 import pytest

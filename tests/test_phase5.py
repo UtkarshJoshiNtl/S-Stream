@@ -1,4 +1,5 @@
 """Tests for Phase 5: Engine-Agnostic Colormap System and Field Annotations."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -11,6 +12,7 @@ from resources.colormaps import FIELD_REGISTRY, CORE_FIELDS, MODE_TO_CMAP, CMAP_
 
 try:
     from workbench.viewport import Viewport
+
     HAS_VIEWPORT = True
 except ImportError:
     HAS_VIEWPORT = False
@@ -20,6 +22,7 @@ except ImportError:
 # Field Registry
 # ---------------------------------------------------------------------------
 
+
 class TestFieldRegistry:
     def test_core_fields_in_registry(self) -> None:
         for name in CORE_FIELDS:
@@ -28,7 +31,9 @@ class TestFieldRegistry:
     def test_all_registry_fields_have_required_attributes(self) -> None:
         for name, info in FIELD_REGISTRY.items():
             assert info.label, f"{name} missing label"
-            assert info.colormap in CMAP_LUTS, f"{name} colormap LUT {info.colormap} not in CMAP_LUTS"
+            assert (
+                info.colormap in CMAP_LUTS
+            ), f"{name} colormap LUT {info.colormap} not in CMAP_LUTS"
             assert info.tooltip, f"{name} missing tooltip"
 
     def test_mode_to_cmap_covers_all_registry_fields(self) -> None:
@@ -39,6 +44,7 @@ class TestFieldRegistry:
 # ---------------------------------------------------------------------------
 # LBM2D get_field / get_field_names
 # ---------------------------------------------------------------------------
+
 
 class TestLBM2DFieldAccess:
     @pytest.fixture()
@@ -91,6 +97,7 @@ class TestLBM2DFieldAccess:
 # LBM3D get_field / get_field_names
 # ---------------------------------------------------------------------------
 
+
 class TestLBM3DFieldAccess:
     @pytest.fixture()
     def sim(self) -> LBM3D:
@@ -133,6 +140,7 @@ class TestLBM3DFieldAccess:
 # LBM2DLiquid get_field / get_field_names
 # ---------------------------------------------------------------------------
 
+
 class TestLiquidFieldAccess:
     @pytest.fixture()
     def sim(self) -> LBM2DLiquid:
@@ -168,6 +176,7 @@ class TestLiquidFieldAccess:
 # Marching squares contour helper
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.skipif(not HAS_VIEWPORT, reason="PySide6 not available")
 class TestMarchingSquares:
     def test_contour_edges_for_all_indices(self) -> None:
@@ -189,6 +198,7 @@ class TestMarchingSquares:
 # ---------------------------------------------------------------------------
 # Field computation consistency
 # ---------------------------------------------------------------------------
+
 
 class TestFieldConsistency:
     def test_vorticity_from_get_field_matches_inline(self) -> None:

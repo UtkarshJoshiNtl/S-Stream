@@ -30,8 +30,7 @@ class SmokeMixin:
         for emitter in self.emitters:
             if is_3d:
                 x, y, z, strength = emitter
-                if (0 <= z < self.depth and 0 <= y < self.height
-                        and 0 <= x < self.width):
+                if 0 <= z < self.depth and 0 <= y < self.height and 0 <= x < self.width:
                     self.smoke[z, y, x] += strength
             else:
                 x, y, strength = emitter

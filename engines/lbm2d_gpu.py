@@ -180,7 +180,7 @@ class LBM2DGPU(SimEngine, SmokeMixin):
             (self.width + 31) // 32,
             (self.height + 7) // 8,
         )
-        
+
         # Launch compute kernel on compute stream
         with self._stream_compute:
             self._kernel(
@@ -253,5 +253,3 @@ class LBM2DGPU(SimEngine, SmokeMixin):
 
     def add_emitter(self, x: int, y: int, strength: float = 0.05) -> None:
         self.emitters.append((x, y, strength))
-
-

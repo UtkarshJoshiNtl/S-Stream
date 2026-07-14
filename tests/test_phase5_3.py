@@ -1,4 +1,5 @@
 """Tests for Phase 5.3: Guided Setup Wizard."""
+
 from __future__ import annotations
 
 import pytest
@@ -40,8 +41,10 @@ def _build_templates():
             icon="🌀",
             scene=Scene(
                 name="Vortex Shedding",
-                width=256, height=128,
-                viscosity=0.002, u_inflow=0.1,
+                width=256,
+                height=128,
+                viscosity=0.002,
+                u_inflow=0.1,
                 obstacles=[CircleObstacle(name="Cylinder", x=80, y=64, radius=8)],
                 emitters=[EmitterSpec(name="Smoke", x=2, y=64, strength=0.05)],
                 product=SceneProductMeta(
@@ -59,8 +62,10 @@ def _build_templates():
             icon="🔲",
             scene=Scene(
                 name="Lid-Driven Cavity",
-                width=128, height=128,
-                viscosity=0.01, u_inflow=0.0,
+                width=128,
+                height=128,
+                viscosity=0.01,
+                u_inflow=0.0,
                 emitters=[EmitterSpec(name="Smoke", x=2, y=2, strength=0.05)],
                 product=SceneProductMeta(
                     recommended_colormap="speed",
@@ -75,8 +80,10 @@ def _build_templates():
             icon="🌊",
             scene=Scene(
                 name="Channel Flow",
-                width=256, height=64,
-                viscosity=0.01, u_inflow=0.1,
+                width=256,
+                height=64,
+                viscosity=0.01,
+                u_inflow=0.1,
                 emitters=[EmitterSpec(name="Smoke", x=2, y=32, strength=0.06)],
                 product=SceneProductMeta(recommended_colormap="speed"),
             ),
@@ -88,7 +95,8 @@ def _build_templates():
             icon="🎨",
             scene=Scene(
                 name="Blank Canvas",
-                width=128, height=128,
+                width=128,
+                height=128,
                 emitters=[EmitterSpec(name="Inlet", x=2, y=64, strength=0.05)],
             ),
         ),
@@ -99,8 +107,10 @@ def _build_templates():
             icon="⚙️",
             scene=Scene(
                 name="Two Cylinders",
-                width=256, height=128,
-                viscosity=0.002, u_inflow=0.1,
+                width=256,
+                height=128,
+                viscosity=0.002,
+                u_inflow=0.1,
                 obstacles=[
                     CircleObstacle(name="Front", x=80, y=64, radius=8),
                     CircleObstacle(name="Rear", x=140, y=64, radius=8),
@@ -115,7 +125,8 @@ def _build_templates():
             icon="📖",
             scene=Scene(
                 name="What is LBM?",
-                width=128, height=128,
+                width=128,
+                height=128,
                 emitters=[EmitterSpec(name="Smoke", x=2, y=64, strength=0.08)],
                 product=SceneProductMeta(
                     recommended_colormap="smoke",
@@ -181,9 +192,9 @@ class TestTemplateScenes:
         templates, _ = _build_templates()
         for t in templates:
             if t.scene.product.autorun_steps:
-                assert t.scene.product.recommended_colormap, (
-                    f"Template '{t.name}' has autorun but no colormap"
-                )
+                assert (
+                    t.scene.product.recommended_colormap
+                ), f"Template '{t.name}' has autorun but no colormap"
 
     def test_two_cylinders_has_two_obstacles(self) -> None:
         templates, _ = _build_templates()
@@ -226,8 +237,12 @@ class TestWizardTemplate:
             tips: list[str] = field(default_factory=list)
 
         t = WT(
-            name="Test", category="Test", description="Desc",
-            icon="T", scene=Scene(name="Test"), tips=["Tip 1"],
+            name="Test",
+            category="Test",
+            description="Desc",
+            icon="T",
+            scene=Scene(name="Test"),
+            tips=["Tip 1"],
         )
         assert t.name == "Test"
         assert len(t.tips) == 1
@@ -245,7 +260,10 @@ class TestWizardTemplate:
             tips: list[str] = field(default_factory=list)
 
         t = WT(
-            name="Test", category="Test", description="Desc",
-            icon="T", scene=Scene(name="Test"),
+            name="Test",
+            category="Test",
+            description="Desc",
+            icon="T",
+            scene=Scene(name="Test"),
         )
         assert t.tips == []

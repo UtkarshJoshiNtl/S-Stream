@@ -240,7 +240,7 @@ class SimEngine(ABC):
         else:
             return self.plot_field("speed", figsize=figsize, colorbar=colorbar, ax=ax)
 
-        speed = np.sqrt(u ** 2 + v ** 2)
+        speed = np.sqrt(u**2 + v**2)
         if ax is None:
             _, ax = plt.subplots(1, 1, figsize=figsize)
         im = ax.imshow(speed, cmap="coolwarm", origin="lower")
@@ -249,8 +249,15 @@ class SimEngine(ABC):
 
         skip = max(1, min(u.shape[0], u.shape[1]) // 16)
         y_grid, x_grid = np.mgrid[: u.shape[0] : skip, : u.shape[1] : skip]
-        ax.quiver(x_grid, y_grid, u[::skip, ::skip], v[::skip, ::skip],
-                  color="white", alpha=0.7, scale=None)
+        ax.quiver(
+            x_grid,
+            y_grid,
+            u[::skip, ::skip],
+            v[::skip, ::skip],
+            color="white",
+            alpha=0.7,
+            scale=None,
+        )
         ax.set_title("Velocity")
         ax.set_xlabel("x")
         ax.set_ylabel("y")
@@ -295,8 +302,12 @@ class SimEngine(ABC):
             matplotlib Axes object.
         """
         return self.plot_field(
-            "smoke", cmap="gray", title="Smoke", figsize=figsize,
-            colorbar=colorbar, ax=ax,
+            "smoke",
+            cmap="gray",
+            title="Smoke",
+            figsize=figsize,
+            colorbar=colorbar,
+            ax=ax,
         )
 
     def plot_vorticity(
@@ -312,8 +323,12 @@ class SimEngine(ABC):
             matplotlib Axes object.
         """
         return self.plot_field(
-            "vorticity", cmap="RdBu_r", title="Vorticity", figsize=figsize,
-            colorbar=colorbar, ax=ax,
+            "vorticity",
+            cmap="RdBu_r",
+            title="Vorticity",
+            figsize=figsize,
+            colorbar=colorbar,
+            ax=ax,
         )
 
     def _repr_png_(self) -> bytes | None:

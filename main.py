@@ -28,7 +28,8 @@ def main() -> None:
     parser.add_argument("--headless", action="store_true", help="Run headless (no GUI)")
     parser.add_argument("--steps", type=int, default=0, help="Steps if headless")
     parser.add_argument(
-        "--serve", action="store_true",
+        "--serve",
+        action="store_true",
         help="Start REST API server (requires: pip install sstream[api])",
     )
     parser.add_argument("--port", type=int, default=8080, help="API server port")

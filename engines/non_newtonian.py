@@ -191,7 +191,11 @@ def _compute_strain_rate_2d_nb(
                 pi_neq_xy += cx[i] * cy[i] * fneq_i
 
             # Strain rate magnitude
-            s_mag_sq = pi_neq_xx * pi_neq_xx + pi_neq_yy * pi_neq_yy + 2.0 * pi_neq_xy * pi_neq_xy
+            s_mag_sq = (
+                pi_neq_xx * pi_neq_xx
+                + pi_neq_yy * pi_neq_yy
+                + 2.0 * pi_neq_xy * pi_neq_xy
+            )
             strain_rate[y, x] = np.sqrt(2.0 * s_mag_sq) if s_mag_sq > 0 else 0.0
 
 
@@ -244,8 +248,15 @@ def _compute_strain_rate_3d_nb(
                     pi_neq_yz += cy[i] * cz[i] * fneq_i
 
                 s_mag_sq = (
-                    pi_neq_xx * pi_neq_xx + pi_neq_yy * pi_neq_yy + pi_neq_zz * pi_neq_zz
-                    + 2.0 * (pi_neq_xy * pi_neq_xy + pi_neq_xz * pi_neq_xz + pi_neq_yz * pi_neq_yz)
+                    pi_neq_xx * pi_neq_xx
+                    + pi_neq_yy * pi_neq_yy
+                    + pi_neq_zz * pi_neq_zz
+                    + 2.0
+                    * (
+                        pi_neq_xy * pi_neq_xy
+                        + pi_neq_xz * pi_neq_xz
+                        + pi_neq_yz * pi_neq_yz
+                    )
                 )
                 strain_rate[z, y, x] = np.sqrt(2.0 * s_mag_sq) if s_mag_sq > 0 else 0.0
 
@@ -338,7 +349,9 @@ def _apply_non_newtonian_3d_nb(
                 for i in range(n_vel):
                     cu = cx[i] * u_val + cy[i] * v_val + cz[i] * w_val
                     feq = fw[i] * r * (1.0 + 3.0 * cu + 4.5 * cu * cu - 1.5 * u2)
-                    f[i, z, y, x] = f[i, z, y, x] * (1.0 - omega_local) + feq * omega_local
+                    f[i, z, y, x] = (
+                        f[i, z, y, x] * (1.0 - omega_local) + feq * omega_local
+                    )
 
                 rho[z, y, x] = r
                 u[z, y, x] = u_val
@@ -397,37 +410,75 @@ class NonNewtonianCollision:
 
         if f.ndim == 4:
             depth, height, width = f.shape[1], f.shape[2], f.shape[3]
-            if self._strain_rate is None or self._strain_rate.shape != (depth, height, width):
+            if self._strain_rate is None or self._strain_rate.shape != (
+                depth,
+                height,
+                width,
+            ):
                 self._strain_rate = np.zeros((depth, height, width), dtype=np.float32)
             _compute_strain_rate_3d_nb(
-                f, rho, u, v, w_vel,
-                lattice.w, lattice.cx, lattice.cy, lattice.cz,
-                self._strain_rate, lattice.n_velocities,
-                depth, height, width,
+                f,
+                rho,
+                u,
+                v,
+                w_vel,
+                lattice.w,
+                lattice.cx,
+                lattice.cy,
+                lattice.cz,
+                self._strain_rate,
+                lattice.n_velocities,
+                depth,
+                height,
+                width,
             )
             viscosity_field = self.model.compute_viscosity(
                 self._strain_rate, self.base_viscosity
             )
             _apply_non_newtonian_3d_nb(
-                f, rho, u, v, w_vel,
-                lattice.w, lattice.cx, lattice.cy, lattice.cz,
-                viscosity_field, lattice.n_velocities,
-                depth, height, width,
+                f,
+                rho,
+                u,
+                v,
+                w_vel,
+                lattice.w,
+                lattice.cx,
+                lattice.cy,
+                lattice.cz,
+                viscosity_field,
+                lattice.n_velocities,
+                depth,
+                height,
+                width,
             )
         else:
             height, width = f.shape[1], f.shape[2]
             if self._strain_rate is None or self._strain_rate.shape != (height, width):
                 self._strain_rate = np.zeros((height, width), dtype=np.float32)
             _compute_strain_rate_2d_nb(
-                f, rho, u, v,
-                lattice.w, lattice.cx, lattice.cy,
-                self._strain_rate, height, width,
+                f,
+                rho,
+                u,
+                v,
+                lattice.w,
+                lattice.cx,
+                lattice.cy,
+                self._strain_rate,
+                height,
+                width,
             )
             viscosity_field = self.model.compute_viscosity(
                 self._strain_rate, self.base_viscosity
             )
             _apply_non_newtonian_2d_nb(
-                f, rho, u, v,
-                lattice.w, lattice.cx, lattice.cy,
-                viscosity_field, height, width,
+                f,
+                rho,
+                u,
+                v,
+                lattice.w,
+                lattice.cx,
+                lattice.cy,
+                viscosity_field,
+                height,
+                width,
             )

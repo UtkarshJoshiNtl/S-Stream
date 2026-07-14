@@ -56,9 +56,7 @@ def _bounce_back_3d_nb(f, mask, opp, depth, height, width):
 
 
 @njit(parallel=True, cache=True, fastmath=True, boundscheck=False)
-def _collide_3d_nb(
-    f, rho, u, v, w_vel, w, cx, cy, cz, omega, depth, height, width
-):
+def _collide_3d_nb(f, rho, u, v, w_vel, w, cx, cy, cz, omega, depth, height, width):
     """BGK collision kernel for 3D."""
     n_vel = f.shape[0]
     for z in prange(depth):
@@ -341,9 +339,9 @@ class LBM3D(SimEngine, SmokeMixin, ThermalMixin):
             vort = dvdx - dudy
             cur_max = max(float(np.max(np.abs(vort))), 0.001)
             self._ema_vort_max = (1 - a) * self._ema_vort_max + a * cur_max
-            return np.clip(
-                vort / self._ema_vort_max * 0.5 + 0.5, 0, 1
-            ).astype(np.float32)
+            return np.clip(vort / self._ema_vort_max * 0.5 + 0.5, 0, 1).astype(
+                np.float32
+            )
         if name == "pressure":
             p = (self.rho - 1.0).astype(np.float32)
             cur_max = max(float(np.max(np.abs(p))), 0.001)
@@ -388,20 +386,34 @@ class LBM3D(SimEngine, SmokeMixin, ThermalMixin):
 
     def streaming(self) -> None:
         _stream_3d_nb(
-            self.f, self.lattice.cx, self.lattice.cy, self.lattice.cz,
-            self.depth, self.height, self.width
+            self.f,
+            self.lattice.cx,
+            self.lattice.cy,
+            self.lattice.cz,
+            self.depth,
+            self.height,
+            self.width,
         )
 
     def collision(self) -> None:
         self.collision_op.collide(
-            self.f, self.rho, self.u, self.v, self.lattice, self.viscosity,
-            w_vel=self.w_vel
+            self.f,
+            self.rho,
+            self.u,
+            self.v,
+            self.lattice,
+            self.viscosity,
+            w_vel=self.w_vel,
         )
 
     def apply_obstacles(self) -> None:
         _bounce_back_3d_nb(
-            self.f, self.obstacles, self.lattice.opp,
-            self.depth, self.height, self.width
+            self.f,
+            self.obstacles,
+            self.lattice.opp,
+            self.depth,
+            self.height,
+            self.width,
         )
 
     def apply_inflow(self) -> None:

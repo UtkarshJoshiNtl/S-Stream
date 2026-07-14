@@ -83,9 +83,7 @@ class EllipseObstacle(ObstacleSpec):
         sin_t = np.sin(theta)
         rx_t = dx * cos_t + dy * sin_t
         ry_t = -dx * sin_t + dy * cos_t
-        mask = (rx_t / max(self.rx, 0.1)) ** 2 + (
-            ry_t / max(self.ry, 0.1)
-        ) ** 2 <= 1.0
+        mask = (rx_t / max(self.rx, 0.1)) ** 2 + (ry_t / max(self.ry, 0.1)) ** 2 <= 1.0
         obs[mask] = True
 
 
@@ -162,10 +160,12 @@ def _rasterize_stl_3d(
             v2 = pts[2]
             coords = [v0, v1, v2]
             ax_min = int(max(0, min(c[axis] for c in coords)))
-            ax_max = int(min(
-                [obs.shape[axis]][0] - 1,
-                max(c[axis] for c in coords),
-            ))
+            ax_max = int(
+                min(
+                    [obs.shape[axis]][0] - 1,
+                    max(c[axis] for c in coords),
+                )
+            )
             if ax_min > ax_max:
                 continue
             for idx in range(ax_min, ax_max + 1):
@@ -259,12 +259,16 @@ class AirfoilObstacle(ObstacleSpec):
         c = max(self.chord, 3)
         n_pts = max(c * 4, 40)
         x_norm = np.linspace(0, 1, n_pts)
-        yt = 5 * t_max * (
-            0.2969 * np.sqrt(x_norm)
-            - 0.1260 * x_norm
-            - 0.3516 * x_norm**2
-            + 0.2843 * x_norm**3
-            - 0.1015 * x_norm**4
+        yt = (
+            5
+            * t_max
+            * (
+                0.2969 * np.sqrt(x_norm)
+                - 0.1260 * x_norm
+                - 0.3516 * x_norm**2
+                + 0.2843 * x_norm**3
+                - 0.1015 * x_norm**4
+            )
         )
         yc = np.zeros_like(x_norm)
         if p > 0 and m > 0:
@@ -276,17 +280,13 @@ class AirfoilObstacle(ObstacleSpec):
             yc[mask_upper] = (
                 m
                 / (1 - p) ** 2
-                * (
-                    (1 - 2 * p)
-                    + 2 * p * x_norm[mask_upper]
-                    - x_norm[mask_upper] ** 2
-                )
+                * ((1 - 2 * p) + 2 * p * x_norm[mask_upper] - x_norm[mask_upper] ** 2)
             )
         xu = x_norm * c
         yu = (yc + yt) * c
         xl = x_norm * c
         yl = (yc - yt) * c
-        x_airfoil = np.concatenate([ xu[::-1], xl[1:]])
+        x_airfoil = np.concatenate([xu[::-1], xl[1:]])
         y_airfoil = np.concatenate([yu[::-1], yl[1:]])
         theta = np.radians(self.angle_of_attack)
         cos_t = np.cos(theta)
@@ -327,7 +327,9 @@ class AirfoilObstacle(ObstacleSpec):
             if inside:
                 for gx in range(max(0, x_min_c), min(w, x_max_c + 1)):
                     if not obs[gy, gx]:
-                        if _point_in_poly(gx, gy, list(zip(x_grid.tolist(), y_grid.tolist()))):
+                        if _point_in_poly(
+                            gx, gy, list(zip(x_grid.tolist(), y_grid.tolist()))
+                        ):
                             obs[gy, gx] = True
 
 

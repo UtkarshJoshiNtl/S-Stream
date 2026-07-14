@@ -337,9 +337,9 @@ class LBM2DLiquid(SimEngine, SmokeMixin):
             vort = dvdx - dudy
             cur_max = max(float(np.max(np.abs(vort))), 0.001)
             self._ema_vort_max = (1 - a) * self._ema_vort_max + a * cur_max
-            return np.clip(
-                vort / self._ema_vort_max * 0.5 + 0.5, 0, 1
-            ).astype(np.float32)
+            return np.clip(vort / self._ema_vort_max * 0.5 + 0.5, 0, 1).astype(
+                np.float32
+            )
         if name == "pressure":
             p = (self.rho - 1.0).astype(np.float32)
             cur_max = max(float(np.max(np.abs(p))), 0.001)
@@ -376,5 +376,3 @@ class LBM2DLiquid(SimEngine, SmokeMixin):
 
     def clear_emitters(self) -> None:
         self.emitters.clear()
-
-

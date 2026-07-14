@@ -4,6 +4,7 @@ Shows categorized flow templates so new users never see a blank screen.
 Each template auto-populates the scene with geometry, parameters, probes,
 and an optional autorun demo.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -54,8 +55,10 @@ def _build_templates() -> list[WizardTemplate]:
             icon="🌀",
             scene=Scene(
                 name="Vortex Shedding",
-                width=256, height=128,
-                viscosity=0.002, u_inflow=0.1,
+                width=256,
+                height=128,
+                viscosity=0.002,
+                u_inflow=0.1,
                 obstacles=[CircleObstacle(name="Cylinder", x=80, y=64, radius=8)],
                 emitters=[EmitterSpec(name="Smoke", x=2, y=64, strength=0.05)],
                 product=SceneProductMeta(
@@ -78,8 +81,10 @@ def _build_templates() -> list[WizardTemplate]:
             icon="🔲",
             scene=Scene(
                 name="Lid-Driven Cavity",
-                width=128, height=128,
-                viscosity=0.01, u_inflow=0.0,
+                width=128,
+                height=128,
+                viscosity=0.01,
+                u_inflow=0.0,
                 obstacles=[],
                 emitters=[EmitterSpec(name="Smoke", x=2, y=2, strength=0.05)],
                 product=SceneProductMeta(
@@ -102,8 +107,10 @@ def _build_templates() -> list[WizardTemplate]:
             icon="📐",
             scene=Scene(
                 name="Backward-Facing Step",
-                width=256, height=128,
-                viscosity=0.002, u_inflow=0.1,
+                width=256,
+                height=128,
+                viscosity=0.002,
+                u_inflow=0.1,
                 obstacles=[
                     RectObstacle(name="Step", x=0, y=0, w=64, h=64),
                 ],
@@ -128,8 +135,10 @@ def _build_templates() -> list[WizardTemplate]:
             icon="💨",
             scene=Scene(
                 name="Bluff Body Drag",
-                width=192, height=128,
-                viscosity=0.003, u_inflow=0.12,
+                width=192,
+                height=128,
+                viscosity=0.003,
+                u_inflow=0.12,
                 obstacles=[CircleObstacle(name="Cylinder", x=64, y=64, radius=10)],
                 emitters=[EmitterSpec(name="Smoke", x=2, y=64, strength=0.04)],
                 product=SceneProductMeta(
@@ -152,8 +161,10 @@ def _build_templates() -> list[WizardTemplate]:
             icon="🌊",
             scene=Scene(
                 name="Channel Flow",
-                width=256, height=64,
-                viscosity=0.01, u_inflow=0.1,
+                width=256,
+                height=64,
+                viscosity=0.01,
+                u_inflow=0.1,
                 obstacles=[],
                 emitters=[EmitterSpec(name="Smoke", x=2, y=32, strength=0.06)],
                 product=SceneProductMeta(
@@ -176,8 +187,10 @@ def _build_templates() -> list[WizardTemplate]:
             icon="🔔",
             scene=Scene(
                 name="Nozzle & Diffuser",
-                width=256, height=128,
-                viscosity=0.005, u_inflow=0.1,
+                width=256,
+                height=128,
+                viscosity=0.005,
+                u_inflow=0.1,
                 obstacles=[
                     RectObstacle(name="Top Wall", x=80, y=0, w=96, h=32),
                     RectObstacle(name="Bottom Wall", x=80, y=96, w=96, h=32),
@@ -203,8 +216,10 @@ def _build_templates() -> list[WizardTemplate]:
             icon="🧱",
             scene=Scene(
                 name="Porous Screen",
-                width=192, height=128,
-                viscosity=0.005, u_inflow=0.1,
+                width=192,
+                height=128,
+                viscosity=0.005,
+                u_inflow=0.1,
                 obstacles=[],
                 emitters=[EmitterSpec(name="Smoke", x=2, y=64, strength=0.05)],
                 product=SceneProductMeta(
@@ -228,8 +243,10 @@ def _build_templates() -> list[WizardTemplate]:
             icon="🎨",
             scene=Scene(
                 name="Blank Canvas",
-                width=128, height=128,
-                viscosity=0.02, u_inflow=0.15,
+                width=128,
+                height=128,
+                viscosity=0.02,
+                u_inflow=0.15,
                 emitters=[EmitterSpec(name="Inlet", x=2, y=64, strength=0.05)],
             ),
             tips=[
@@ -246,8 +263,10 @@ def _build_templates() -> list[WizardTemplate]:
             icon="⚙️",
             scene=Scene(
                 name="Two Cylinders",
-                width=256, height=128,
-                viscosity=0.002, u_inflow=0.1,
+                width=256,
+                height=128,
+                viscosity=0.002,
+                u_inflow=0.1,
                 obstacles=[
                     CircleObstacle(name="Front", x=80, y=64, radius=8),
                     CircleObstacle(name="Rear", x=140, y=64, radius=8),
@@ -274,8 +293,10 @@ def _build_templates() -> list[WizardTemplate]:
             icon="📖",
             scene=Scene(
                 name="What is LBM?",
-                width=128, height=128,
-                viscosity=0.02, u_inflow=0.1,
+                width=128,
+                height=128,
+                viscosity=0.02,
+                u_inflow=0.1,
                 emitters=[EmitterSpec(name="Smoke", x=2, y=64, strength=0.08)],
                 product=SceneProductMeta(
                     recommended_colormap="smoke",

@@ -18,8 +18,7 @@ class CollisionOperator(ABC):
         v: np.ndarray,
         lattice: Lattice2D,
         viscosity: float,
-    ) -> None:
-        ...
+    ) -> None: ...
 
 
 @njit(parallel=True, cache=True, fastmath=True, boundscheck=False)
@@ -118,18 +117,34 @@ class BGKCollision(CollisionOperator):
         if f.ndim == 4:
             # 3D case
             _bgk_collide_3d_nb(
-                f, rho, u, v, w_vel,
-                lattice.w, lattice.cx, lattice.cy, lattice.cz,
-                omega, lattice.n_velocities,
-                f.shape[1], f.shape[2], f.shape[3],
+                f,
+                rho,
+                u,
+                v,
+                w_vel,
+                lattice.w,
+                lattice.cx,
+                lattice.cy,
+                lattice.cz,
+                omega,
+                lattice.n_velocities,
+                f.shape[1],
+                f.shape[2],
+                f.shape[3],
             )
         else:
             # 2D case
             _bgk_collide_nb(
-                f, rho, u, v,
-                lattice.w, lattice.cx, lattice.cy,
+                f,
+                rho,
+                u,
+                v,
+                lattice.w,
+                lattice.cx,
+                lattice.cy,
                 omega,
-                f.shape[1], f.shape[2],
+                f.shape[1],
+                f.shape[2],
             )
 
 
@@ -235,10 +250,18 @@ class TRTCollision(CollisionOperator):
         omega = lattice.omega_from_viscosity(viscosity)
         s_plus = omega
         _trt_collide_nb(
-            f, rho, u, v,
-            lattice.w, lattice.cx, lattice.cy, lattice.opp,
-            s_plus, self.s_minus,
-            f.shape[1], f.shape[2],
+            f,
+            rho,
+            u,
+            v,
+            lattice.w,
+            lattice.cx,
+            lattice.cy,
+            lattice.opp,
+            s_plus,
+            self.s_minus,
+            f.shape[1],
+            f.shape[2],
         )
 
 
@@ -284,27 +307,108 @@ def _mrt_collide_nb(
 
             # Transform to moment space: m = M * f
             # Using the standard D2Q9 MRT transformation
-            m0 = f[0,y,x] + f[1,y,x] + f[2,y,x] + f[3,y,x] + f[4,y,x] + f[5,y,x] + f[6,y,x] + f[7,y,x] + f[8,y,x]
-            m1 = -4*f[0,y,x] - f[1,y,x] - f[2,y,x] - f[3,y,x] - f[4,y,x] + 2*f[5,y,x] + 2*f[6,y,x] + 2*f[7,y,x] + 2*f[8,y,x]
-            m2 = 4*f[0,y,x] - 2*f[1,y,x] - 2*f[2,y,x] - 2*f[3,y,x] - 2*f[4,y,x] + f[5,y,x] + f[6,y,x] + f[7,y,x] + f[8,y,x]
-            m3 = f[1,y,x] - f[3,y,x] + f[5,y,x] - f[6,y,x] + f[7,y,x] - f[8,y,x]
-            m4 = f[2,y,x] - f[4,y,x] + f[5,y,x] + f[6,y,x] - f[7,y,x] - f[8,y,x]
-            m5 = -f[1,y,x] + f[3,y,x] + f[5,y,x] - f[6,y,x] + f[7,y,x] - f[8,y,x]
-            m6 = -f[2,y,x] + f[4,y,x] + f[5,y,x] + f[6,y,x] - f[7,y,x] - f[8,y,x]
-            m7 = f[1,y,x] + f[3,y,x] - f[5,y,x] - f[6,y,x] - f[7,y,x] - f[8,y,x]
-            m8 = -f[1,y,x] - f[3,y,x] + f[5,y,x] + f[6,y,x] - f[7,y,x] - f[8,y,x]
-            m9 = f[1,y,x] - f[2,y,x] + f[3,y,x] - f[4,y,x] - f[5,y,x] - f[6,y,x] + f[7,y,x] + f[8,y,x]
+            m0 = (
+                f[0, y, x]
+                + f[1, y, x]
+                + f[2, y, x]
+                + f[3, y, x]
+                + f[4, y, x]
+                + f[5, y, x]
+                + f[6, y, x]
+                + f[7, y, x]
+                + f[8, y, x]
+            )
+            m1 = (
+                -4 * f[0, y, x]
+                - f[1, y, x]
+                - f[2, y, x]
+                - f[3, y, x]
+                - f[4, y, x]
+                + 2 * f[5, y, x]
+                + 2 * f[6, y, x]
+                + 2 * f[7, y, x]
+                + 2 * f[8, y, x]
+            )
+            m2 = (
+                4 * f[0, y, x]
+                - 2 * f[1, y, x]
+                - 2 * f[2, y, x]
+                - 2 * f[3, y, x]
+                - 2 * f[4, y, x]
+                + f[5, y, x]
+                + f[6, y, x]
+                + f[7, y, x]
+                + f[8, y, x]
+            )
+            m3 = (
+                f[1, y, x]
+                - f[3, y, x]
+                + f[5, y, x]
+                - f[6, y, x]
+                + f[7, y, x]
+                - f[8, y, x]
+            )
+            m4 = (
+                f[2, y, x]
+                - f[4, y, x]
+                + f[5, y, x]
+                + f[6, y, x]
+                - f[7, y, x]
+                - f[8, y, x]
+            )
+            m5 = (
+                -f[1, y, x]
+                + f[3, y, x]
+                + f[5, y, x]
+                - f[6, y, x]
+                + f[7, y, x]
+                - f[8, y, x]
+            )
+            m6 = (
+                -f[2, y, x]
+                + f[4, y, x]
+                + f[5, y, x]
+                + f[6, y, x]
+                - f[7, y, x]
+                - f[8, y, x]
+            )
+            m7 = (
+                f[1, y, x]
+                + f[3, y, x]
+                - f[5, y, x]
+                - f[6, y, x]
+                - f[7, y, x]
+                - f[8, y, x]
+            )
+            m8 = (
+                -f[1, y, x]
+                - f[3, y, x]
+                + f[5, y, x]
+                + f[6, y, x]
+                - f[7, y, x]
+                - f[8, y, x]
+            )
+            m9 = (
+                f[1, y, x]
+                - f[2, y, x]
+                + f[3, y, x]
+                - f[4, y, x]
+                - f[5, y, x]
+                - f[6, y, x]
+                + f[7, y, x]
+                + f[8, y, x]
+            )
 
             # Compute equilibrium moments
             e0 = r
-            e1 = r * (-2 + 3*u_vel*u_vel + 3*v_vel*v_vel)
-            e2 = r * (1 - 3*u_vel*u_vel - 3*v_vel*v_vel)
+            e1 = r * (-2 + 3 * u_vel * u_vel + 3 * v_vel * v_vel)
+            e2 = r * (1 - 3 * u_vel * u_vel - 3 * v_vel * v_vel)
             e3 = r * u_vel
             e4 = r * v_vel
             e5 = -r * u_vel
             e6 = -r * v_vel
-            e7 = r * (u_vel*u_vel - v_vel*v_vel)
-            e8 = -r * (u_vel*u_vel - v_vel*v_vel)
+            e7 = r * (u_vel * u_vel - v_vel * v_vel)
+            e8 = -r * (u_vel * u_vel - v_vel * v_vel)
             e9 = r * u_vel * v_vel
 
             # Relax each moment independently
@@ -323,15 +427,91 @@ def _mrt_collide_nb(
 
             # Transform back to distribution space: f = M_inv * m
             # Using the standard D2Q9 MRT inverse transformation
-            f[0,y,x] = (m_new[0] - m_new[1] + m_new[2]) / 9.0
-            f[1,y,x] = (m_new[0] - m_new[1]/2.0 + m_new[2]/4.0 + m_new[3]/2.0 + m_new[5]/2.0 + m_new[7]/4.0 + m_new[9]/2.0) / 9.0
-            f[2,y,x] = (m_new[0] - m_new[1]/2.0 + m_new[2]/4.0 + m_new[4]/2.0 + m_new[6]/2.0 + m_new[8]/4.0 - m_new[9]/2.0) / 9.0
-            f[3,y,x] = (m_new[0] - m_new[1]/2.0 + m_new[2]/4.0 - m_new[3]/2.0 - m_new[5]/2.0 + m_new[7]/4.0 + m_new[9]/2.0) / 9.0
-            f[4,y,x] = (m_new[0] - m_new[1]/2.0 + m_new[2]/4.0 - m_new[4]/2.0 - m_new[6]/2.0 + m_new[8]/4.0 - m_new[9]/2.0) / 9.0
-            f[5,y,x] = (m_new[0] + m_new[1]/4.0 + m_new[2]/8.0 + m_new[3]/2.0 + m_new[4]/2.0 + m_new[5]/2.0 + m_new[6]/2.0 + m_new[7]/4.0 + m_new[8]/4.0 + m_new[9]/2.0) / 9.0
-            f[6,y,x] = (m_new[0] + m_new[1]/4.0 + m_new[2]/8.0 - m_new[3]/2.0 + m_new[4]/2.0 - m_new[5]/2.0 + m_new[6]/2.0 + m_new[7]/4.0 + m_new[8]/4.0 - m_new[9]/2.0) / 9.0
-            f[7,y,x] = (m_new[0] + m_new[1]/4.0 + m_new[2]/8.0 - m_new[3]/2.0 - m_new[4]/2.0 - m_new[5]/2.0 - m_new[6]/2.0 + m_new[7]/4.0 + m_new[8]/4.0 + m_new[9]/2.0) / 9.0
-            f[8,y,x] = (m_new[0] + m_new[1]/4.0 + m_new[2]/8.0 + m_new[3]/2.0 - m_new[4]/2.0 + m_new[5]/2.0 - m_new[6]/2.0 + m_new[7]/4.0 + m_new[8]/4.0 - m_new[9]/2.0) / 9.0
+            f[0, y, x] = (m_new[0] - m_new[1] + m_new[2]) / 9.0
+            f[1, y, x] = (
+                m_new[0]
+                - m_new[1] / 2.0
+                + m_new[2] / 4.0
+                + m_new[3] / 2.0
+                + m_new[5] / 2.0
+                + m_new[7] / 4.0
+                + m_new[9] / 2.0
+            ) / 9.0
+            f[2, y, x] = (
+                m_new[0]
+                - m_new[1] / 2.0
+                + m_new[2] / 4.0
+                + m_new[4] / 2.0
+                + m_new[6] / 2.0
+                + m_new[8] / 4.0
+                - m_new[9] / 2.0
+            ) / 9.0
+            f[3, y, x] = (
+                m_new[0]
+                - m_new[1] / 2.0
+                + m_new[2] / 4.0
+                - m_new[3] / 2.0
+                - m_new[5] / 2.0
+                + m_new[7] / 4.0
+                + m_new[9] / 2.0
+            ) / 9.0
+            f[4, y, x] = (
+                m_new[0]
+                - m_new[1] / 2.0
+                + m_new[2] / 4.0
+                - m_new[4] / 2.0
+                - m_new[6] / 2.0
+                + m_new[8] / 4.0
+                - m_new[9] / 2.0
+            ) / 9.0
+            f[5, y, x] = (
+                m_new[0]
+                + m_new[1] / 4.0
+                + m_new[2] / 8.0
+                + m_new[3] / 2.0
+                + m_new[4] / 2.0
+                + m_new[5] / 2.0
+                + m_new[6] / 2.0
+                + m_new[7] / 4.0
+                + m_new[8] / 4.0
+                + m_new[9] / 2.0
+            ) / 9.0
+            f[6, y, x] = (
+                m_new[0]
+                + m_new[1] / 4.0
+                + m_new[2] / 8.0
+                - m_new[3] / 2.0
+                + m_new[4] / 2.0
+                - m_new[5] / 2.0
+                + m_new[6] / 2.0
+                + m_new[7] / 4.0
+                + m_new[8] / 4.0
+                - m_new[9] / 2.0
+            ) / 9.0
+            f[7, y, x] = (
+                m_new[0]
+                + m_new[1] / 4.0
+                + m_new[2] / 8.0
+                - m_new[3] / 2.0
+                - m_new[4] / 2.0
+                - m_new[5] / 2.0
+                - m_new[6] / 2.0
+                + m_new[7] / 4.0
+                + m_new[8] / 4.0
+                + m_new[9] / 2.0
+            ) / 9.0
+            f[8, y, x] = (
+                m_new[0]
+                + m_new[1] / 4.0
+                + m_new[2] / 8.0
+                + m_new[3] / 2.0
+                - m_new[4] / 2.0
+                + m_new[5] / 2.0
+                - m_new[6] / 2.0
+                + m_new[7] / 4.0
+                + m_new[8] / 4.0
+                - m_new[9] / 2.0
+            ) / 9.0
 
             rho[y, x] = r
             u[y, x] = u_vel
@@ -351,18 +531,21 @@ class MRTCollision(CollisionOperator):
     def __init__(self) -> None:
         # Default MRT relaxation rates (s[0] is unused, kept for indexing)
         # s[1]-s[9] control relaxation of non-conserved moments
-        self._s = np.array([
-            1.0,   # s0: unused (conserved)
-            1.19,  # s1: e (kinetic energy)
-            1.4,   # s2: eps (energy square)
-            1.0,   # s3: jx (x-momentum)
-            1.0,   # s4: jy (y-momentum)
-            1.2,   # s5: qx (x-energy flux)
-            1.2,   # s6: qy (y-energy flux)
-            1.0,   # s7: pxx (xx stress)
-            1.0,   # s8: pyy (yy stress)
-            1.0,   # s9: pxy (xy stress)
-        ], dtype=np.float32)
+        self._s = np.array(
+            [
+                1.0,  # s0: unused (conserved)
+                1.19,  # s1: e (kinetic energy)
+                1.4,  # s2: eps (energy square)
+                1.0,  # s3: jx (x-momentum)
+                1.0,  # s4: jy (y-momentum)
+                1.2,  # s5: qx (x-energy flux)
+                1.2,  # s6: qy (y-energy flux)
+                1.0,  # s7: pxx (xx stress)
+                1.0,  # s8: pyy (yy stress)
+                1.0,  # s9: pxy (xy stress)
+            ],
+            dtype=np.float32,
+        )
 
     def collide(
         self,
@@ -382,10 +565,16 @@ class MRTCollision(CollisionOperator):
         s[7] = omega  # Set stress-related moment
         s[8] = omega  # Set stress-related moment
         _mrt_collide_nb(
-            f, rho, u, v,
-            lattice.w, lattice.cx, lattice.cy,
+            f,
+            rho,
+            u,
+            v,
+            lattice.w,
+            lattice.cx,
+            lattice.cy,
             s,
-            f.shape[1], f.shape[2],
+            f.shape[1],
+            f.shape[2],
         )
 
 
@@ -452,7 +641,11 @@ def _smagorinsky_collide_2d_nb(
             # Since S_xx + S_yy = 0 (incompressible), S_xx^2 + S_yy^2 = 2*S_xx^2
             # |S| = sqrt(4*S_xx^2 + 4*S_xy^2) = 2*sqrt(S_xx^2 + S_xy^2)
             # But we use the non-equilibrium moments directly for efficiency
-            s_mag_sq = pi_neq_xx * pi_neq_xx + pi_neq_yy * pi_neq_yy + 2.0 * pi_neq_xy * pi_neq_xy
+            s_mag_sq = (
+                pi_neq_xx * pi_neq_xx
+                + pi_neq_yy * pi_neq_yy
+                + 2.0 * pi_neq_xy * pi_neq_xy
+            )
             s_mag = np.sqrt(2.0 * s_mag_sq) if s_mag_sq > 0 else 0.0
 
             # Turbulent viscosity: nu_t = (C_s * Δ)^2 * |S|  (Δ = 1 in lattice units)
@@ -530,8 +723,15 @@ def _smagorinsky_collide_3d_nb(
 
                 # |S| = sqrt(2 * (S_xx^2 + S_yy^2 + S_zz^2 + 2*(S_xy^2 + S_xz^2 + S_yz^2)))
                 s_mag_sq = (
-                    pi_neq_xx * pi_neq_xx + pi_neq_yy * pi_neq_yy + pi_neq_zz * pi_neq_zz
-                    + 2.0 * (pi_neq_xy * pi_neq_xy + pi_neq_xz * pi_neq_xz + pi_neq_yz * pi_neq_yz)
+                    pi_neq_xx * pi_neq_xx
+                    + pi_neq_yy * pi_neq_yy
+                    + pi_neq_zz * pi_neq_zz
+                    + 2.0
+                    * (
+                        pi_neq_xy * pi_neq_xy
+                        + pi_neq_xz * pi_neq_xz
+                        + pi_neq_yz * pi_neq_yz
+                    )
                 )
                 s_mag = np.sqrt(2.0 * s_mag_sq) if s_mag_sq > 0 else 0.0
 
@@ -582,18 +782,35 @@ class SmagorinskyCollision(CollisionOperator):
         omega_base = lattice.omega_from_viscosity(viscosity)
         if f.ndim == 4:
             _smagorinsky_collide_3d_nb(
-                f, rho, u, v, w_vel,
-                lattice.w, lattice.cx, lattice.cy, lattice.cz,
-                omega_base, self.cs,
+                f,
+                rho,
+                u,
+                v,
+                w_vel,
+                lattice.w,
+                lattice.cx,
+                lattice.cy,
+                lattice.cz,
+                omega_base,
+                self.cs,
                 lattice.n_velocities,
-                f.shape[1], f.shape[2], f.shape[3],
+                f.shape[1],
+                f.shape[2],
+                f.shape[3],
             )
         else:
             _smagorinsky_collide_2d_nb(
-                f, rho, u, v,
-                lattice.w, lattice.cx, lattice.cy,
-                omega_base, self.cs,
-                f.shape[1], f.shape[2],
+                f,
+                rho,
+                u,
+                v,
+                lattice.w,
+                lattice.cx,
+                lattice.cy,
+                omega_base,
+                self.cs,
+                f.shape[1],
+                f.shape[2],
             )
 
 
@@ -727,12 +944,21 @@ def _wale_collide_3d_nb(
                     pi_neq_yz += cy[i] * cz[i] * fneq_i
 
                 s_d_mag_sq = (
-                    pi_neq_xx * pi_neq_xx + pi_neq_yy * pi_neq_yy + pi_neq_zz * pi_neq_zz
-                    + 2.0 * (pi_neq_xy * pi_neq_xy + pi_neq_xz * pi_neq_xz + pi_neq_yz * pi_neq_yz)
+                    pi_neq_xx * pi_neq_xx
+                    + pi_neq_yy * pi_neq_yy
+                    + pi_neq_zz * pi_neq_zz
+                    + 2.0
+                    * (
+                        pi_neq_xy * pi_neq_xy
+                        + pi_neq_xz * pi_neq_xz
+                        + pi_neq_yz * pi_neq_yz
+                    )
                 )
                 s_d_mag = np.sqrt(s_d_mag_sq) if s_d_mag_sq > 0 else 0.0
 
-                nu_t = (cs_w * cs_w * s_d_mag * s_d_mag * s_d_mag) if s_d_mag > 0 else 0.0
+                nu_t = (
+                    (cs_w * cs_w * s_d_mag * s_d_mag * s_d_mag) if s_d_mag > 0 else 0.0
+                )
                 omega_eff = 1.0 / (3.0 * (1.0 / (3.0 * omega_base - 1.5) + nu_t) + 0.5)
                 omega_eff = min(omega_eff, 1.99)
 
@@ -776,16 +1002,33 @@ class WaleCollision(CollisionOperator):
         omega_base = lattice.omega_from_viscosity(viscosity)
         if f.ndim == 4:
             _wale_collide_3d_nb(
-                f, rho, u, v, w_vel,
-                lattice.w, lattice.cx, lattice.cy, lattice.cz,
-                omega_base, self.cs,
+                f,
+                rho,
+                u,
+                v,
+                w_vel,
+                lattice.w,
+                lattice.cx,
+                lattice.cy,
+                lattice.cz,
+                omega_base,
+                self.cs,
                 lattice.n_velocities,
-                f.shape[1], f.shape[2], f.shape[3],
+                f.shape[1],
+                f.shape[2],
+                f.shape[3],
             )
         else:
             _wale_collide_2d_nb(
-                f, rho, u, v,
-                lattice.w, lattice.cx, lattice.cy,
-                omega_base, self.cs,
-                f.shape[1], f.shape[2],
+                f,
+                rho,
+                u,
+                v,
+                lattice.w,
+                lattice.cx,
+                lattice.cy,
+                omega_base,
+                self.cs,
+                f.shape[1],
+                f.shape[2],
             )

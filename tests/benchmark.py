@@ -123,7 +123,9 @@ def print_results(results: list[BenchmarkResult]) -> None:
     print("=" * 80)
     print("S-Stream Performance Benchmark Results")
     print("=" * 80)
-    print(f"{'Engine':<20} {'Grid':<12} {'Steps':<8} {'Time (s)':<12} {'MLUPs/s':<12} {'FPS':<8}")
+    print(
+        f"{'Engine':<20} {'Grid':<12} {'Steps':<8} {'Time (s)':<12} {'MLUPs/s':<12} {'FPS':<8}"
+    )
     print("-" * 80)
 
     for result in results:

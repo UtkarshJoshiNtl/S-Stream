@@ -20,6 +20,7 @@ References:
 - Grunau et al. (1993), "A lattice Boltzmann model for multiphase
   flow phenomena"
 """
+
 from __future__ import annotations
 
 import math
@@ -43,11 +44,22 @@ def _psi(r: float) -> float:
 
 @njit(parallel=True, cache=True, fastmath=True, boundscheck=False)
 def _compute_force_multicomponent_nb(
-    rho1, rho2, obstacles, w, cx, cy,
-    g11: float, g22: float, g12: float,
+    rho1,
+    rho2,
+    obstacles,
+    w,
+    cx,
+    cy,
+    g11: float,
+    g22: float,
+    g12: float,
     g_adhesion: float,
-    height: int, width: int,
-    fx1, fy1, fx2, fy2,
+    height: int,
+    width: int,
+    fx1,
+    fy1,
+    fx2,
+    fy2,
 ):
     """Compute Shan-Chen forces for two components."""
     for y in prange(height):
@@ -114,10 +126,19 @@ def _compute_force_multicomponent_nb(
 
 @njit(parallel=True, cache=True, fastmath=True, boundscheck=False)
 def _compute_color_perturbation_nb(
-    rho1, rho2, obstacles, w, cx, cy,
+    rho1,
+    rho2,
+    obstacles,
+    w,
+    cx,
+    cy,
     sigma: float,
-    height: int, width: int,
-    fx1, fy1, fx2, fy2,
+    height: int,
+    width: int,
+    fx1,
+    fy1,
+    fx2,
+    fy2,
 ):
     """Color gradient perturbation force to sharpen the interface.
 
@@ -179,8 +200,20 @@ def _compute_color_perturbation_nb(
 
 @njit(parallel=True, cache=True, fastmath=True, boundscheck=False)
 def _fused_step_component_nb(
-    f, rho, u, v, fx, fy, obstacles, opp, w, cx, cy,
-    omega: float, height: int, width: int,
+    f,
+    rho,
+    u,
+    v,
+    fx,
+    fy,
+    obstacles,
+    opp,
+    w,
+    cx,
+    cy,
+    omega: float,
+    height: int,
+    width: int,
 ):
     """Streaming + collision for a single component distribution."""
     tau = 1.0 / omega
@@ -387,30 +420,58 @@ class LBM2DMultiComponent(SimEngine, SmokeMixin):
     def step(self) -> None:
         # Compute Shan-Chen forces for both components
         _compute_force_multicomponent_nb(
-            self.rho1, self.rho2, self.obstacles,
-            self.lattice.w, self.lattice.cx, self.lattice.cy,
-            self.g11, self.g22, self.g12, self.g_adhesion,
-            self.height, self.width,
-            self.fx1, self.fy1, self.fx2, self.fy2,
+            self.rho1,
+            self.rho2,
+            self.obstacles,
+            self.lattice.w,
+            self.lattice.cx,
+            self.lattice.cy,
+            self.g11,
+            self.g22,
+            self.g12,
+            self.g_adhesion,
+            self.height,
+            self.width,
+            self.fx1,
+            self.fy1,
+            self.fx2,
+            self.fy2,
         )
 
         # Color gradient perturbation to sharpen interface
         if self.sigma > 0:
             _compute_color_perturbation_nb(
-                self.rho1, self.rho2, self.obstacles,
-                self.lattice.w, self.lattice.cx, self.lattice.cy,
+                self.rho1,
+                self.rho2,
+                self.obstacles,
+                self.lattice.w,
+                self.lattice.cx,
+                self.lattice.cy,
                 self.sigma,
-                self.height, self.width,
-                self.fx1, self.fy1, self.fx2, self.fy2,
+                self.height,
+                self.width,
+                self.fx1,
+                self.fy1,
+                self.fx2,
+                self.fy2,
             )
 
         # Collision + streaming for component 1
         _fused_step_component_nb(
-            self.f1, self.rho1, self.u, self.v,
-            self.fx1, self.fy1,
-            self.obstacles, self.lattice.opp,
-            self.lattice.w, self.lattice.cx, self.lattice.cy,
-            self.omega, self.height, self.width,
+            self.f1,
+            self.rho1,
+            self.u,
+            self.v,
+            self.fx1,
+            self.fy1,
+            self.obstacles,
+            self.lattice.opp,
+            self.lattice.w,
+            self.lattice.cx,
+            self.lattice.cy,
+            self.omega,
+            self.height,
+            self.width,
         )
 
         # Save component 1 velocity, compute component 2
@@ -419,11 +480,20 @@ class LBM2DMultiComponent(SimEngine, SmokeMixin):
 
         # Collision + streaming for component 2
         _fused_step_component_nb(
-            self.f2, self.rho2, self.u, self.v,
-            self.fx2, self.fy2,
-            self.obstacles, self.lattice.opp,
-            self.lattice.w, self.lattice.cx, self.lattice.cy,
-            self.omega, self.height, self.width,
+            self.f2,
+            self.rho2,
+            self.u,
+            self.v,
+            self.fx2,
+            self.fy2,
+            self.obstacles,
+            self.lattice.opp,
+            self.lattice.w,
+            self.lattice.cx,
+            self.lattice.cy,
+            self.omega,
+            self.height,
+            self.width,
         )
 
         # Total velocity = average of both components
@@ -477,12 +547,19 @@ class LBM2DMultiComponent(SimEngine, SmokeMixin):
         return np.concatenate([self.f1, self.f2], axis=0)
 
     def get_pressure(self) -> np.ndarray:
-        return (self.rho1 + self.rho2 - 1.0)
+        return self.rho1 + self.rho2 - 1.0
 
     def get_field_names(self) -> list[str]:
         return [
-            "smoke", "speed", "vorticity", "pressure", "density",
-            "phase", "component1", "component2", "color",
+            "smoke",
+            "speed",
+            "vorticity",
+            "pressure",
+            "density",
+            "phase",
+            "component1",
+            "component2",
+            "color",
         ]
 
     def get_field(self, name: str) -> np.ndarray:
@@ -506,9 +583,9 @@ class LBM2DMultiComponent(SimEngine, SmokeMixin):
             vort = dvdx - dudy
             cur_max = max(float(np.max(np.abs(vort))), 0.001)
             self._ema_vort_max = (1 - a) * self._ema_vort_max + a * cur_max
-            return np.clip(
-                vort / self._ema_vort_max * 0.5 + 0.5, 0, 1
-            ).astype(np.float32)
+            return np.clip(vort / self._ema_vort_max * 0.5 + 0.5, 0, 1).astype(
+                np.float32
+            )
         if name == "pressure":
             p = (self.rho1 + self.rho2 - 1.0).astype(np.float32)
             cur_max = max(float(np.max(np.abs(p))), 0.001)

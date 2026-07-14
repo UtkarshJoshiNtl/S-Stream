@@ -18,6 +18,7 @@ Available engines:
     - LBM3D: D3Q19 CPU engine
     - LBM2DLiquid: Shan-Chen multiphase liquid engine
 """
+
 from __future__ import annotations
 
 from engines.base import SimEngine

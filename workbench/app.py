@@ -43,8 +43,16 @@ from workbench.panels.scene_panel import ScenePanel
 from workbench.viewport import Viewport
 
 _COLORMAPS = [
-    "speed", "smoke", "vorticity", "pressure", "density", "phase",
-    "temperature", "component1", "component2", "color",
+    "speed",
+    "smoke",
+    "vorticity",
+    "pressure",
+    "density",
+    "phase",
+    "temperature",
+    "component1",
+    "component2",
+    "color",
 ]
 
 
@@ -679,9 +687,11 @@ class MainWindow(QMainWindow):
         if not path:
             return
         self._export_image(
-            path, scale=3, colorbar=True,
+            path,
+            scale=3,
+            colorbar=True,
             annotations=True,
-            field_name=self.viewport.get_colormap()
+            field_name=self.viewport.get_colormap(),
         )
         try:
             export_markdown_report(

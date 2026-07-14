@@ -45,7 +45,9 @@ class TestSmagorinskyCollision:
 
     def test_smagorinsky_produces_valid_output_3d(self) -> None:
         """Smagorinsky collision produces finite density/velocity in 3D."""
-        sim = LBM3D(width=16, height=16, depth=16, collision=SmagorinskyCollision(cs=0.1))
+        sim = LBM3D(
+            width=16, height=16, depth=16, collision=SmagorinskyCollision(cs=0.1)
+        )
         sim.run(50)
         rho = sim.get_density()
         u = sim.get_velocity()
@@ -66,7 +68,9 @@ class TestSmagorinskyCollision:
     def test_smagorinsky_stability_at_high_re(self) -> None:
         """Smagorinsky remains stable at higher Reynolds numbers."""
         sim = LBM2D(
-            width=64, height=64, viscosity=0.005,
+            width=64,
+            height=64,
+            viscosity=0.005,
             collision=SmagorinskyCollision(cs=0.12),
         )
         sim.run(500)
@@ -118,8 +122,8 @@ class TestThermalLBM:
         """Thermal fields are properly initialized."""
         sim = LBM2D(width=32, height=32)
         sim.init_thermal(thermal_diffusivity=0.02, beta=0.001)
-        assert hasattr(sim, 'f_T')
-        assert hasattr(sim, 'temperature')
+        assert hasattr(sim, "f_T")
+        assert hasattr(sim, "temperature")
         assert sim.f_T.shape == (9, 32, 32)
         assert sim.temperature.shape == (32, 32)
         assert np.all(sim.temperature == 0.0)

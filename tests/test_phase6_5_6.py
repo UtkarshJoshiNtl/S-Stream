@@ -1,11 +1,11 @@
 """Tests for Phase 6.5 (Jupyter Integration) and 6.6 (REST API)."""
+
 from __future__ import annotations
 
 import numpy as np
 import pytest
 
 from engines.lbm2d import LBM2D
-
 
 # ---------------------------------------------------------------------------
 # 6.5 Jupyter Integration — plot methods on SimEngine
@@ -98,6 +98,7 @@ class TestReprMethods:
 class TestSStreamPackage:
     def test_import_sstream(self) -> None:
         import sstream
+
         assert hasattr(sstream, "LBM2D")
         assert hasattr(sstream, "LBM3D")
         assert hasattr(sstream, "LBM2DLiquid")
@@ -106,10 +107,12 @@ class TestSStreamPackage:
 
     def test_sstream_version(self) -> None:
         import sstream
+
         assert sstream.__version__ == "0.3.0"
 
     def test_sstream_lbm2d_works(self) -> None:
         import sstream
+
         sim = sstream.LBM2D(width=16, height=16)
         sim.run(5)
         assert sim.grid_shape == (16, 16)

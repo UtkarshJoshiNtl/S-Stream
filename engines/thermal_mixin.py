@@ -76,7 +76,9 @@ def _collide_temperature_3d_nb(
 
                 for i in range(n_vel):
                     feq_T = fw[i] * T_val
-                    f_T[i, z, y, x] = f_T[i, z, y, x] * (1.0 - omega_T) + feq_T * omega_T
+                    f_T[i, z, y, x] = (
+                        f_T[i, z, y, x] * (1.0 - omega_T) + feq_T * omega_T
+                    )
 
                 temperature[z, y, x] = T_val
 
@@ -192,48 +194,80 @@ class ThermalMixin:
             self.f_T = np.zeros((9, self.height, self.width), dtype=np.float32)
             self.temperature = np.zeros((self.height, self.width), dtype=np.float32)
         else:
-            self.f_T = np.zeros((19, self.depth, self.height, self.width), dtype=np.float32)
-            self.temperature = np.zeros((self.depth, self.height, self.width), dtype=np.float32)
+            self.f_T = np.zeros(
+                (19, self.depth, self.height, self.width), dtype=np.float32
+            )
+            self.temperature = np.zeros(
+                (self.depth, self.height, self.width), dtype=np.float32
+            )
 
         self.thermal_enabled = True
 
     def collision_temperature(self) -> None:
         """Collide temperature distribution using BGK."""
-        if not hasattr(self, 'thermal_enabled') or not self.thermal_enabled:
+        if not hasattr(self, "thermal_enabled") or not self.thermal_enabled:
             return
 
         omega_T = self.lattice.omega_from_viscosity(self.thermal_diffusivity)
 
         if self.ndim == 2:
             _collide_temperature_2d_nb(
-                self.f_T, self.rho, self.temperature,
-                self.lattice.w, self.lattice.cx, self.lattice.cy,
-                omega_T, self.height, self.width,
+                self.f_T,
+                self.rho,
+                self.temperature,
+                self.lattice.w,
+                self.lattice.cx,
+                self.lattice.cy,
+                omega_T,
+                self.height,
+                self.width,
             )
         else:
             _collide_temperature_3d_nb(
-                self.f_T, self.rho, self.temperature,
-                self.lattice.w, self.lattice.cx, self.lattice.cy, self.lattice.cz,
-                omega_T, self.lattice.n_velocities,
-                self.depth, self.height, self.width,
+                self.f_T,
+                self.rho,
+                self.temperature,
+                self.lattice.w,
+                self.lattice.cx,
+                self.lattice.cy,
+                self.lattice.cz,
+                omega_T,
+                self.lattice.n_velocities,
+                self.depth,
+                self.height,
+                self.width,
             )
 
     def apply_buoyancy(self) -> None:
         """Apply Boussinesq buoyancy force to velocity distributions."""
-        if not hasattr(self, 'thermal_enabled') or not self.thermal_enabled:
+        if not hasattr(self, "thermal_enabled") or not self.thermal_enabled:
             return
 
         if self.ndim == 2:
             _apply_buoyancy_2d_nb(
-                self.f, self.temperature, self.rho,
-                self.beta, self.T_ref, self.g_x, self.g_y,
-                self.height, self.width,
+                self.f,
+                self.temperature,
+                self.rho,
+                self.beta,
+                self.T_ref,
+                self.g_x,
+                self.g_y,
+                self.height,
+                self.width,
             )
         else:
             _apply_buoyancy_3d_nb(
-                self.f, self.temperature, self.rho,
-                self.beta, self.T_ref, self.g_x, self.g_y, self.g_z,
-                self.depth, self.height, self.width,
+                self.f,
+                self.temperature,
+                self.rho,
+                self.beta,
+                self.T_ref,
+                self.g_x,
+                self.g_y,
+                self.g_z,
+                self.depth,
+                self.height,
+                self.width,
             )
 
     def set_temperature_boundary(self, value: float, region: str = "left") -> None:
@@ -243,7 +277,7 @@ class ThermalMixin:
             value: Temperature value to impose.
             region: Which boundary to set ('left', 'right', 'top', 'bottom').
         """
-        if not hasattr(self, 'thermal_enabled') or not self.thermal_enabled:
+        if not hasattr(self, "thermal_enabled") or not self.thermal_enabled:
             return
 
         if self.ndim == 2:
@@ -259,14 +293,18 @@ class ThermalMixin:
             if region == "left":
                 self.f_T[:, :, :, 0] = self.lattice.w[:, np.newaxis, np.newaxis] * value
             elif region == "right":
-                self.f_T[:, :, :, -1] = self.lattice.w[:, np.newaxis, np.newaxis] * value
+                self.f_T[:, :, :, -1] = (
+                    self.lattice.w[:, np.newaxis, np.newaxis] * value
+                )
             elif region == "top":
                 self.f_T[:, :, 0, :] = self.lattice.w[:, np.newaxis, np.newaxis] * value
             elif region == "bottom":
-                self.f_T[:, :, -1, :] = self.lattice.w[:, np.newaxis, np.newaxis] * value
+                self.f_T[:, :, -1, :] = (
+                    self.lattice.w[:, np.newaxis, np.newaxis] * value
+                )
 
     def get_temperature(self) -> np.ndarray:
         """Get temperature field."""
-        if hasattr(self, 'thermal_enabled') and self.thermal_enabled:
+        if hasattr(self, "thermal_enabled") and self.thermal_enabled:
             return self.temperature.copy()
         return np.zeros_like(self.rho)

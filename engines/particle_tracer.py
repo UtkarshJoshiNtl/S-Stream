@@ -7,6 +7,7 @@ integration for capturing streamline structure.
 Particles are stored as a contiguous (N, 2) float32 array for 2D or
 (N, 3) float32 array for 3D, with positions in continuous grid coordinates.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -79,18 +80,24 @@ class ParticleTracer:
 
         if self.is_3d:
             jitter_z = rng.uniform(-0.4, 0.4, count).astype(np.float32)
-            new_pos = np.column_stack([
-                np.full(count, x, dtype=np.float32) + jitter_x,
-                np.full(count, y, dtype=np.float32) + jitter_y,
-                np.full(count, z, dtype=np.float32) + jitter_z,
-            ])
+            new_pos = np.column_stack(
+                [
+                    np.full(count, x, dtype=np.float32) + jitter_x,
+                    np.full(count, y, dtype=np.float32) + jitter_y,
+                    np.full(count, z, dtype=np.float32) + jitter_z,
+                ]
+            )
         else:
-            new_pos = np.column_stack([
-                np.full(count, x, dtype=np.float32) + jitter_x,
-                np.full(count, y, dtype=np.float32) + jitter_y,
-            ])
+            new_pos = np.column_stack(
+                [
+                    np.full(count, x, dtype=np.float32) + jitter_x,
+                    np.full(count, y, dtype=np.float32) + jitter_y,
+                ]
+            )
 
-        self.positions = np.vstack([self.positions, new_pos]) if self.count > 0 else new_pos
+        self.positions = (
+            np.vstack([self.positions, new_pos]) if self.count > 0 else new_pos
+        )
         self._sync_trail_buffer()
         return count
 
@@ -117,7 +124,9 @@ class ParticleTracer:
         else:
             new_pos = np.column_stack([xs, ys])
 
-        self.positions = np.vstack([self.positions, new_pos]) if self.count > 0 else new_pos
+        self.positions = (
+            np.vstack([self.positions, new_pos]) if self.count > 0 else new_pos
+        )
         self._sync_trail_buffer()
         return count
 
@@ -135,18 +144,24 @@ class ParticleTracer:
 
         rng = np.random.default_rng()
         if self.is_3d:
-            new_pos = np.column_stack([
-                rng.uniform(0, self.width - 1, count).astype(np.float32),
-                rng.uniform(0, self.height - 1, count).astype(np.float32),
-                rng.uniform(0, self.depth - 1, count).astype(np.float32),
-            ])
+            new_pos = np.column_stack(
+                [
+                    rng.uniform(0, self.width - 1, count).astype(np.float32),
+                    rng.uniform(0, self.height - 1, count).astype(np.float32),
+                    rng.uniform(0, self.depth - 1, count).astype(np.float32),
+                ]
+            )
         else:
-            new_pos = np.column_stack([
-                rng.uniform(0, self.width - 1, count).astype(np.float32),
-                rng.uniform(0, self.height - 1, count).astype(np.float32),
-            ])
+            new_pos = np.column_stack(
+                [
+                    rng.uniform(0, self.width - 1, count).astype(np.float32),
+                    rng.uniform(0, self.height - 1, count).astype(np.float32),
+                ]
+            )
 
-        self.positions = np.vstack([self.positions, new_pos]) if self.count > 0 else new_pos
+        self.positions = (
+            np.vstack([self.positions, new_pos]) if self.count > 0 else new_pos
+        )
         self._sync_trail_buffer()
         return count
 
@@ -188,9 +203,7 @@ class ParticleTracer:
         ndim = 3 if self.is_3d else 2
         self.positions = np.empty((0, ndim), dtype=np.float32)
         if self._trail_buf is not None:
-            self._trail_buf = np.empty(
-                (self.trail_length, 0, ndim), dtype=np.float32
-            )
+            self._trail_buf = np.empty((self.trail_length, 0, ndim), dtype=np.float32)
         self._step_count = 0
 
     def set_trail_length(self, length: int) -> None:
@@ -295,14 +308,19 @@ class ParticleTracer:
         if self.is_3d:
             z = self.positions[:, 2]
             mask = (
-                (x >= -margin) & (x < self.width - 1 + margin)
-                & (y >= -margin) & (y < self.height - 1 + margin)
-                & (z >= -margin) & (z < self.depth - 1 + margin)
+                (x >= -margin)
+                & (x < self.width - 1 + margin)
+                & (y >= -margin)
+                & (y < self.height - 1 + margin)
+                & (z >= -margin)
+                & (z < self.depth - 1 + margin)
             )
         else:
             mask = (
-                (x >= -margin) & (x < self.width - 1 + margin)
-                & (y >= -margin) & (y < self.height - 1 + margin)
+                (x >= -margin)
+                & (x < self.width - 1 + margin)
+                & (y >= -margin)
+                & (y < self.height - 1 + margin)
             )
 
         removed = self.count - int(mask.sum())
@@ -322,7 +340,7 @@ class ParticleTracer:
             new_buf = np.empty((self.trail_length, n, ndim), dtype=np.float32)
             copy_len = min(self._trail_buf.shape[0], self.trail_length)
             if self._trail_buf.shape[1] > 0:
-                new_buf[:copy_len, :min(n, self._trail_buf.shape[1])] = (
-                    self._trail_buf[:copy_len, :min(n, self._trail_buf.shape[1])]
+                new_buf[:copy_len, : min(n, self._trail_buf.shape[1])] = (
+                    self._trail_buf[:copy_len, : min(n, self._trail_buf.shape[1])]
                 )
             self._trail_buf = new_buf
