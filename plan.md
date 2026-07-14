@@ -148,6 +148,24 @@ For each GPL project we cannot incorporate, document the algorithms we will reim
 ## Phase 1: Performance
 **Duration**: 2-3 weeks | **Priority**: Must be fast enough for real-time
 
+### Legal Copying & Reference Strategy
+
+This project will leverage pre-existing open-source software where legally permitted:
+
+| Project | License | Usage | Reference |
+|---------|---------|-------|-----------|
+| **Lettuce** | MIT | Direct integration as optional GPU backend | Full API and implementation reference |
+| **waLBerla** | BSD-3 | Performance optimization techniques, kernel patterns | Algorithm reference, direct technique adoption |
+| **OpenLB** | GPL | Algorithm documentation only | Cannot copy code, only reference published papers |
+| **FluidX3D** | MIT | Benchmark methodology, performance targets | Reference for MLUPs/s metrics |
+| **PyLBM** | BSD-3 | Lattice definitions, symbolic computation | Can reference directly |
+
+**Key Principles:**
+- MIT/BSD-3 licensed code: Can incorporate directly with attribution
+- GPL licensed code: Can only reference algorithms from published papers, not copy code
+- Apache-2.0 licensed code: Can incorporate with copyright notice retention
+- All clean-room reimplementations documented with paper references
+
 ### 1.1 Numba Kernel Optimization
 
 After un-fusing in Phase 0.3, optimize the separated kernels:
@@ -164,6 +182,8 @@ Current `lbm2d_gpu.py` uses `cp.RawKernel` with hand-written CUDA C. Improvement
 - **Stream overlap**: Overlap compute and host-device transfer for smoke/velocity readback
 - **Target**: 2x speedup on existing GPU kernels
 
+**Legal Reference:** waLBerla GPU kernels (BSD-3) for occupancy optimization patterns. FluidX3D (MIT) for CUDA kernel best practices.
+
 ### 1.3 Lettuce Backend (PyTorch GPU)
 
 Add `engines/lbm2d_lettuce.py` as an alternative GPU backend:
@@ -171,6 +191,8 @@ Add `engines/lbm2d_lettuce.py` as an alternative GPU backend:
 - Automatic CUDA kernel optimization via PyTorch compiler
 - Enables 3D GPU simulation immediately (Lettuce has D3Q19/D3Q27)
 - **Tradeoff**: Adds PyTorch dependency (~2GB). Make it optional via `pip install sstream[gpu]`
+
+**Legal Reference:** Lettuce (MIT) - can incorporate directly with attribution. Reference: `lettuce.io`
 
 ### 1.4 Benchmark Suite
 
@@ -181,10 +203,21 @@ Expand `tests/benchmark.py` into a proper benchmark suite:
 - Comparison table in documentation: S-Stream vs Lettuce vs FluidX3D (published numbers)
 - **Target**: >50 MLUPs/s on CPU (128x128), >500 MLUPs/s on GPU
 
+**Legal Reference:** FluidX3D (MIT) benchmark methodology. Lettuce (MIT) for PyTorch GPU benchmarks.
+
 ---
 
 ## Phase 2: Accuracy — Collision Operators & 3D
 **Duration**: 3-4 weeks | **Priority**: Correct physics
+
+### Legal Copying & Reference Strategy
+
+| Project | License | Usage | Reference |
+|---------|---------|-------|-----------|
+| **PyLBM** | BSD-3 | D3Q19/D3Q27 lattice definitions | Can reference directly |
+| **Lettuce** | MIT | 3D lattice implementations | Can reference directly |
+| **OpenLB** | GPL | Algorithm documentation only | Cannot copy code, only reference papers |
+| **Palabos** | GPL | Algorithm documentation only | Cannot copy code, only reference papers |
 
 ### 2.1 Lattice3D Constants
 
@@ -260,6 +293,14 @@ Each benchmark produces a pass/fail report with error metrics. Run as part of CI
 ## Phase 3: Turbulence & Thermal
 **Duration**: 3-4 weeks | **Priority**: Real-world physics
 
+### Legal Copying & Reference Strategy
+
+| Project | License | Usage | Reference |
+|---------|---------|-------|-----------|
+| **Lettuce** | MIT | Thermal LBM implementation | Can reference directly |
+| **OpenLB** | GPL | Smagorinsky algorithm documentation | Cannot copy code, only reference papers |
+| **waLBerla** | BSD-3 | Turbulence model patterns | Can reference directly |
+
 ### 3.1 Smagorinsky SGS Model
 
 The single most impactful physics addition. Enables high-Re flows without prohibitive grid resolution.
@@ -312,6 +353,15 @@ This documents our clean-room reimplementation trail and protects against licens
 
 ## Phase 4: Geometry & Mesh
 **Duration**: 4-5 weeks | **Priority**: Real-world usability
+
+### Legal Copying & Reference Strategy
+
+| Project | License | Usage | Reference |
+|---------|---------|-------|-----------|
+| **trimesh** | MIT | STL loading and mesh operations | Can incorporate directly |
+| **LUMA** | Apache-2.0 | Immersed boundary method | Can incorporate with attribution |
+| **MARBLES** | Apache-2.0 | AMR implementation | Can incorporate with attribution |
+| **OpenLB** | GPL | STL voxelization algorithm | Cannot copy code, only reference papers |
 
 ### 4.1 STL Import
 

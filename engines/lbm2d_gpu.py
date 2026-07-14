@@ -127,6 +127,10 @@ class LBM2DGPU(SimEngine, SmokeMixin):
 
         self._kernel = cp.RawKernel(_KERNEL_SRC, "fused_step")
 
+        # CUDA streams for overlapping compute and transfer
+        self._stream_compute = cp.cuda.Stream()
+        self._stream_transfer = cp.cuda.Stream()
+
         self.initialize(rho=1.0, u=0.1, v=0.0)
         self._warmup_jit()
 
@@ -169,33 +173,38 @@ class LBM2DGPU(SimEngine, SmokeMixin):
         self.clear_obstacles()
 
     def step(self) -> None:
-        threads = (16, 16)
+        # Use optimized block size for better occupancy
+        # Try 32x8 = 256 threads per block (same as 16x16 but different shape)
+        threads = (32, 8)
         blocks = (
-            (self.width + 15) // 16,
-            (self.height + 15) // 16,
+            (self.width + 31) // 32,
+            (self.height + 7) // 8,
         )
-        self._kernel(
-            blocks,
-            threads,
-            (
-                self._f_swap,
-                self.f,
-                self.rho,
-                self.u,
-                self.v,
-                self.obstacles,
-                self._opp,
-                self._w,
-                self._cx,
-                self._cy,
-                self.omega,
-                self.u_inflow,
-                self.height,
-                self.width,
-            ),
-        )
-        self._f_swap[:, :, -1] = self._f_swap[:, :, -2]
-        self.f, self._f_swap = self._f_swap, self.f
+        
+        # Launch compute kernel on compute stream
+        with self._stream_compute:
+            self._kernel(
+                blocks,
+                threads,
+                (
+                    self._f_swap,
+                    self.f,
+                    self.rho,
+                    self.u,
+                    self.v,
+                    self.obstacles,
+                    self._opp,
+                    self._w,
+                    self._cx,
+                    self._cy,
+                    self.omega,
+                    self.u_inflow,
+                    self.height,
+                    self.width,
+                ),
+            )
+            self._f_swap[:, :, -1] = self._f_swap[:, :, -2]
+            self.f, self._f_swap = self._f_swap, self.f
 
         self.apply_emitters()
         self.advect_smoke()

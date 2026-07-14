@@ -22,7 +22,7 @@ class CollisionOperator(ABC):
         ...
 
 
-@njit(parallel=True)
+@njit(parallel=True, cache=True, fastmath=True, boundscheck=False)
 def _bgk_collide_nb(
     f: np.ndarray,
     rho: np.ndarray,

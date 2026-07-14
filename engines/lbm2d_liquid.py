@@ -13,12 +13,12 @@ _FORCE_CLIP = 0.3
 _VEL_CLIP = 0.3
 
 
-@njit
+@njit(cache=True, fastmath=True, boundscheck=False)
 def _psi(r: float) -> float:
     return 1.0 - math.exp(-r)
 
 
-@njit(parallel=True)
+@njit(parallel=True, cache=True, fastmath=True, boundscheck=False)
 def _compute_force_nb(
     rho,
     obstacles,
@@ -63,7 +63,7 @@ def _compute_force_nb(
             fy_out[y, x] = max(min(fy, _FORCE_CLIP), -_FORCE_CLIP)
 
 
-@njit(parallel=True)
+@njit(parallel=True, cache=True, fastmath=True, boundscheck=False)
 def _fused_step_liquid_nb(
     f,
     rho,

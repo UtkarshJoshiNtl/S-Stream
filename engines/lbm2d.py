@@ -9,7 +9,7 @@ from engines.lbm_common import LATTICE_2D
 from engines.smoke_mixin import SmokeMixin
 
 
-@njit(parallel=True)
+@njit(parallel=True, cache=True, fastmath=True, boundscheck=False)
 def _fused_step_nb(
     f,
     rho,
@@ -89,7 +89,7 @@ def _fused_step_nb(
     f[:] = f_new
 
 
-@njit(parallel=True)
+@njit(parallel=True, cache=True, fastmath=True, boundscheck=False)
 def _collide_nb(f, rho, u, v, w, cx, cy, omega, height, width):
     for y in prange(height):
         for x in range(width):
@@ -114,7 +114,7 @@ def _collide_nb(f, rho, u, v, w, cx, cy, omega, height, width):
             v[y, x] = v_vel
 
 
-@njit(parallel=True)
+@njit(parallel=True, cache=True, fastmath=True, boundscheck=False)
 def _stream_nb(f, cx, cy, height, width):
     f_new = np.empty_like(f)
     for i in range(9):
@@ -134,7 +134,7 @@ def _stream_nb(f, cx, cy, height, width):
     f[:] = f_new
 
 
-@njit(parallel=True)
+@njit(parallel=True, cache=True, fastmath=True, boundscheck=False)
 def _bounce_back_nb(f, mask, opp, height, width):
     for i in range(9):
         opp_i = opp[i]
