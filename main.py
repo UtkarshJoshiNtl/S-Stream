@@ -21,6 +21,11 @@ def main() -> None:
     parser.add_argument("--height", type=int, default=128, help="Grid height")
     parser.add_argument("--headless", action="store_true", help="Run headless (no GUI)")
     parser.add_argument("--steps", type=int, default=0, help="Steps if headless")
+    parser.add_argument(
+        "--serve", action="store_true",
+        help="Start REST API server (requires: pip install sstream[api])",
+    )
+    parser.add_argument("--port", type=int, default=8080, help="API server port")
     args = parser.parse_args()
 
     if args.liquid:
@@ -36,6 +41,16 @@ def main() -> None:
             sim = LBM2DGPU(width=args.width, height=args.height)
     else:
         sim = LBM2D(width=args.width, height=args.height)
+
+    if args.serve:
+        from engines.api import create_app
+        import uvicorn
+
+        app = create_app(sim)
+        print(f"S-Stream API starting on http://0.0.0.0:{args.port}")
+        print(f"Engine: {type(sim).__name__} | Grid: {sim.grid_shape}")
+        uvicorn.run(app, host="0.0.0.0", port=args.port, log_level="info")
+        return
 
     if args.headless:
         if args.steps > 0:

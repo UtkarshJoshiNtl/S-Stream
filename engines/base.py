@@ -163,3 +163,167 @@ class SimEngine(ABC):
     def get_particle_tracer(self) -> ParticleTracer | None:
         """Return the particle tracer, or None if not supported."""
         return None
+
+    # --- Plotting (Jupyter / matplotlib integration) ---
+
+    def plot_field(
+        self,
+        name: str,
+        *,
+        cmap: str = "viridis",
+        title: str | None = None,
+        figsize: tuple[int, int] = (6, 5),
+        colorbar: bool = True,
+        ax: object | None = None,
+    ) -> object:
+        """Plot a normalized field using matplotlib.
+
+        Args:
+            name: Field name (e.g. 'smoke', 'speed', 'vorticity', 'pressure').
+            cmap: Matplotlib colormap name.
+            title: Plot title. Defaults to field name.
+            figsize: Figure size in inches (width, height).
+            colorbar: Whether to draw a colorbar.
+            ax: Existing matplotlib Axes to draw on. If None, creates a new figure.
+
+        Returns:
+            matplotlib Axes object.
+        """
+        import matplotlib.pyplot as plt
+
+        field = self.get_field(name)
+        if ax is None:
+            _, ax = plt.subplots(1, 1, figsize=figsize)
+        im = ax.imshow(field, cmap=cmap, origin="lower", vmin=0, vmax=1)
+        if colorbar:
+            plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+        ax.set_title(title or name.capitalize())
+        ax.set_xlabel("x")
+        ax.set_ylabel("y")
+        return ax
+
+    def plot_velocity(
+        self,
+        *,
+        figsize: tuple[int, int] = (7, 5),
+        colorbar: bool = True,
+        ax: object | None = None,
+    ) -> object:
+        """Plot velocity magnitude with quiver overlay.
+
+        Returns:
+            matplotlib Axes object.
+        """
+        import matplotlib.pyplot as plt
+
+        vel = self.get_velocity()
+        if vel.ndim == 3 and vel.shape[2] >= 2:
+            u, v = vel[:, :, 0], vel[:, :, 1]
+        else:
+            return self.plot_field("speed", figsize=figsize, colorbar=colorbar, ax=ax)
+
+        speed = np.sqrt(u ** 2 + v ** 2)
+        if ax is None:
+            _, ax = plt.subplots(1, 1, figsize=figsize)
+        im = ax.imshow(speed, cmap="coolwarm", origin="lower")
+        if colorbar:
+            plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04, label="Speed")
+
+        skip = max(1, min(u.shape[0], u.shape[1]) // 16)
+        y_grid, x_grid = np.mgrid[: u.shape[0] : skip, : u.shape[1] : skip]
+        ax.quiver(x_grid, y_grid, u[::skip, ::skip], v[::skip, ::skip],
+                  color="white", alpha=0.7, scale=None)
+        ax.set_title("Velocity")
+        ax.set_xlabel("x")
+        ax.set_ylabel("y")
+        return ax
+
+    def plot_pressure(
+        self,
+        *,
+        figsize: tuple[int, int] = (6, 5),
+        colorbar: bool = True,
+        ax: object | None = None,
+    ) -> object:
+        """Plot the pressure field (rho - 1).
+
+        Returns:
+            matplotlib Axes object.
+        """
+        import matplotlib.pyplot as plt
+
+        p = self.get_pressure()
+        if ax is None:
+            _, ax = plt.subplots(1, 1, figsize=figsize)
+        lim = max(float(np.percentile(np.abs(p), 98)), 0.001)
+        im = ax.imshow(p, cmap="RdBu_r", origin="lower", vmin=-lim, vmax=lim)
+        if colorbar:
+            plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04, label="Pressure")
+        ax.set_title("Pressure")
+        ax.set_xlabel("x")
+        ax.set_ylabel("y")
+        return ax
+
+    def plot_smoke(
+        self,
+        *,
+        figsize: tuple[int, int] = (6, 5),
+        colorbar: bool = True,
+        ax: object | None = None,
+    ) -> object:
+        """Plot the smoke (passive scalar) field.
+
+        Returns:
+            matplotlib Axes object.
+        """
+        return self.plot_field(
+            "smoke", cmap="gray", title="Smoke", figsize=figsize,
+            colorbar=colorbar, ax=ax,
+        )
+
+    def plot_vorticity(
+        self,
+        *,
+        figsize: tuple[int, int] = (6, 5),
+        colorbar: bool = True,
+        ax: object | None = None,
+    ) -> object:
+        """Plot the vorticity field.
+
+        Returns:
+            matplotlib Axes object.
+        """
+        return self.plot_field(
+            "vorticity", cmap="RdBu_r", title="Vorticity", figsize=figsize,
+            colorbar=colorbar, ax=ax,
+        )
+
+    def _repr_png_(self) -> bytes | None:
+        """Return PNG bytes for inline Jupyter display."""
+        try:
+            import io
+            import matplotlib.pyplot as plt
+
+            field = self.get_field("smoke")
+            fig, ax = plt.subplots(1, 1, figsize=(5, 4))
+            ax.imshow(field, cmap="gray", origin="lower")
+            ax.set_title("S-Stream Simulation")
+            ax.set_xlabel("x")
+            ax.set_ylabel("y")
+            buf = io.BytesIO()
+            fig.savefig(buf, format="png", dpi=100, bbox_inches="tight")
+            plt.close(fig)
+            buf.seek(0)
+            return buf.read()
+        except Exception:
+            return None
+
+    def _repr_html_(self) -> str | None:
+        """Return HTML img tag for inline Jupyter display."""
+        png = self._repr_png_()
+        if png is None:
+            return None
+        import base64
+
+        b64 = base64.b64encode(png).decode("ascii")
+        return f'<img src="data:image/png;base64,{b64}" />'
