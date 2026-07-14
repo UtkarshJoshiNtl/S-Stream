@@ -12,6 +12,10 @@ from engines.lbm2d import LBM2D
 
 
 class TestPlotMethods:
+    @pytest.fixture(autouse=True)
+    def _require_matplotlib(self):
+        pytest.importorskip("matplotlib")
+
     @pytest.fixture()
     def sim(self) -> LBM2D:
         s = LBM2D(width=32, height=32, viscosity=0.02)
@@ -70,6 +74,10 @@ class TestPlotMethods:
 
 
 class TestReprMethods:
+    @pytest.fixture(autouse=True)
+    def _require_matplotlib(self):
+        pytest.importorskip("matplotlib")
+
     @pytest.fixture()
     def sim(self) -> LBM2D:
         s = LBM2D(width=32, height=32, viscosity=0.02)
@@ -107,7 +115,7 @@ class TestSStreamPackage:
     def test_sstream_version(self) -> None:
         import sstream
 
-        assert sstream.__version__ == "0.3.0"
+        assert sstream.__version__ == "0.3.5"
 
     def test_sstream_lbm2d_works(self) -> None:
         import sstream
@@ -123,6 +131,11 @@ class TestSStreamPackage:
 
 
 class TestRESTAPI:
+    @pytest.fixture(autouse=True)
+    def _require_fastapi(self):
+        pytest.importorskip("fastapi")
+        pytest.importorskip("httpx")
+
     @pytest.fixture()
     def client(self):
         from fastapi.testclient import TestClient

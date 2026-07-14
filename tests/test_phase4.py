@@ -81,6 +81,10 @@ class TestEllipseObstacle:
 
 
 class TestSTLObstacle:
+    @pytest.fixture(autouse=True)
+    def _require_trimesh(self):
+        pytest.importorskip("trimesh")
+
     def _make_sphere_stl(self, path: str, radius: float = 5.0) -> None:
         import trimesh
 

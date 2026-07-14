@@ -99,6 +99,9 @@ MODE_TO_CMAP: dict[str, str] = {
     "density": "inferno",
     "phase": "blues",
     "temperature": "inferno",
+    "component1": "blues",
+    "component2": "reds",
+    "color": "coolwarm",
 }
 
 
