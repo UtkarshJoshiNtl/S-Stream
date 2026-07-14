@@ -62,12 +62,18 @@ from PySide6.QtOpenGLWidgets import QOpenGLWidget  # noqa: E402
 from engines.base import SimEngine  # noqa: E402
 from scene.probe import Probe  # noqa: E402
 from scene.scene import (  # noqa: E402
+    AirfoilObstacle,
+    ChannelObstacle,
     CircleObstacle,
+    EllipseObstacle,
+    ImageObstacle,
+    LatticeObstacle,
     ObstacleSpec,
     PolygonObstacle,
     ProbeSpec,
     RectObstacle,
     Scene,
+    STLObstacle,
 )
 from resources.colormaps import CMAP_LUTS, MODE_TO_CMAP  # noqa: E402
 
@@ -486,6 +492,45 @@ class Viewport(QOpenGLWidget):
             cy = sum(p[1] for p in pts) / len(pts)
             painter.setFont(label_font)
             painter.drawText(int(cx + 4), int(cy + 4), obs.name)
+        elif isinstance(obs, EllipseObstacle):
+            cx, cy = self._grid_to_widget(obs.x, obs.y)
+            rx = obs.rx * s
+            ry = obs.ry * s
+            painter.drawEllipse(
+                int(cx - rx), int(cy - ry), int(rx * 2), int(ry * 2)
+            )
+            painter.setFont(label_font)
+            painter.drawText(int(cx + rx + 4), int(cy + 4), obs.name)
+        elif isinstance(obs, STLObstacle):
+            x1, y1 = self._grid_to_widget(obs.offset_x, obs.offset_y)
+            painter.setFont(label_font)
+            painter.drawText(int(x1), int(y1), obs.name)
+            painter.drawText(int(x1), int(y1 + 14), "(STL mesh)")
+        elif isinstance(obs, ImageObstacle):
+            painter.setFont(label_font)
+            painter.drawText(20, 20, obs.name)
+            painter.drawText(20, 34, "(Image mask)")
+        elif isinstance(obs, AirfoilObstacle):
+            cx, cy = self._grid_to_widget(obs.x, obs.y)
+            painter.setFont(label_font)
+            painter.drawText(int(cx + 10), int(cy), obs.name)
+            painter.drawText(
+                int(cx + 10), int(cy + 14), f"NACA {obs.naca_code}"
+            )
+        elif isinstance(obs, ChannelObstacle):
+            x1, y1 = self._grid_to_widget(obs.x, obs.y)
+            x2, y2 = self._grid_to_widget(obs.x + obs.w, obs.y + obs.h)
+            rect = self._widget_rect(x1, y1, x2, y2)
+            painter.drawRect(rect)
+            painter.setFont(label_font)
+            painter.drawText(rect.topRight() + QPointF(4, 14), obs.name)
+        elif isinstance(obs, LatticeObstacle):
+            x1, y1 = self._grid_to_widget(obs.x, obs.y)
+            x2, y2 = self._grid_to_widget(obs.x + obs.w, obs.y + obs.h)
+            rect = self._widget_rect(x1, y1, x2, y2)
+            painter.drawRect(rect)
+            painter.setFont(label_font)
+            painter.drawText(rect.topRight() + QPointF(4, 14), obs.name)
 
     @staticmethod
     def _widget_rect(x1: float, y1: float, x2: float, y2: float):

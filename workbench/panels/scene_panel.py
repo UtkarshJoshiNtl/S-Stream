@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 from dataclasses import fields
+from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
@@ -22,12 +23,18 @@ from PySide6.QtWidgets import (
 
 from engines.base import SimEngine
 from scene.scene import (
+    AirfoilObstacle,
+    ChannelObstacle,
     CircleObstacle,
     EmitterSpec,
+    EllipseObstacle,
+    ImageObstacle,
+    LatticeObstacle,
     ObstacleSpec,
     ProbeSpec,
     RectObstacle,
     Scene,
+    STLObstacle,
     apply_to_sim,
 )
 
@@ -36,6 +43,16 @@ _CATEGORY_KEY = {0: "obstacles", 1: "emitters", 2: "probes"}
 _OBSTACLE_DEFAULTS: dict[str, ObstacleSpec] = {
     "Circle": CircleObstacle(name="Circle", x=32, y=32, radius=8),
     "Rectangle": RectObstacle(name="Rect", x=20, y=20, w=16, h=16),
+    "Ellipse": EllipseObstacle(name="Ellipse", x=32, y=32, rx=10, ry=6),
+    "Airfoil": AirfoilObstacle(
+        name="Airfoil", x=40, y=32, chord=24, angle_of_attack=5.0, naca_code="0012"
+    ),
+    "Channel": ChannelObstacle(
+        name="Channel", x=20, y=40, w=60, h=40, inlet_ratio=0.6, outlet_ratio=1.0
+    ),
+    "Lattice": LatticeObstacle(
+        name="Lattice", x=20, y=20, w=40, h=40, cell_size=8, wall_thickness=1
+    ),
 }
 
 
@@ -52,8 +69,20 @@ class _PropEditor(QWidget):
             if f.name == "name":
                 w = QLineEdit(val)
                 w.textChanged.connect(lambda t, n=f.name: self._set(n, t))
-            elif f.name in ("fields", "points"):
+            elif f.name in ("fields", "points", "path"):
+                if f.name == "path":
+                    w = QLineEdit(str(val))
+                    w.setReadOnly(True)
+                    layout.addRow(f.name, w)
+                    self._widgets[f.name] = w
+                    continue
                 continue
+            elif isinstance(val, bool):
+                from PySide6.QtWidgets import QCheckBox
+
+                w = QCheckBox()
+                w.setChecked(val)
+                w.toggled.connect(lambda v, n=f.name: self._set(n, v))
             elif isinstance(val, int):
                 w = QSpinBox()
                 w.setRange(0, 1023)
@@ -61,7 +90,7 @@ class _PropEditor(QWidget):
                 w.valueChanged.connect(lambda v, n=f.name: self._set(n, v))
             elif isinstance(val, float):
                 w = QDoubleSpinBox()
-                w.setRange(0.0, 10.0)
+                w.setRange(-10.0, 10.0)
                 w.setSingleStep(0.001)
                 w.setDecimals(4)
                 w.setValue(val)
@@ -113,6 +142,14 @@ class ScenePanel(QWidget):
         add_menu.addAction(
             "Rectangle Obstacle", lambda: self._add_obstacle("Rectangle")
         )
+        add_menu.addAction("Ellipse Obstacle", lambda: self._add_obstacle("Ellipse"))
+        add_menu.addAction("Airfoil", lambda: self._add_obstacle("Airfoil"))
+        add_menu.addAction("Channel", lambda: self._add_obstacle("Channel"))
+        add_menu.addAction("Lattice/Porous", lambda: self._add_obstacle("Lattice"))
+        add_menu.addSeparator()
+        add_menu.addAction("Import STL...", lambda: self._import_stl())
+        add_menu.addAction("Import Image...", lambda: self._import_image())
+        add_menu.addSeparator()
         add_menu.addAction("Emitter", lambda: self._add_emitter())
         add_menu.addAction("Probe", lambda: self._add_probe())
         self.add_btn.setMenu(add_menu)
@@ -227,6 +264,10 @@ class ScenePanel(QWidget):
     def _item_label(item) -> str:
         name = getattr(item, "name", str(item))
         cls = type(item).__name__.replace("Spec", "")
+        if isinstance(item, STLObstacle):
+            return f"{name} [STL @ {Path(item.path).name}]"
+        if isinstance(item, ImageObstacle):
+            return f"{name} [Image @ {Path(item.path).name}]"
         x = getattr(item, "x", "?")
         y = getattr(item, "y", "?")
         return f"{name} [{cls} @ {x},{y}]"
@@ -273,6 +314,48 @@ class ScenePanel(QWidget):
 
     def _add_obstacle(self, kind: str) -> None:
         obs = copy.deepcopy(_OBSTACLE_DEFAULTS[kind])
+        self.scene.obstacles.append(obs)
+        self._reapply()
+        self._rebuild_tree()
+        self.scene_changed.emit()
+
+    def _import_stl(self) -> None:
+        from PySide6.QtWidgets import QFileDialog
+
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Import STL Mesh", "", "STL Files (*.stl);;All Files (*)"
+        )
+        if not path:
+            return
+        obs = STLObstacle(
+            name=Path(path).stem,
+            path=path,
+            scale=1.0,
+            offset_x=0,
+            offset_y=0,
+        )
+        self.scene.obstacles.append(obs)
+        self._reapply()
+        self._rebuild_tree()
+        self.scene_changed.emit()
+
+    def _import_image(self) -> None:
+        from PySide6.QtWidgets import QFileDialog
+
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Import Image as Obstacle",
+            "",
+            "Images (*.png *.bmp *.jpg *.jpeg);;All Files (*)",
+        )
+        if not path:
+            return
+        obs = ImageObstacle(
+            name=Path(path).stem,
+            path=path,
+            threshold=128,
+            invert=False,
+        )
         self.scene.obstacles.append(obs)
         self._reapply()
         self._rebuild_tree()

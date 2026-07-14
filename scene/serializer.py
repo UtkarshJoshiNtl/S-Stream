@@ -4,14 +4,20 @@ import json
 from pathlib import Path
 
 from scene.scene import (
+    AirfoilObstacle,
+    ChannelObstacle,
     CircleObstacle,
     EmitterSpec,
+    EllipseObstacle,
+    ImageObstacle,
+    LatticeObstacle,
     ObstacleSpec,
     PolygonObstacle,
     ProbeSpec,
     RectObstacle,
     Scene,
     SceneProductMeta,
+    STLObstacle,
 )
 
 SCHEMA_VERSION = 1
@@ -20,6 +26,12 @@ _OBSTACLE_DECODERS: dict[str, type[ObstacleSpec]] = {
     "circle": CircleObstacle,
     "rect": RectObstacle,
     "polygon": PolygonObstacle,
+    "ellipse": EllipseObstacle,
+    "stl": STLObstacle,
+    "image": ImageObstacle,
+    "airfoil": AirfoilObstacle,
+    "channel": ChannelObstacle,
+    "lattice": LatticeObstacle,
 }
 
 
@@ -43,6 +55,68 @@ def _obs_to_dict(obs: ObstacleSpec) -> dict:
         }
     if isinstance(obs, PolygonObstacle):
         return {"type": "polygon", "name": obs.name, "points": obs.points}
+    if isinstance(obs, EllipseObstacle):
+        return {
+            "type": "ellipse",
+            "name": obs.name,
+            "x": obs.x,
+            "y": obs.y,
+            "rx": obs.rx,
+            "ry": obs.ry,
+            "rotation": obs.rotation,
+        }
+    if isinstance(obs, STLObstacle):
+        return {
+            "type": "stl",
+            "name": obs.name,
+            "path": obs.path,
+            "scale": obs.scale,
+            "offset_x": obs.offset_x,
+            "offset_y": obs.offset_y,
+            "filled": obs.filled,
+        }
+    if isinstance(obs, ImageObstacle):
+        return {
+            "type": "image",
+            "name": obs.name,
+            "path": obs.path,
+            "threshold": obs.threshold,
+            "invert": obs.invert,
+            "scale_x": obs.scale_x,
+            "scale_y": obs.scale_y,
+        }
+    if isinstance(obs, AirfoilObstacle):
+        return {
+            "type": "airfoil",
+            "name": obs.name,
+            "x": obs.x,
+            "y": obs.y,
+            "chord": obs.chord,
+            "angle_of_attack": obs.angle_of_attack,
+            "naca_code": obs.naca_code,
+        }
+    if isinstance(obs, ChannelObstacle):
+        return {
+            "type": "channel",
+            "name": obs.name,
+            "x": obs.x,
+            "y": obs.y,
+            "w": obs.w,
+            "h": obs.h,
+            "inlet_ratio": obs.inlet_ratio,
+            "outlet_ratio": obs.outlet_ratio,
+        }
+    if isinstance(obs, LatticeObstacle):
+        return {
+            "type": "lattice",
+            "name": obs.name,
+            "x": obs.x,
+            "y": obs.y,
+            "w": obs.w,
+            "h": obs.h,
+            "cell_size": obs.cell_size,
+            "wall_thickness": obs.wall_thickness,
+        }
     raise TypeError(f"Unknown obstacle type: {type(obs)}")
 
 
