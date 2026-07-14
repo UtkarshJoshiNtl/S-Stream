@@ -267,11 +267,8 @@ class Viewport(QOpenGLWidget):
             mx = max(float(np.percentile(field, 98)), 0.001)
             field = np.clip(field / mx, 0, 1).astype(np.float32)
         elif cmap in ("speed", "vorticity"):
-            u = getattr(self.sim, "u", None)
-            v = getattr(self.sim, "v", None)
-            if u is None or v is None:
-                vel = self.sim.get_velocity()
-                u, v = vel[:, :, 0], vel[:, :, 1]
+            vel = self.sim.get_velocity()
+            u, v = vel[:, :, 0], vel[:, :, 1]
             if cmap == "speed":
                 speed = np.sqrt(u.astype(np.float32) ** 2 + v.astype(np.float32) ** 2)
                 mx = max(
@@ -289,8 +286,7 @@ class Viewport(QOpenGLWidget):
                 mx = max(float(np.percentile(abs(vort), 98)), 0.001)
                 field = np.clip(vort / mx * 0.5 + 0.5, 0, 1).astype(np.float32)
         elif cmap == "pressure":
-            rho = self.sim.get_density()
-            p = rho - 1.0
+            p = self.sim.get_pressure()
             mx = max(float(np.percentile(abs(p), 98)), 0.001)
             field = np.clip(p / mx * 0.5 + 0.5, 0, 1).astype(np.float32)
         elif cmap == "density":
@@ -342,11 +338,7 @@ class Viewport(QOpenGLWidget):
     # --- overlay ---
 
     def _get_vel(self) -> np.ndarray | None:
-        u = getattr(self.sim, "u", None)
-        v = getattr(self.sim, "v", None)
-        if u is not None and v is not None:
-            return np.stack([np.ascontiguousarray(u), np.ascontiguousarray(v)], axis=2)
-        return None
+        return self.sim.get_velocity()
 
     def _draw_overlay(self, vel: np.ndarray | None = None) -> None:
         painter = QPainter(self)
@@ -520,7 +512,7 @@ class Viewport(QOpenGLWidget):
 
         for y in range(spacing // 2, h, spacing):
             for x in range(spacing // 2, w, spacing):
-                if hasattr(self.sim, "obstacles") and self.sim.obstacles[y, x]:
+                if self.sim.get_obstacles()[y, x]:
                     continue
                 u = float(vel[y, x, 0])
                 v = float(vel[y, x, 1])
@@ -552,7 +544,7 @@ class Viewport(QOpenGLWidget):
         h, w = vel.shape[:2]
         sw = self.width() / w
         sh = self.height() / h
-        obs = getattr(self.sim, "obstacles", None)
+        obs = self.sim.get_obstacles()
 
         num_seeds = max(4, h // 8)
         seed_ys = np.linspace(2, h - 3, num_seeds)

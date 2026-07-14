@@ -40,8 +40,8 @@ def compute_scorecard(
     probes = probes or []
     vel = sim.get_velocity()
     speed = np.sqrt(vel[:, :, 0] ** 2 + vel[:, :, 1] ** 2)
-    rho = sim.get_density()
-    pressure_drop = float(abs(np.mean(rho[:, 0]) - np.mean(rho[:, -1])))
+    p = sim.get_pressure()
+    pressure_drop = float(abs(np.mean(p[:, 0]) - np.mean(p[:, -1])))
     wake_strength = float(np.std(speed))
     regime = detect_flow_regime(sim, scene, probes, step_count)
     cd = drag_coefficient(sim)

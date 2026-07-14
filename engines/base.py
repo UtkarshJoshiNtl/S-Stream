@@ -56,12 +56,6 @@ class SimEngine(ABC):
     smoke_diffusion: float
     smoke_decay: float
 
-    @property
-    @abstractmethod
-    def omega(self) -> float:
-        """Relaxation parameter derived from viscosity (BGK)."""
-        ...
-
     # --- Observables (the UI reads these each frame) ---
 
     @abstractmethod
@@ -101,6 +95,23 @@ class SimEngine(ABC):
     @abstractmethod
     def get_obstacles(self) -> np.ndarray:
         """Return a copy of the obstacle mask as a bool NumPy array."""
+        ...
+
+    @abstractmethod
+    def get_obstacles_mut(self) -> np.ndarray:
+        """Return the mutable obstacle mask directly (no copy)."""
+        ...
+
+    # --- Internal state access (for analysis) ---
+
+    @abstractmethod
+    def get_f(self) -> np.ndarray:
+        """Return the distribution arrays f (shape: (9, H, W))."""
+        ...
+
+    @abstractmethod
+    def get_pressure(self) -> np.ndarray:
+        """Return the pressure field (rho - 1.0)."""
         ...
 
     # --- Emitters ---

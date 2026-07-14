@@ -7,6 +7,7 @@ from numba import njit, prange
 
 from engines.base import SimEngine
 from engines.lbm_common import LATTICE_2D
+from engines.smoke_mixin import SmokeMixin
 
 _FORCE_CLIP = 0.3
 _VEL_CLIP = 0.3
@@ -141,7 +142,7 @@ def _fused_step_liquid_nb(
     f[:] = f_new
 
 
-class LBM2DLiquid(SimEngine):
+class LBM2DLiquid(SimEngine, SmokeMixin):
     """D2Q9 Shan-Chen multiphase liquid simulation."""
 
     def __init__(
@@ -186,6 +187,7 @@ class LBM2DLiquid(SimEngine):
         self._x_coords = np.arange(width, dtype=np.float32)
         self._y_coords = np.arange(height, dtype=np.float32)
         self._lap_buffer = np.empty_like(self.smoke)
+        self.xp = np
 
         self.initialize()
         self._warmup_jit()
@@ -281,6 +283,15 @@ class LBM2DLiquid(SimEngine):
     def get_obstacles(self) -> np.ndarray:
         return self.obstacles.copy()
 
+    def get_obstacles_mut(self) -> np.ndarray:
+        return self.obstacles
+
+    def get_f(self) -> np.ndarray:
+        return self.f
+
+    def get_pressure(self) -> np.ndarray:
+        return self.rho - 1.0
+
     def get_emitter_count(self) -> int:
         return len(self.emitters)
 
@@ -298,52 +309,4 @@ class LBM2DLiquid(SimEngine):
     def clear_emitters(self) -> None:
         self.emitters.clear()
 
-    # --- Smoke helpers ---
 
-    def apply_emitters(self) -> None:
-        for x, y, strength in self.emitters:
-            if 0 <= y < self.height and 0 <= x < self.width:
-                self.smoke[y, x] += strength
-        np.clip(self.smoke, 0, 1, out=self.smoke)
-
-    def advect_smoke(self) -> None:
-        u_adv = np.where(self.obstacles, 0.0, self.u)
-        v_adv = np.where(self.obstacles, 0.0, self.v)
-
-        x_orig = self._x_coords[np.newaxis, :] - u_adv
-        y_orig = self._y_coords[:, np.newaxis] - v_adv
-        x0 = np.floor(x_orig).astype(np.int32)
-        y0 = np.floor(y_orig).astype(np.int32)
-        x0 = np.clip(x0, 0, self.width - 2)
-        y0 = np.clip(y0, 0, self.height - 2)
-        x1 = x0 + 1
-        y1 = y0 + 1
-
-        fx = x_orig - x0
-        fy = y_orig - y0
-
-        c00 = self.smoke[y0, x0]
-        c10 = self.smoke[y0, x1]
-        c01 = self.smoke[y1, x0]
-        c11 = self.smoke[y1, x1]
-
-        self.smoke = (
-            c00 * (1 - fx) * (1 - fy)
-            + c10 * fx * (1 - fy)
-            + c01 * (1 - fx) * fy
-            + c11 * fx * fy
-        )
-
-    def diffuse_smoke(self) -> None:
-        s = self.smoke
-        d = self.smoke_diffusion
-        lap = self._lap_buffer
-        lap[:] = 0.0
-        lap[1:] += s[:-1] - s[1:]
-        lap[:-1] += s[1:] - s[:-1]
-        lap[:, 1:] += s[:, :-1] - s[:, 1:]
-        lap[:, :-1] += s[:, 1:] - s[:, :-1]
-        s += d * lap
-
-    def decay_smoke(self) -> None:
-        self.smoke *= self.smoke_decay

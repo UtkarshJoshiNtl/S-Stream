@@ -28,7 +28,7 @@ def reynolds_number(sim: SimEngine, obstacle_diameter: float | None = None) -> f
 def drag_coefficient(sim: SimEngine) -> float:
     """Momentum-exchange method for drag on 2D obstacles."""
     lattice = LATTICE_2D
-    obs = sim.obstacles  # type: ignore[attr-defined]
+    obs = sim.get_obstacles_mut()
     if not np.any(obs):
         return 0.0
 
@@ -41,8 +41,8 @@ def drag_coefficient(sim: SimEngine) -> float:
         boundary = (~obs) & shifted
         if not np.any(boundary):
             continue
-        f_i = sim.f[i][boundary]  # type: ignore[attr-defined]
-        f_opp = sim.f[opp][boundary]  # type: ignore[attr-defined]
+        f_i = sim.get_f()[i][boundary]
+        f_opp = sim.get_f()[opp][boundary]
         Fx += cx * float(np.sum(f_i + f_opp))
 
     U = sim.u_inflow

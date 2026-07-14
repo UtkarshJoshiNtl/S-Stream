@@ -5,6 +5,7 @@ import numpy as np
 
 from engines.base import SimEngine
 from engines.lbm_common import LATTICE_2D
+from engines.smoke_mixin import SmokeMixin
 
 _KERNEL_SRC = r"""
 extern "C" __global__
@@ -85,7 +86,7 @@ void fused_step(
 """
 
 
-class LBM2DGPU(SimEngine):
+class LBM2DGPU(SimEngine, SmokeMixin):
     """D2Q9 Lattice Boltzmann fluid simulation (GPU / CuPy)."""
 
     def __init__(
@@ -122,6 +123,7 @@ class LBM2DGPU(SimEngine):
         self._cy = cp.array(self.lattice.cy, dtype=cp.int32)
         self._opp = cp.array(self.lattice.opp, dtype=cp.int32)
         self._w = cp.array(self.lattice.w, dtype=cp.float32)
+        self.xp = cp
 
         self._kernel = cp.RawKernel(_KERNEL_SRC, "fused_step")
 
@@ -217,6 +219,15 @@ class LBM2DGPU(SimEngine):
     def get_obstacles(self) -> np.ndarray:
         return cp.asnumpy(self.obstacles)
 
+    def get_obstacles_mut(self) -> np.ndarray:
+        return self.obstacles
+
+    def get_f(self) -> np.ndarray:
+        return self.f
+
+    def get_pressure(self) -> np.ndarray:
+        return cp.asnumpy(self.rho - 1.0)
+
     def get_emitter_count(self) -> int:
         return len(self.emitters)
 
@@ -231,55 +242,4 @@ class LBM2DGPU(SimEngine):
     def add_emitter(self, x: int, y: int, strength: float = 0.05) -> None:
         self.emitters.append((x, y, strength))
 
-    def clear_emitters(self) -> None:
-        self.emitters.clear()
 
-    # --- Smoke helpers ---
-
-    def apply_emitters(self) -> None:
-        for x, y, strength in self.emitters:
-            if 0 <= y < self.height and 0 <= x < self.width:
-                self.smoke[y, x] += strength
-        cp.clip(self.smoke, 0, 1, out=self.smoke)
-
-    def advect_smoke(self) -> None:
-        u_adv = cp.where(self.obstacles, 0.0, self.u)
-        v_adv = cp.where(self.obstacles, 0.0, self.v)
-
-        x_orig = self._x_coords[cp.newaxis, :] - u_adv
-        y_orig = self._y_coords[:, cp.newaxis] - v_adv
-        x_orig = cp.clip(x_orig, 0, self.width - 1)
-        y_orig = cp.clip(y_orig, 0, self.height - 1)
-
-        x0 = cp.floor(x_orig).astype(cp.int32)
-        y0 = cp.floor(y_orig).astype(cp.int32)
-        x1 = cp.minimum(x0 + 1, self.width - 1)
-        y1 = cp.minimum(y0 + 1, self.height - 1)
-
-        fx = x_orig - x0
-        fy = y_orig - y0
-
-        c00 = self.smoke[y0, x0]
-        c10 = self.smoke[y0, x1]
-        c01 = self.smoke[y1, x0]
-        c11 = self.smoke[y1, x1]
-
-        self.smoke = (
-            c00 * (1 - fx) * (1 - fy)
-            + c10 * fx * (1 - fy)
-            + c01 * (1 - fx) * fy
-            + c11 * fx * fy
-        )
-
-    def diffuse_smoke(self) -> None:
-        s = self.smoke
-        d = self.smoke_diffusion
-        lap = cp.zeros_like(s)
-        lap[1:] += s[:-1] - s[1:]
-        lap[:-1] += s[1:] - s[:-1]
-        lap[:, 1:] += s[:, :-1] - s[:, 1:]
-        lap[:, :-1] += s[:, 1:] - s[:, :-1]
-        s += d * lap
-
-    def decay_smoke(self) -> None:
-        self.smoke *= self.smoke_decay

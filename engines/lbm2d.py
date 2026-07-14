@@ -4,7 +4,9 @@ import numpy as np
 from numba import njit, prange
 
 from engines.base import SimEngine
+from engines.collision import BGKCollision, CollisionOperator
 from engines.lbm_common import LATTICE_2D
+from engines.smoke_mixin import SmokeMixin
 
 
 @njit(parallel=True)
@@ -145,11 +147,15 @@ def _bounce_back_nb(f, mask, opp, height, width):
                         f[opp_i, y, x] = tmp
 
 
-class LBM2D(SimEngine):
+class LBM2D(SimEngine, SmokeMixin):
     """D2Q9 Lattice Boltzmann fluid simulation with Numba-accelerated solver."""
 
     def __init__(
-        self, width: int = 128, height: int = 128, viscosity: float = 0.02
+        self,
+        width: int = 128,
+        height: int = 128,
+        viscosity: float = 0.02,
+        collision: CollisionOperator | None = None,
     ) -> None:
         self.width = width
         self.height = height
@@ -160,6 +166,7 @@ class LBM2D(SimEngine):
         self.lattice.assert_stable(
             viscosity, self.lattice.omega_from_viscosity(viscosity)
         )
+        self.collision_op = collision or BGKCollision()
 
         self.f = np.zeros((9, height, width), dtype=np.float32)
 
@@ -177,6 +184,7 @@ class LBM2D(SimEngine):
         self._lap_buffer = np.empty_like(self.smoke)
         self._x_coords = np.arange(width, dtype=np.float32)
         self._y_coords = np.arange(height, dtype=np.float32)
+        self.xp = np
 
         self.initialize(rho=1.0, u=0.1, v=0.0)
         self._warmup_jit()
@@ -211,27 +219,20 @@ class LBM2D(SimEngine):
         self.clear_obstacles()
 
     def step(self) -> None:
-        _fused_step_nb(
-            self.f,
-            self.rho,
-            self.u,
-            self.v,
-            self.obstacles,
-            self.lattice.opp,
-            self.lattice.w,
-            self.lattice.cx,
-            self.lattice.cy,
-            self.omega,
-            self.u_inflow,
-            self.height,
-            self.width,
-        )
-        self.f[:, :, -1] = self.f[:, :, -2]
+        self.streaming()
+        self.apply_boundary_conditions()
+        self.collision()
+        self.apply_outflow()
         self.apply_emitters()
         self.advect_smoke()
         self.diffuse_smoke()
         self.smoke[self.obstacles] = 0.0
         self.decay_smoke()
+
+    def apply_boundary_conditions(self) -> None:
+        self.apply_obstacles()
+        self.apply_inflow()
+        self.apply_walls()
 
     def run(self, steps: int) -> None:
         for _ in range(steps):
@@ -248,6 +249,15 @@ class LBM2D(SimEngine):
 
     def get_obstacles(self) -> np.ndarray:
         return self.obstacles.copy()
+
+    def get_obstacles_mut(self) -> np.ndarray:
+        return self.obstacles
+
+    def get_f(self) -> np.ndarray:
+        return self.f
+
+    def get_pressure(self) -> np.ndarray:
+        return self.rho - 1.0
 
     def get_emitter_count(self) -> int:
         return len(self.emitters)
@@ -266,24 +276,13 @@ class LBM2D(SimEngine):
     def clear_emitters(self) -> None:
         self.emitters.clear()
 
-    # --- LBM internals (kept for testing) ---
-
-    def collision(self) -> None:
-        _collide_nb(
-            self.f,
-            self.rho,
-            self.u,
-            self.v,
-            self.lattice.w,
-            self.lattice.cx,
-            self.lattice.cy,
-            self.omega,
-            self.height,
-            self.width,
-        )
-
     def streaming(self) -> None:
         _stream_nb(self.f, self.lattice.cx, self.lattice.cy, self.height, self.width)
+
+    def collision(self) -> None:
+        self.collision_op.collide(
+            self.f, self.rho, self.u, self.v, self.lattice, self.viscosity
+        )
 
     def apply_obstacles(self) -> None:
         _bounce_back_nb(
@@ -311,51 +310,4 @@ class LBM2D(SimEngine):
                 self.f[i, -1, :] = self.f[opp_i, -1, :]
                 self.f[opp_i, -1, :] = tmp_bot
 
-    def apply_emitters(self) -> None:
-        for x, y, strength in self.emitters:
-            if 0 <= y < self.height and 0 <= x < self.width:
-                self.smoke[y, x] += strength
-        np.clip(self.smoke, 0, 1, out=self.smoke)
 
-    def advect_smoke(self) -> None:
-        u_adv = np.where(self.obstacles, 0.0, self.u)
-        v_adv = np.where(self.obstacles, 0.0, self.v)
-
-        x_orig = self._x_coords[np.newaxis, :] - u_adv
-        y_orig = self._y_coords[:, np.newaxis] - v_adv
-        x_orig = np.clip(x_orig, 0, self.width - 1)
-        y_orig = np.clip(y_orig, 0, self.height - 1)
-
-        x0 = np.floor(x_orig).astype(np.int32)
-        y0 = np.floor(y_orig).astype(np.int32)
-        x1 = np.minimum(x0 + 1, self.width - 1)
-        y1 = np.minimum(y0 + 1, self.height - 1)
-
-        fx = x_orig - x0
-        fy = y_orig - y0
-
-        c00 = self.smoke[y0, x0]
-        c10 = self.smoke[y0, x1]
-        c01 = self.smoke[y1, x0]
-        c11 = self.smoke[y1, x1]
-
-        self.smoke = (
-            c00 * (1 - fx) * (1 - fy)
-            + c10 * fx * (1 - fy)
-            + c01 * (1 - fx) * fy
-            + c11 * fx * fy
-        )
-
-    def diffuse_smoke(self) -> None:
-        s = self.smoke
-        d = self.smoke_diffusion
-        lap = self._lap_buffer
-        lap[:] = 0.0
-        lap[1:] += s[:-1] - s[1:]
-        lap[:-1] += s[1:] - s[:-1]
-        lap[:, 1:] += s[:, :-1] - s[:, 1:]
-        lap[:, :-1] += s[:, 1:] - s[:, :-1]
-        s += d * lap
-
-    def decay_smoke(self) -> None:
-        self.smoke *= self.smoke_decay

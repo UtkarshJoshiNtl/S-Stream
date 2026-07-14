@@ -12,6 +12,7 @@ from engines.base import SimEngine
 @dataclass
 class ObstacleSpec:
     name: str
+    bc_type: str = "bounce_back"
 
     def apply(self, sim: SimEngine) -> None:
         raise NotImplementedError
@@ -24,7 +25,7 @@ class CircleObstacle(ObstacleSpec):
     radius: int = 5
 
     def apply(self, sim: SimEngine) -> None:
-        obs = sim.obstacles  # type: ignore[attr-defined]
+        obs = sim.get_obstacles_mut()
         y_grid, x_grid = np.ogrid[: sim.grid_shape[0], : sim.grid_shape[1]]
         mask = (x_grid - self.x) ** 2 + (y_grid - self.y) ** 2 <= self.radius**2
         obs[mask] = True
@@ -38,7 +39,7 @@ class RectObstacle(ObstacleSpec):
     h: int = 10
 
     def apply(self, sim: SimEngine) -> None:
-        obs = sim.obstacles  # type: ignore[attr-defined]
+        obs = sim.get_obstacles_mut()
         x1, y1 = max(0, self.x), max(0, self.y)
         x2 = min(sim.grid_shape[1], self.x + self.w)
         y2 = min(sim.grid_shape[0], self.y + self.h)
@@ -50,7 +51,7 @@ class PolygonObstacle(ObstacleSpec):
     points: list[tuple[int, int]] = field(default_factory=list)
 
     def apply(self, sim: SimEngine) -> None:
-        obs = sim.obstacles  # type: ignore[attr-defined]
+        obs = sim.get_obstacles_mut()
         h, w = obs.shape
         xs = [p[0] for p in self.points]
         ys = [p[1] for p in self.points]

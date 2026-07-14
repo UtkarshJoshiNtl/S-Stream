@@ -36,8 +36,7 @@ class Probe:
             elif f == "speed":
                 val = np.sqrt(u_val**2 + v_val**2)
             elif f == "pressure":
-                rho = float(sim.get_density()[y, x])
-                val = rho - 1.0
+                val = float(sim.get_pressure()[y, x])
             else:
                 continue
             self.history[f].append(val)
