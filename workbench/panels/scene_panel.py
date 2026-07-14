@@ -173,6 +173,12 @@ class ScenePanel(QWidget):
         self._param_visc.setDecimals(4)
         self._param_visc.setValue(self.sim.viscosity)
         self._param_visc.valueChanged.connect(self._on_param_visc)
+        self._param_visc.setToolTip(
+            "Kinematic viscosity (nu). Controls fluid thickness.\n"
+            "Lower = thinner fluid, higher Reynolds number.\n"
+            "Typical: water ~0.001, air ~0.0001\n"
+            "Range: 0.0005 (nearly inviscid) to 0.1 (very viscous)"
+        )
         form.addRow("Viscosity", self._param_visc)
 
         self._param_u_inflow = QDoubleSpinBox()
@@ -181,6 +187,12 @@ class ScenePanel(QWidget):
         self._param_u_inflow.setDecimals(4)
         self._param_u_inflow.setValue(self.sim.u_inflow)
         self._param_u_inflow.valueChanged.connect(self._on_param_u_inflow)
+        self._param_u_inflow.setToolTip(
+            "Inflow velocity (lattice units). Drives the flow from left to right.\n"
+            "Re = u_inflow * characteristic_length / viscosity.\n"
+            "Higher values produce faster, more turbulent flow.\n"
+            "Range: 0.0 (static) to 0.5 (max stable)"
+        )
         form.addRow("Inflow", self._param_u_inflow)
 
         self._param_diff = QDoubleSpinBox()
@@ -189,6 +201,12 @@ class ScenePanel(QWidget):
         self._param_diff.setDecimals(4)
         self._param_diff.setValue(self.sim.smoke_diffusion)
         self._param_diff.valueChanged.connect(self._on_param_diff)
+        self._param_diff.setToolTip(
+            "Smoke diffusion coefficient. Controls how fast the passive scalar spreads.\n"
+            "Higher values = more diffuse, blurry smoke.\n"
+            "Lower values = sharper, more detailed smoke patterns.\n"
+            "Range: 0.0 (none) to 0.5 (highly diffuse)"
+        )
         form.addRow("Smoke Diffusion", self._param_diff)
 
         self._param_decay = QDoubleSpinBox()
@@ -197,6 +215,13 @@ class ScenePanel(QWidget):
         self._param_decay.setDecimals(4)
         self._param_decay.setValue(self.sim.smoke_decay)
         self._param_decay.valueChanged.connect(self._on_param_decay)
+        self._param_decay.setToolTip(
+            "Smoke decay rate. Controls how fast the passive scalar fades.\n"
+            "1.0 = no decay (smoke persists forever).\n"
+            "0.999 = slow fade, good for steady-state visualization.\n"
+            "0.99 = fast fade, good for transient flow studies.\n"
+            "Range: 0.9 (fast) to 1.0 (none)"
+        )
         form.addRow("Smoke Decay", self._param_decay)
 
         group.setLayout(form)

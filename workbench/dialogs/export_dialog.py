@@ -26,7 +26,7 @@ class ExportDialog(QDialog):
     # Emitted when the user wants to start video recording
     start_recording = Signal(str, int, int)  # path, fps, max_frames
     # Emitted when image export is configured
-    export_image_requested = Signal(str, int, bool, bool)
+    export_image_requested = Signal(str, int, bool, bool, str)
     # Emitted when data export is configured
     export_data_requested = Signal(str, str)  # type ("csv" | "npz"), path
 
@@ -78,7 +78,10 @@ class ExportDialog(QDialog):
         form.addRow(self._img_annotations)
 
         self._img_field = QComboBox()
-        self._img_field.addItems(["smoke", "speed", "vorticity", "pressure"])
+        from resources.colormaps import FIELD_REGISTRY
+
+        for name, info in FIELD_REGISTRY.items():
+            self._img_field.addItem(info.label, name)
         form.addRow("Field:", self._img_field)
 
         layout.addLayout(form)
@@ -98,11 +101,13 @@ class ExportDialog(QDialog):
         path = self._img_path.text().strip()
         if not path:
             return
+        field_name = self._img_field.currentData() or "smoke"
         self.export_image_requested.emit(
             path,
             self._img_scale.value(),
             self._img_colorbar.isChecked(),
             self._img_annotations.isChecked(),
+            field_name,
         )
 
     # --- Video Tab ---

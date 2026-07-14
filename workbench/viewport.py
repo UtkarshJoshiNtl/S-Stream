@@ -122,6 +122,8 @@ class Viewport(QOpenGLWidget):
         self._cmap_uploaded: str | None = None
         self._show_quiver = False
         self._show_streamlines = False
+        self._show_contours = False
+        self._show_force_arrows = False
         self.draw_mode: str | None = None
         self._drag_start: tuple[float, float] | None = None
         self._drag_end: tuple[float, float] | None = None
@@ -156,6 +158,14 @@ class Viewport(QOpenGLWidget):
 
     def set_show_streamlines(self, show: bool) -> None:
         self._show_streamlines = show
+        self.update()
+
+    def set_show_contours(self, show: bool) -> None:
+        self._show_contours = show
+        self.update()
+
+    def set_show_force_arrows(self, show: bool) -> None:
+        self._show_force_arrows = show
         self.update()
 
     def set_draw_mode(self, mode: str | None) -> None:
@@ -268,46 +278,10 @@ class Viewport(QOpenGLWidget):
 
     def _upload_smoke(self) -> None:
         cmap = self._colormap
-        if cmap == "smoke":
-            field = self.sim.get_smoke()
-            mx = max(float(np.percentile(field, 98)), 0.001)
-            field = np.clip(field / mx, 0, 1).astype(np.float32)
-        elif cmap in ("speed", "vorticity"):
-            vel = self.sim.get_velocity()
-            u, v = vel[:, :, 0], vel[:, :, 1]
-            if cmap == "speed":
-                speed = np.sqrt(u.astype(np.float32) ** 2 + v.astype(np.float32) ** 2)
-                mx = max(
-                    self.sim.u_inflow * 1.5,
-                    float(np.percentile(speed, 98)),
-                    0.001,
-                )
-                field = np.clip(speed / mx, 0, 1).astype(np.float32)
-            else:
-                dvdx = np.zeros_like(u, dtype=np.float32)
-                dudy = np.zeros_like(u, dtype=np.float32)
-                dvdx[:, 1:-1] = (v[:, 2:] - v[:, :-2]) * 0.5
-                dudy[1:-1, :] = (u[2:, :] - u[:-2, :]) * 0.5
-                vort = dvdx - dudy
-                mx = max(float(np.percentile(abs(vort), 98)), 0.001)
-                field = np.clip(vort / mx * 0.5 + 0.5, 0, 1).astype(np.float32)
-        elif cmap == "pressure":
-            p = self.sim.get_pressure()
-            mx = max(float(np.percentile(abs(p), 98)), 0.001)
-            field = np.clip(p / mx * 0.5 + 0.5, 0, 1).astype(np.float32)
-        elif cmap == "density":
-            rho = self.sim.get_density()
-            lo, hi = float(np.min(rho)), float(np.max(rho))
-            if hi - lo < 0.001:
-                field = np.full_like(rho, 0.5, dtype=np.float32)
-            else:
-                field = np.clip((rho - lo) / (hi - lo), 0, 1).astype(np.float32)
-        elif cmap == "phase":
-            rho = self.sim.get_density()
-            field = 1.0 / (1.0 + np.exp(-15 * (rho - 0.5)))
-            field = np.clip(field, 0, 1).astype(np.float32)
-        else:
-            field = self.sim.get_smoke()
+        try:
+            field = self.sim.get_field(cmap)
+        except ValueError:
+            field = self.sim.get_field("smoke")
 
         field = np.ascontiguousarray(field)
         h, w = field.shape
@@ -383,6 +357,10 @@ class Viewport(QOpenGLWidget):
             self._draw_quiver(painter, vel)
         if self._show_streamlines and vel is not None:
             self._draw_streamlines(painter, vel)
+        if self._show_contours:
+            self._draw_pressure_contours(painter)
+        if self._show_force_arrows and vel is not None:
+            self._draw_force_arrows(painter, vel)
 
         if self._drag_start is not None and self._drag_end is not None:
             pen = QPen(QColor(255, 255, 255, 200), 2)
@@ -637,9 +615,175 @@ class Viewport(QOpenGLWidget):
             + field[iy + 1, ix + 1] * fx * fy
         )
 
+    # --- pressure contour lines ---
+
+    def _draw_pressure_contours(self, painter: QPainter) -> None:
+        p = self.sim.get_pressure()
+        h, w = p.shape
+        sw = self.width() / w
+        sh = self.height() / h
+        mx = max(float(np.percentile(np.abs(p), 95)), 0.001)
+        levels = np.linspace(-mx, mx, 11)
+        pen = QPen(QColor(255, 255, 255, 60), 1)
+        painter.setPen(pen)
+        for level in levels:
+            self._marching_squares_contour(painter, p, level, sw, sh)
+
+    def _marching_squares_contour(
+        self,
+        painter: QPainter,
+        field: np.ndarray,
+        level: float,
+        sw: float,
+        sh: float,
+    ) -> None:
+        h, w = field.shape
+        for y in range(0, h - 1, 2):
+            for x in range(0, w - 1, 2):
+                tl = field[y, x]
+                tr = field[y, x + 1]
+                br = field[y + 1, x + 1]
+                bl = field[y + 1, x]
+                idx = 0
+                if tl >= level:
+                    idx |= 8
+                if tr >= level:
+                    idx |= 4
+                if br >= level:
+                    idx |= 2
+                if bl >= level:
+                    idx |= 1
+                if idx == 0 or idx == 15:
+                    continue
+                edges = self._ms_edges(idx, level, tl, tr, br, bl, x, y)
+                for (ex1, ey1, ex2, ey2) in edges:
+                    painter.drawLine(
+                        int(ex1 * sw), int(ey1 * sh),
+                        int(ex2 * sw), int(ey2 * sh),
+                    )
+
+    @staticmethod
+    def _ms_edges(
+        idx: int, level: float,
+        tl: float, tr: float, br: float, bl: float,
+        x: float, y: float,
+    ) -> list[tuple[float, float, float, float]]:
+        def lerp(a: float, b: float) -> float:
+            d = b - a
+            return (level - a) / d if abs(d) > 1e-10 else 0.5
+
+        top = (x + lerp(tl, tr), y)
+        right = (x + 1, y + lerp(tr, br))
+        bottom = (x + lerp(bl, br), y + 1)
+        left = (x, y + lerp(tl, bl))
+
+        lookup = {
+            1: [(left, bottom)],
+            2: [(bottom, right)],
+            3: [(left, right)],
+            4: [(top, right)],
+            5: [(top, left), (bottom, right)],
+            6: [(top, bottom)],
+            7: [(top, left)],
+            8: [(top, left)],
+            9: [(top, bottom)],
+            10: [(top, right), (bottom, left)],
+            11: [(top, right)],
+            12: [(left, right)],
+            13: [(bottom, right)],
+            14: [(left, bottom)],
+        }
+        pairs = lookup.get(idx, [])
+        return [(a[0], a[1], b[0], b[1]) for a, b in pairs]
+
+    # --- force arrows on obstacles ---
+
+    def _draw_force_arrows(self, painter: QPainter, vel: np.ndarray) -> None:
+        if not self.scene or not self.scene.obstacles:
+            return
+        h, w = vel.shape[:2]
+        sw = self.width() / w
+        sh = self.height() / h
+        obs = self.sim.get_obstacles()
+        u_inflow = getattr(self.sim, "u_inflow", 0.15)
+
+        for obs_spec in self.scene.obstacles:
+            cx, cy, cw, ch = self._obstacle_bounds(obs_spec)
+            if cw == 0 or ch == 0:
+                continue
+            force_x, force_y = self._estimate_obstacle_force(
+                vel, obs, cx, cy, cw, ch, u_inflow
+            )
+            magnitude = math.sqrt(force_x ** 2 + force_y ** 2)
+            if magnitude < 1e-6:
+                continue
+            px = (cx + cw / 2) * sw
+            py = (cy + ch / 2) * sh
+            max_arrow = min(self.width(), self.height()) * 0.1
+            scale = min(max_arrow / max(magnitude, 1e-6), 10.0)
+            dx = force_x * scale
+            dy = force_y * scale
+            angle = math.atan2(force_y, force_x)
+            pen = QPen(QColor(255, 200, 50, 220), 2)
+            painter.setPen(pen)
+            brush = QBrush(QColor(255, 200, 50, 200))
+            painter.setBrush(brush)
+            painter.drawLine(int(px), int(py), int(px + dx), int(py + dy))
+            hl = 8
+            ha = 0.5
+            ax1 = px + dx - math.cos(angle - ha) * hl
+            ay1 = py + dy - math.sin(angle - ha) * hl
+            ax2 = px + dx - math.cos(angle + ha) * hl
+            ay2 = py + dy - math.sin(angle + ha) * hl
+            painter.drawPolygon(
+                QPointF(px + dx, py + dy),
+                QPointF(ax1, ay1),
+                QPointF(ax2, ay2),
+            )
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            font = QFont("monospace", 8)
+            painter.setFont(font)
+            painter.setPen(QColor(255, 200, 50, 200))
+            painter.drawText(int(px + dx + 6), int(py + dy - 4), f"{magnitude:.3f}")
+
+    @staticmethod
+    def _obstacle_bounds(obs: ObstacleSpec) -> tuple[int, int, int, int]:
+        if hasattr(obs, "x") and hasattr(obs, "y") and hasattr(obs, "w") and hasattr(obs, "h"):
+            return obs.x, obs.y, obs.w, obs.h
+        if hasattr(obs, "x") and hasattr(obs, "y") and hasattr(obs, "radius"):
+            r = obs.radius
+            return obs.x - r, obs.y - r, 2 * r, 2 * r
+        return 0, 0, 0, 0
+
+    @staticmethod
+    def _estimate_obstacle_force(
+        vel: np.ndarray,
+        obs: np.ndarray,
+        cx: int, cy: int, cw: int, ch: int,
+        u_inflow: float,
+    ) -> tuple[float, float]:
+        h, w = vel.shape[:2]
+        x1 = max(1, cx)
+        x2 = min(w - 1, cx + cw)
+        y1 = max(1, cy)
+        y2 = min(h - 1, cy + ch)
+        if x2 <= x1 or y2 <= y1:
+            return 0.0, 0.0
+        region_u = vel[y1:y2, x1:x2, 0]
+        region_v = vel[y1:y2, x1:x2, 1]
+        obs_region = obs[y1:y2, x1:x2]
+        interior = obs_region
+        if not interior.any():
+            return 0.0, 0.0
+        drag_x = float(np.sum(region_u[interior]))
+        drag_y = float(np.sum(region_v[interior]))
+        return -drag_x, -drag_y
+
     # --- colorbar ---
 
     def _draw_colorbar(self, painter: QPainter) -> None:
+        from resources.colormaps import FIELD_REGISTRY
+
         bar_w = 18
         bar_h = min(180, self.height() - 40)
         bx = self.width() - bar_w - 20
@@ -660,9 +804,9 @@ class Viewport(QOpenGLWidget):
         font = QFont("monospace", 9)
         painter.setFont(font)
         painter.setPen(QColor(180, 190, 210))
-        painter.drawText(bx + bar_w + 6, by + 9, "1.0")
-        painter.drawText(bx + bar_w + 6, by + bar_h // 2 + 3, "0.5")
-        painter.drawText(bx + bar_w + 6, by + bar_h + 4, "0.0")
+        info = FIELD_REGISTRY.get(self._colormap)
+        label = info.label if info else self._colormap.capitalize()
+        painter.drawText(bx - 4, by - 6, label)
 
     # --- mouse events ---
 

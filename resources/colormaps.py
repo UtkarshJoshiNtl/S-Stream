@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import numpy as np
 
 
@@ -86,4 +88,66 @@ MODE_TO_CMAP: dict[str, str] = {
     "pressure": "coolwarm",
     "density": "inferno",
     "phase": "blues",
+    "temperature": "inferno",
 }
+
+
+@dataclass(frozen=True)
+class FieldInfo:
+    """Metadata for a simulation field."""
+
+    label: str
+    colormap: str
+    tooltip: str
+    symmetric: bool = False
+
+
+FIELD_REGISTRY: dict[str, FieldInfo] = {
+    "smoke": FieldInfo(
+        label="Smoke",
+        colormap="viridis",
+        tooltip="Passive scalar concentration advected by the flow. "
+        "Useful for visualizing mixing and transport.",
+    ),
+    "speed": FieldInfo(
+        label="Speed",
+        colormap="plasma",
+        tooltip="Velocity magnitude |u| = sqrt(u^2 + v^2). "
+        "Normalized by 1.5x the inflow speed.",
+    ),
+    "vorticity": FieldInfo(
+        label="Vorticity",
+        colormap="coolwarm",
+        tooltip="Curl of velocity (dv/dx - du/dy). "
+        "Shows rotation in the flow. Blue = clockwise, red = counter-clockwise.",
+        symmetric=True,
+    ),
+    "pressure": FieldInfo(
+        label="Pressure",
+        colormap="coolwarm",
+        tooltip="Pressure field (rho - 1). "
+        "Blue = low pressure, red = high pressure.",
+        symmetric=True,
+    ),
+    "density": FieldInfo(
+        label="Density",
+        colormap="inferno",
+        tooltip="Fluid density. Uniform = 1.0 in standard LBM. "
+        "Varies in multiphase (Shan-Chen) simulations.",
+    ),
+    "phase": FieldInfo(
+        label="Phase",
+        colormap="blues",
+        tooltip="Liquid/vapor phase indicator (Shan-Chen model only). "
+        "Sigmoid transform of density: sharp interface between phases.",
+    ),
+    "temperature": FieldInfo(
+        label="Temperature",
+        colormap="inferno",
+        tooltip="Temperature field (thermal LBM only). "
+        "Coupled to flow via Boussinesq buoyancy approximation.",
+        symmetric=True,
+    ),
+}
+
+CORE_FIELDS = ["smoke", "speed", "vorticity", "pressure", "density"]

@@ -40,7 +40,7 @@ from workbench.panels.outcome_panel import OutcomePanel
 from workbench.panels.scene_panel import ScenePanel
 from workbench.viewport import Viewport
 
-_COLORMAPS = ["speed", "smoke", "vorticity", "pressure", "density", "phase"]
+_COLORMAPS = ["speed", "smoke", "vorticity", "pressure", "density", "phase", "temperature"]
 
 
 class MainWindow(QMainWindow):
@@ -220,6 +220,16 @@ class MainWindow(QMainWindow):
         self.streams_btn.setCheckable(True)
         self.streams_btn.clicked.connect(self._toggle_streams)
         self.toolbar.addWidget(self.streams_btn)
+
+        self.contours_btn = QPushButton("Contours")
+        self.contours_btn.setCheckable(True)
+        self.contours_btn.clicked.connect(self._toggle_contours)
+        self.toolbar.addWidget(self.contours_btn)
+
+        self.force_btn = QPushButton("Force")
+        self.force_btn.setCheckable(True)
+        self.force_btn.clicked.connect(self._toggle_force_arrows)
+        self.toolbar.addWidget(self.force_btn)
 
         self.toolbar.addSeparator()
 
@@ -461,12 +471,20 @@ class MainWindow(QMainWindow):
 
     @staticmethod
     def _colormap_label(name: str) -> str:
-        return f"View: {name.capitalize()}"
+        from resources.colormaps import FIELD_REGISTRY
+
+        info = FIELD_REGISTRY.get(name)
+        label = info.label if info else name.capitalize()
+        return f"View: {label}"
 
     def _build_colormap_menu(self):
+        from resources.colormaps import FIELD_REGISTRY
+
         menu = QMenu(self)
         for name in _COLORMAPS:
-            action = menu.addAction(name.capitalize())
+            info = FIELD_REGISTRY.get(name)
+            label = info.label if info else name.capitalize()
+            action = menu.addAction(label)
             action.triggered.connect(lambda checked, n=name: self._set_colormap(n))
         return menu
 
@@ -475,6 +493,12 @@ class MainWindow(QMainWindow):
 
     def _toggle_streams(self, checked: bool) -> None:
         self.viewport.set_show_streamlines(checked)
+
+    def _toggle_contours(self, checked: bool) -> None:
+        self.viewport.set_show_contours(checked)
+
+    def _toggle_force_arrows(self, checked: bool) -> None:
+        self.viewport.set_show_force_arrows(checked)
 
     def _set_colormap(self, name: str) -> None:
         if name not in _COLORMAPS:
@@ -612,7 +636,7 @@ class MainWindow(QMainWindow):
         )
         if not path:
             return
-        self._export_image(path, scale=3, colorbar=True, annotations=True)
+        self._export_image(path, scale=3, colorbar=True, annotations=True, field_name=self.viewport.get_colormap())
         try:
             export_markdown_report(
                 Path(path).with_suffix(".md"),
@@ -638,6 +662,7 @@ class MainWindow(QMainWindow):
         scale: int,
         colorbar: bool,
         annotations: bool,
+        field_name: str = "smoke",
     ) -> None:
         try:
             export_image(
@@ -648,7 +673,7 @@ class MainWindow(QMainWindow):
                 include_colorbar=colorbar,
                 include_annotations=annotations,
                 step_count=self.step_count,
-                colormap=self.viewport.get_colormap(),
+                colormap=field_name,
             )
         except Exception as e:
             QMessageBox.warning(self, "Export Failed", str(e))

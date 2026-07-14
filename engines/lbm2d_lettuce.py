@@ -189,6 +189,40 @@ class LBM2DLettuce(SimEngine, SmokeMixin):
     def get_pressure(self) -> np.ndarray:
         return self._rho.cpu().numpy() - 1.0
 
+    def get_field_names(self) -> list[str]:
+        return ["smoke", "speed", "vorticity", "pressure", "density"]
+
+    def get_field(self, name: str) -> np.ndarray:
+        vel = self.get_velocity()
+        u, v = vel[:, :, 0], vel[:, :, 1]
+        if name == "smoke":
+            field = self.smoke.copy()
+            mx = max(float(np.percentile(field, 98)), 0.001)
+            return np.clip(field / mx, 0, 1).astype(np.float32)
+        if name == "speed":
+            speed = np.sqrt(u.astype(np.float32) ** 2 + v.astype(np.float32) ** 2)
+            mx = max(self.u_inflow * 1.5, float(np.percentile(speed, 98)), 0.001)
+            return np.clip(speed / mx, 0, 1).astype(np.float32)
+        if name == "vorticity":
+            dvdx = np.zeros_like(u, dtype=np.float32)
+            dudy = np.zeros_like(u, dtype=np.float32)
+            dvdx[:, 1:-1] = (v[:, 2:] - v[:, :-2]) * 0.5
+            dudy[1:-1, :] = (u[2:, :] - u[:-2, :]) * 0.5
+            vort = dvdx - dudy
+            mx = max(float(np.percentile(np.abs(vort), 98)), 0.001)
+            return np.clip(vort / mx * 0.5 + 0.5, 0, 1).astype(np.float32)
+        if name == "pressure":
+            p = (self.get_density() - 1.0).astype(np.float32)
+            mx = max(float(np.percentile(np.abs(p), 98)), 0.001)
+            return np.clip(p / mx * 0.5 + 0.5, 0, 1).astype(np.float32)
+        if name == "density":
+            rho = self.get_density()
+            lo, hi = float(np.min(rho)), float(np.max(rho))
+            if hi - lo < 0.001:
+                return np.full_like(rho, 0.5, dtype=np.float32)
+            return np.clip((rho - lo) / (hi - lo), 0, 1).astype(np.float32)
+        raise ValueError(f"Unknown field: {name!r}. Available: {self.get_field_names()}")
+
     def get_emitter_count(self) -> int:
         return len(self.emitters)
 

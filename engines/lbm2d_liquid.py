@@ -292,6 +292,40 @@ class LBM2DLiquid(SimEngine, SmokeMixin):
     def get_pressure(self) -> np.ndarray:
         return self.rho - 1.0
 
+    def get_field_names(self) -> list[str]:
+        return ["smoke", "speed", "vorticity", "pressure", "density", "phase"]
+
+    def get_field(self, name: str) -> np.ndarray:
+        if name == "smoke":
+            field = self.smoke.copy()
+            mx = max(float(np.percentile(field, 98)), 0.001)
+            return np.clip(field / mx, 0, 1).astype(np.float32)
+        if name == "speed":
+            speed = np.sqrt(self.u.astype(np.float32) ** 2 + self.v.astype(np.float32) ** 2)
+            mx = max(float(np.percentile(speed, 98)), 0.001)
+            return np.clip(speed / mx, 0, 1).astype(np.float32)
+        if name == "vorticity":
+            dvdx = np.zeros_like(self.u, dtype=np.float32)
+            dudy = np.zeros_like(self.u, dtype=np.float32)
+            dvdx[:, 1:-1] = (self.v[:, 2:] - self.v[:, :-2]) * 0.5
+            dudy[1:-1, :] = (self.u[2:, :] - self.u[:-2, :]) * 0.5
+            vort = dvdx - dudy
+            mx = max(float(np.percentile(np.abs(vort), 98)), 0.001)
+            return np.clip(vort / mx * 0.5 + 0.5, 0, 1).astype(np.float32)
+        if name == "pressure":
+            p = (self.rho - 1.0).astype(np.float32)
+            mx = max(float(np.percentile(np.abs(p), 98)), 0.001)
+            return np.clip(p / mx * 0.5 + 0.5, 0, 1).astype(np.float32)
+        if name == "density":
+            lo, hi = float(np.min(self.rho)), float(np.max(self.rho))
+            if hi - lo < 0.001:
+                return np.full_like(self.rho, 0.5, dtype=np.float32)
+            return np.clip((self.rho - lo) / (hi - lo), 0, 1).astype(np.float32)
+        if name == "phase":
+            field = 1.0 / (1.0 + np.exp(-15 * (self.rho - 0.5)))
+            return np.clip(field, 0, 1).astype(np.float32)
+        raise ValueError(f"Unknown field: {name!r}. Available: {self.get_field_names()}")
+
     def get_emitter_count(self) -> int:
         return len(self.emitters)
 

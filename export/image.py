@@ -16,6 +16,13 @@ def _get_lut(mode: str) -> np.ndarray:
     return CMAP_LUTS.get(MODE_TO_CMAP.get(mode, "viridis"), CMAP_LUTS["viridis"])
 
 
+def _field_label(name: str) -> str:
+    from resources.colormaps import FIELD_REGISTRY
+
+    info = FIELD_REGISTRY.get(name)
+    return info.label if info else name.capitalize()
+
+
 def export_image(
     sim: SimEngine,
     scene: Scene,
@@ -26,7 +33,10 @@ def export_image(
     step_count: int = 0,
     colormap: str = "smoke",
 ) -> None:
-    field = _compute_field(sim, colormap)
+    try:
+        field = sim.get_field(colormap)
+    except ValueError:
+        field = sim.get_field("smoke")
     h, w = field.shape
     out_w = w * scale
     out_h = h * scale
@@ -50,48 +60,6 @@ def export_image(
     painter.end()
     if not result.save(str(path)):
         raise RuntimeError(f"Failed to save image to {path}")
-
-
-def _compute_field(sim: SimEngine, cmap: str) -> np.ndarray:
-    if cmap == "smoke":
-        field = sim.get_smoke()
-        mx = max(float(np.percentile(field, 98)), 0.001)
-        return np.clip(field / mx, 0, 1)
-    vel = sim.get_velocity()
-    if cmap == "speed":
-        speed = np.sqrt(vel[:, :, 0] ** 2 + vel[:, :, 1] ** 2)
-        mx = max(
-            sim.u_inflow * 1.5,
-            float(np.percentile(speed, 98)),
-            0.001,
-        )
-        return np.clip(speed / mx, 0, 1)
-    if cmap == "vorticity":
-        u = vel[:, :, 0]
-        v = vel[:, :, 1]
-        dvdx = np.zeros_like(u)
-        dudy = np.zeros_like(u)
-        dvdx[:, 1:-1] = (v[:, 2:] - v[:, :-2]) * 0.5
-        dudy[1:-1, :] = (u[2:, :] - u[:-2, :]) * 0.5
-        vort = dvdx - dudy
-        mx = max(float(np.percentile(abs(vort), 98)), 0.001)
-        return np.clip(vort / mx * 0.5 + 0.5, 0, 1)
-    if cmap == "pressure":
-        rho = sim.get_density()
-        p = rho - 1.0
-        mx = max(float(np.percentile(abs(p), 98)), 0.001)
-        return np.clip(p / mx * 0.5 + 0.5, 0, 1)
-    if cmap == "density":
-        rho = sim.get_density()
-        lo, hi = float(np.min(rho)), float(np.max(rho))
-        if hi - lo < 0.001:
-            return np.full_like(rho, 0.5, dtype=np.float32)
-        return np.clip((rho - lo) / (hi - lo), 0, 1).astype(np.float32)
-    if cmap == "phase":
-        rho = sim.get_density()
-        field = 1.0 / (1.0 + np.exp(-15 * (rho - 0.5)))
-        return np.clip(field, 0, 1).astype(np.float32)
-    return sim.get_smoke()
 
 
 def _render_field(img: QImage, field: np.ndarray, cmap: str) -> None:
@@ -175,7 +143,7 @@ def _draw_annotations(
         f"Cd = {cd:.3f}",
         f"nu = {sim.viscosity}",
         f"U_in = {sim.u_inflow}",
-        f"View = {colormap}",
+        f"View = {_field_label(colormap)}",
         f"Step = {step}",
         "SStream educational CFD",
     ]

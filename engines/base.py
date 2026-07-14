@@ -76,6 +76,25 @@ class SimEngine(ABC):
         """Return a copy of the smoke (passive scalar) field as a NumPy array."""
         ...
 
+    # --- Engine-agnostic field access (Phase 5) ---
+
+    @abstractmethod
+    def get_field_names(self) -> list[str]:
+        """Return the list of field names this engine supports."""
+        ...
+
+    @abstractmethod
+    def get_field(self, name: str) -> np.ndarray:
+        """
+        Return a normalized [0, 1] float32 scalar field for visualization.
+
+        Supported fields (all engines): smoke, speed, vorticity, pressure, density.
+        Additional fields: phase (liquid), temperature (thermal).
+
+        Raises ValueError for unsupported field names.
+        """
+        ...
+
     # --- Obstacles ---
 
     @abstractmethod
