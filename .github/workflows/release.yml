@@ -17,7 +17,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - run: pip install -r requirements.txt
+      - run: pip install -e ".[stl]"
       - run: pip install pyinstaller
       - name: Build Linux binary
         run: |
@@ -35,6 +35,13 @@ jobs:
             --hidden-import pyqtgraph \
             --hidden-import numba \
             --hidden-import engines.lbm2d_liquid \
+            --hidden-import engines.lbm2d_multicomponent \
+            --hidden-import engines.lbm3d \
+            --hidden-import engines.particle_tracer \
+            --hidden-import engines.collision \
+            --hidden-import engines.non_newtonian \
+            --hidden-import engines.thermal_mixin \
+            --hidden-import engines.boundary_conditions \
             --hidden-import analysis.regimes \
             --hidden-import analysis.sanity \
             --hidden-import analysis.scorecard \
@@ -57,7 +64,9 @@ jobs:
             --hidden-import workbench.dialogs.recipes_dialog \
             --hidden-import workbench.dialogs.sweep_dialog \
             --hidden-import workbench.dialogs.export_dialog \
+            --hidden-import workbench.dialogs.wizard_dialog \
             --exclude cupy --exclude cupyx --exclude cupy_backends \
+            --exclude torch --exclude lettuce \
             main.py
       - uses: actions/upload-artifact@v4
         with:
@@ -72,7 +81,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - run: pip install -r requirements.txt
+      - run: pip install -e ".[stl]"
       - run: pip install pyinstaller
       - name: Build Windows executable
         run: |
@@ -90,6 +99,13 @@ jobs:
             --hidden-import pyqtgraph `
             --hidden-import numba `
             --hidden-import engines.lbm2d_liquid `
+            --hidden-import engines.lbm2d_multicomponent `
+            --hidden-import engines.lbm3d `
+            --hidden-import engines.particle_tracer `
+            --hidden-import engines.collision `
+            --hidden-import engines.non_newtonian `
+            --hidden-import engines.thermal_mixin `
+            --hidden-import engines.boundary_conditions `
             --hidden-import analysis.regimes `
             --hidden-import analysis.sanity `
             --hidden-import analysis.scorecard `
@@ -112,7 +128,9 @@ jobs:
             --hidden-import workbench.dialogs.recipes_dialog `
             --hidden-import workbench.dialogs.sweep_dialog `
             --hidden-import workbench.dialogs.export_dialog `
+            --hidden-import workbench.dialogs.wizard_dialog `
             --exclude cupy --exclude cupyx --exclude cupy_backends `
+            --exclude torch --exclude lettuce `
             --icon resources\icon.ico `
             main.py
       - uses: actions/upload-artifact@v4
@@ -128,7 +146,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - run: pip install -r requirements.txt
+      - run: pip install -e ".[stl]"
       - run: pip install pyinstaller
       - name: Build macOS binary
         run: |
@@ -146,6 +164,13 @@ jobs:
             --hidden-import pyqtgraph \
             --hidden-import numba \
             --hidden-import engines.lbm2d_liquid \
+            --hidden-import engines.lbm2d_multicomponent \
+            --hidden-import engines.lbm3d \
+            --hidden-import engines.particle_tracer \
+            --hidden-import engines.collision \
+            --hidden-import engines.non_newtonian \
+            --hidden-import engines.thermal_mixin \
+            --hidden-import engines.boundary_conditions \
             --hidden-import analysis.regimes \
             --hidden-import analysis.sanity \
             --hidden-import analysis.scorecard \
@@ -168,7 +193,9 @@ jobs:
             --hidden-import workbench.dialogs.recipes_dialog \
             --hidden-import workbench.dialogs.sweep_dialog \
             --hidden-import workbench.dialogs.export_dialog \
+            --hidden-import workbench.dialogs.wizard_dialog \
             --exclude cupy --exclude cupyx --exclude cupy_backends \
+            --exclude torch --exclude lettuce \
             main.py
       - uses: actions/upload-artifact@v4
         with:
@@ -203,3 +230,19 @@ jobs:
             artifacts/macos/S-Stream-macos
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-pypi:
+    needs: [release]
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install build
+      - name: Build sdist and wheel
+        run: python -m build
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1

@@ -47,11 +47,21 @@ venv/
 # Cache
 .pytest_cache/
 .mypy_cache/
+.ruff_cache/
+
+# Coverage
+coverage.xml
+.coverage
+htmlcov/
+
+# Logs
+*.log
 
 # Tooling configuration (local)
 .opencode/
 AGENTS.md
 PLAN.md
+plan.md
 
 # Qt settings
 S-Stream___Fluid_Simulation.ini

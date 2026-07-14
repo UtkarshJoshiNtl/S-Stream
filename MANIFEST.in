@@ -1,0 +1,5 @@
+include LICENSE
+include README.md
+include CHANGELOG.md
+recursive-include presets/scenes *.json *.png
+recursive-include resources *.qss *.svg *.ico *.png

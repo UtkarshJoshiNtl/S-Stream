@@ -4,27 +4,66 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "s-stream"
-version = "0.3.0"
-description = "2D Lattice Boltzmann fluid workbench with PySide6 UI"
+version = "1.0.0"
+description = "2D/3D Lattice Boltzmann fluid simulation workbench with PySide6 UI"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
+keywords = [
+    "lattice-boltzmann",
+    "fluid-dynamics",
+    "computational-fluid-dynamics",
+    "simulation",
+    "multiphase",
+    "pyside6",
+    "scientific-computing",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Education",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Physics",
+    "Topic :: Scientific/Engineering :: Visualization",
+]
 dependencies = [
-    "numpy>=1.24.0",
-    "numba>=0.59",
-    "PyOpenGL>=3.1.6",
-    "PySide6>=6.5.0",
-    "pyqtgraph>=0.13.0",
-    "imageio>=2.31.0",
-    "imageio-ffmpeg>=0.5.0",
-    "trimesh>=3.20.0",
+    "numpy>=1.24.0,<3",
+    "numba>=0.59,<1",
+    "PyOpenGL>=3.1.6,<4",
+    "PySide6>=6.5.0,<7",
+    "pyqtgraph>=0.13.0,<1",
+    "imageio>=2.31.0,<3",
+    "imageio-ffmpeg>=0.5.0,<1",
 ]
 
 [project.optional-dependencies]
-gpu = ["cupy-cuda12x>=12.0.0"]
-notebook = ["matplotlib>=3.7.0"]
-api = ["fastapi>=0.100.0", "uvicorn[standard]>=0.22.0"]
-full = ["cupy-cuda12x>=12.0.0", "matplotlib>=3.7.0", "fastapi>=0.100.0", "uvicorn[standard]>=0.22.0"]
+stl = ["trimesh>=3.20.0,<5"]
+gpu = ["cupy-cuda12x>=12.0.0,<14"]
+lettuce = ["torch>=2.0.0,<3", "lettuce>=0.2.0"]
+notebook = ["matplotlib>=3.7.0,<4"]
+api = ["fastapi>=0.100.0,<1", "uvicorn[standard]>=0.22.0,<1"]
+dev = ["pytest>=7.0", "pytest-cov>=4.0", "black>=23.0", "ruff>=0.1.0"]
+full = [
+    "trimesh>=3.20.0,<5",
+    "cupy-cuda12x>=12.0.0,<14",
+    "torch>=2.0.0,<3",
+    "lettuce>=0.2.0",
+    "matplotlib>=3.7.0,<4",
+    "fastapi>=0.100.0,<1",
+    "uvicorn[standard]>=0.22.0,<1",
+]
+
+[project.urls]
+Homepage = "https://github.com/UtkarshJoshiNtl/S-Stream"
+Repository = "https://github.com/UtkarshJoshiNtl/S-Stream"
+Issues = "https://github.com/UtkarshJoshiNtl/S-Stream/issues"
+Changelog = "https://github.com/UtkarshJoshiNtl/S-Stream/blob/main/CHANGELOG.md"
 
 [project.scripts]
 s-stream = "main:main"
@@ -46,7 +85,18 @@ line-length = 88
 target-version = "py310"
 
 [tool.ruff.lint]
-select = ["E", "F", "W"]
+select = ["E", "F", "W", "I", "UP", "B"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "slow: marks tests as slow-running",
+    "gpu: marks tests requiring GPU/CuPy",
+]
+
+[tool.coverage.run]
+source = ["engines", "scene", "analysis", "export", "presets", "sstream"]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
