@@ -24,7 +24,6 @@ from PySide6.QtWidgets import (
 from scene.scene import (
     CircleObstacle,
     EmitterSpec,
-    ProbeSpec,
     RectObstacle,
     Scene,
     SceneProductMeta,
@@ -90,7 +89,9 @@ def _build_templates() -> list[WizardTemplate]:
                 product=SceneProductMeta(
                     recommended_colormap="speed",
                     autorun_steps=3000,
-                    lesson_headline="Classic benchmark: primary vortex and corner eddies",
+                    lesson_headline=(
+                        "Classic benchmark: primary vortex" " and corner eddies"
+                    ),
                 ),
             ),
             tips=[
@@ -144,7 +145,9 @@ def _build_templates() -> list[WizardTemplate]:
                 product=SceneProductMeta(
                     recommended_colormap="pressure",
                     autorun_steps=4000,
-                    lesson_headline="Pressure distribution and wake behind a bluff body",
+                    lesson_headline=(
+                        "Pressure distribution and wake" " behind a bluff body"
+                    ),
                 ),
             ),
             tips=[
@@ -199,7 +202,9 @@ def _build_templates() -> list[WizardTemplate]:
                 product=SceneProductMeta(
                     recommended_colormap="speed",
                     autorun_steps=4000,
-                    lesson_headline="Flow acceleration in nozzle, deceleration in diffuser",
+                    lesson_headline=(
+                        "Flow acceleration in nozzle," " deceleration in diffuser"
+                    ),
                 ),
             ),
             tips=[

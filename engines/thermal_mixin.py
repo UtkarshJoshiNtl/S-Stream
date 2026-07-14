@@ -39,8 +39,7 @@ def _collide_temperature_2d_nb(
             # Compute equilibrium for temperature
             r = rho[y, x]
             T_val = T if r > 0 else 0.0
-            T_safe = T_val if T_val > 0 else 1.0
-            T_norm = T_val  # Temperature is a passive scalar, not normalized by rho
+            T_norm = T_val
 
             for i in range(9):
                 feq_T = w[i] * T_norm

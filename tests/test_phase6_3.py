@@ -5,8 +5,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from engines.particle_tracer import ParticleTracer
 from engines.lbm2d import LBM2D
+from engines.particle_tracer import ParticleTracer
 
 
 class TestParticleTracerInit:

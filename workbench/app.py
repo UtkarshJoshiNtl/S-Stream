@@ -563,7 +563,6 @@ class MainWindow(QMainWindow):
         if self.scene.product.autorun_steps:
             self._run_guided_demo()
         if template.tips:
-            tip_text = "\n".join(f"  {i+1}. {t}" for i, t in enumerate(template.tips))
             self.status.showMessage(f"Tips: {template.tips[0]}", 8000)
 
     def _open_preset_dialog(self) -> None:

@@ -4,8 +4,8 @@ from pathlib import Path
 
 from analysis.physics import characteristic_length, drag_coefficient, reynolds_number
 from analysis.regimes import FlowRegime
-from analysis.scorecard import DesignScorecard
 from analysis.sanity import SanityWarning
+from analysis.scorecard import DesignScorecard
 from engines.base import SimEngine
 from scene.scene import Scene
 

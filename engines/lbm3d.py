@@ -5,7 +5,7 @@ from numba import njit, prange
 
 from engines.base import SimEngine
 from engines.collision import BGKCollision, CollisionOperator
-from engines.lbm_common import LATTICE_3D_Q19, Lattice3D
+from engines.lbm_common import LATTICE_3D_Q19
 from engines.particle_tracer import ParticleTracer
 from engines.smoke_mixin import SmokeMixin
 from engines.thermal_mixin import ThermalMixin

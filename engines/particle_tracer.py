@@ -225,7 +225,7 @@ class ParticleTracer:
     def _interpolate_velocity(
         self, vel_field: np.ndarray, positions: np.ndarray
     ) -> np.ndarray:
-        """Bilinear (2D) or trilinear (3D) interpolation of velocity at particle positions."""
+        """Bilinear/trilinear interpolation of velocity."""
         if self.is_3d:
             return self._interp_3d(vel_field, positions)
         return self._interp_2d(vel_field, positions)

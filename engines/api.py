@@ -22,7 +22,6 @@ Endpoints:
 
 from __future__ import annotations
 
-import base64
 import io
 import time
 from typing import Any
@@ -115,7 +114,7 @@ def create_app(sim: SimEngine) -> Any:
         try:
             field = sim.get_field(type)
         except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
+            raise HTTPException(status_code=400, detail=str(e)) from e
         return {
             "type": type,
             "shape": list(field.shape),
@@ -129,7 +128,7 @@ def create_app(sim: SimEngine) -> Any:
         try:
             field = sim.get_field(type)
         except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
+            raise HTTPException(status_code=400, detail=str(e)) from e
         return {
             "type": type,
             "shape": list(field.shape),
@@ -151,13 +150,16 @@ def create_app(sim: SimEngine) -> Any:
             plt.close(fig)
             buf.seek(0)
             return Response(content=buf.read(), media_type="image/png")
-        except ImportError:
+        except ImportError as exc:
             raise HTTPException(
                 status_code=500,
-                detail="matplotlib required for PNG export. Install with: pip install sstream[notebook]",
-            )
+                detail=(
+                    "matplotlib required for PNG export. "
+                    "Install with: pip install sstream[notebook]"
+                ),
+            ) from exc
         except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
+            raise HTTPException(status_code=400, detail=str(e)) from e
 
     @app.get("/velocity")
     def get_velocity() -> dict[str, Any]:
@@ -217,6 +219,6 @@ def create_app(sim: SimEngine) -> Any:
                 "mean": float(field.mean()),
             }
         except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
+            raise HTTPException(status_code=400, detail=str(e)) from e
 
     return app

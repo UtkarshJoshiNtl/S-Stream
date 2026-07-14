@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from scene.scene import (
     CircleObstacle,
     EmitterSpec,
@@ -14,15 +12,13 @@ from scene.scene import (
 
 def _build_templates():
     """Import-free template builder for testing without PySide6."""
+    from dataclasses import dataclass, field
+
     from scene.scene import (
         CircleObstacle,
-        EmitterSpec,
-        ProbeSpec,
-        RectObstacle,
         Scene,
         SceneProductMeta,
     )
-    from dataclasses import dataclass, field
 
     @dataclass
     class WizardTemplate:
@@ -146,7 +142,7 @@ class TestBuildTemplates:
     def test_all_templates_have_required_fields(self) -> None:
         templates, _ = _build_templates()
         for t in templates:
-            assert t.name, f"Template missing name"
+            assert t.name, "Template missing name"
             assert t.category, f"Template {t.name} missing category"
             assert t.description, f"Template {t.name} missing description"
             assert t.icon, f"Template {t.name} missing icon"

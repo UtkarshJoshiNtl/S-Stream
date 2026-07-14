@@ -335,6 +335,7 @@ class SimEngine(ABC):
         """Return PNG bytes for inline Jupyter display."""
         try:
             import io
+
             import matplotlib.pyplot as plt
 
             field = self.get_field("smoke")

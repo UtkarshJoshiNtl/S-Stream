@@ -17,14 +17,12 @@ from engines.collision import (
 )
 from engines.lbm2d import LBM2D
 from engines.lbm3d import LBM3D
-from engines.lbm_common import LATTICE_2D, LATTICE_3D_Q19
 from engines.non_newtonian import (
     BinghamModel,
     CarreauModel,
     NonNewtonianCollision,
     PowerLawModel,
 )
-from engines.thermal_mixin import ThermalMixin
 
 
 # =============================================================================

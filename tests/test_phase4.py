@@ -16,7 +16,6 @@ from scene.scene import (
     LatticeObstacle,
     RectObstacle,
     STLObstacle,
-    apply_to_sim,
 )
 from scene.serializer import dict_to_scene, scene_to_dict
 
@@ -60,7 +59,6 @@ class TestEllipseObstacle:
         assert count >= 1
 
     def test_ellipse_serialization(self) -> None:
-        obs = EllipseObstacle(name="E", x=32, y=32, rx=10, ry=5, rotation=45.0)
         d = {
             "type": "ellipse",
             "name": "E",

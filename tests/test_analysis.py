@@ -12,7 +12,7 @@ from analysis.physics import (
 from analysis.regimes import detect_flow_regime
 from analysis.sanity import check_sanity
 from analysis.scorecard import compute_scorecard
-from analysis.sweep import run_sweep, SweepResult
+from analysis.sweep import SweepResult, run_sweep
 from engines.lbm2d import LBM2D
 from scene.scene import CircleObstacle, Scene
 

@@ -4,8 +4,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from PySide6.QtGui import QIcon
-from PySide6.QtGui import QSurfaceFormat
+from PySide6.QtGui import QIcon, QSurfaceFormat
 from PySide6.QtWidgets import QApplication
 
 from engines import LBM2D, LBM2DGPU, LBM2DLiquid, LBM2DMultiComponent
@@ -52,8 +51,9 @@ def main() -> None:
         sim = LBM2D(width=args.width, height=args.height)
 
     if args.serve:
-        from engines.api import create_app
         import uvicorn
+
+        from engines.api import create_app
 
         app = create_app(sim)
         print(f"S-Stream API starting on http://0.0.0.0:{args.port}")

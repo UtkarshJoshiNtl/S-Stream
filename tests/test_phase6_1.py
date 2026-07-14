@@ -61,7 +61,6 @@ class TestMultiComponentInitDensities:
         sim = LBM2DMultiComponent(width=64, height=64)
         # Component 1 should have high density at center
         cx, cy = 32, 32
-        radius = 64 // 6  # ~10
         assert sim.rho1[cy, cx] == pytest.approx(2.0, abs=0.01)
         # Component 2 should have high density at edges
         assert sim.rho2[0, 0] == pytest.approx(2.0, abs=0.01)

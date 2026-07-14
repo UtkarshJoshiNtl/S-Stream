@@ -55,11 +55,12 @@ from OpenGL.GL import (  # noqa: E402
     glVertexAttribPointer,
 )
 from OpenGL.GL.shaders import compileProgram, compileShader  # noqa: E402
-from PySide6.QtCore import Qt, QPointF, Signal  # noqa: E402
+from PySide6.QtCore import QPointF, Qt, Signal  # noqa: E402
 from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPen  # noqa: E402
 from PySide6.QtOpenGLWidgets import QOpenGLWidget  # noqa: E402
 
 from engines.base import SimEngine  # noqa: E402
+from resources.colormaps import CMAP_LUTS, MODE_TO_CMAP  # noqa: E402
 from scene.probe import Probe  # noqa: E402
 from scene.scene import (  # noqa: E402
     AirfoilObstacle,
@@ -75,7 +76,6 @@ from scene.scene import (  # noqa: E402
     Scene,
     STLObstacle,
 )
-from resources.colormaps import CMAP_LUTS, MODE_TO_CMAP  # noqa: E402
 
 _VERT_SRC = """
 #version 330 core
@@ -690,7 +690,7 @@ class Viewport(QOpenGLWidget):
             )
             active = (idx > 0) & (idx < 15)
             cell_ys, cell_xs = np.where(active)
-            for cy, cx in zip(cell_ys, cell_xs):
+            for cy, cx in zip(cell_ys, cell_xs, strict=False):
                 x2, y2 = cx * 2, cy * 2
                 tl_v = p[y2, x2]
                 tr_v = p[y2, x2 + 1]
@@ -953,6 +953,7 @@ class Viewport(QOpenGLWidget):
 
     def _draw_colorbar(self, painter: QPainter) -> None:
         from PySide6.QtGui import QPixmap
+
         from resources.colormaps import FIELD_REGISTRY
 
         bar_w = 18

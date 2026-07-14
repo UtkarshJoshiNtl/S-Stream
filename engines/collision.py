@@ -400,7 +400,6 @@ def _mrt_collide_nb(
             )
 
             # Compute equilibrium moments
-            e0 = r
             e1 = r * (-2 + 3 * u_vel * u_vel + 3 * v_vel * v_vel)
             e2 = r * (1 - 3 * u_vel * u_vel - 3 * v_vel * v_vel)
             e3 = r * u_vel
@@ -721,7 +720,7 @@ def _smagorinsky_collide_3d_nb(
                     pi_neq_xz += cx[i] * cz[i] * fneq_i
                     pi_neq_yz += cy[i] * cz[i] * fneq_i
 
-                # |S| = sqrt(2 * (S_xx^2 + S_yy^2 + S_zz^2 + 2*(S_xy^2 + S_xz^2 + S_yz^2)))
+                # |S| = sqrt(2 * sum(S_ij^2))
                 s_mag_sq = (
                     pi_neq_xx * pi_neq_xx
                     + pi_neq_yy * pi_neq_yy

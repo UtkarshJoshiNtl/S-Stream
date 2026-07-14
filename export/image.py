@@ -6,10 +6,8 @@ import numpy as np
 from PySide6.QtGui import QColor, QFont, QImage, QPainter, QPen
 
 from engines.base import SimEngine
-from scene.scene import Scene
-
-
 from resources.colormaps import CMAP_LUTS, MODE_TO_CMAP
+from scene.scene import Scene
 
 
 def _get_lut(mode: str) -> np.ndarray:

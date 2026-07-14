@@ -11,7 +11,6 @@ Reference benchmarks:
 """
 
 import numpy as np
-import pytest
 
 from engines.collision import BGKCollision
 from engines.lbm2d import LBM2D
@@ -49,9 +48,11 @@ class TestAnalyticalBenchmarks:
 
         # Check symmetry: u[1] should equal u[H-2], u[2] should equal u[H-3], etc.
         for i in range(1, height // 4):
-            assert (
-                abs(u_profile[i] - u_profile[height - 1 - i]) < 0.005
-            ), f"Asymmetry at y={i}: u={u_profile[i]:.5f} vs u={u_profile[height-1-i]:.5f}"
+            assert abs(u_profile[i] - u_profile[height - 1 - i]) < 0.005, (
+                f"Asymmetry at y={i}: "
+                f"u={u_profile[i]:.5f} vs "
+                f"u={u_profile[height - 1 - i]:.5f}"
+            )
 
     def test_couette_flow_2d(self) -> None:
         """Couette flow: pressure-driven channel flow.
@@ -108,9 +109,6 @@ class TestAnalyticalBenchmarks:
         ke_final = 0.5 * np.sum(sim.u**2 + sim.v**2)
 
         # Analytical decay: KE(t) = KE(0) * exp(-2 * k^2 * nu * t)
-        ke_analytical = ke_initial * np.exp(-2.0 * k**2 * nu * steps)
-
-        # Check that kinetic energy decreased (viscous dissipation)
         # Note: analytical decay assumes periodic BCs, but we have walls+outflow
         # so actual decay will be faster. We just check qualitative behavior.
         assert ke_final < ke_initial, "KE should decrease due to viscosity"

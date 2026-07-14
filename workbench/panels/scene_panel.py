@@ -26,8 +26,8 @@ from scene.scene import (
     AirfoilObstacle,
     ChannelObstacle,
     CircleObstacle,
-    EmitterSpec,
     EllipseObstacle,
+    EmitterSpec,
     ImageObstacle,
     LatticeObstacle,
     ObstacleSpec,
@@ -202,9 +202,11 @@ class ScenePanel(QWidget):
         self._param_diff.setValue(self.sim.smoke_diffusion)
         self._param_diff.valueChanged.connect(self._on_param_diff)
         self._param_diff.setToolTip(
-            "Smoke diffusion coefficient. Controls how fast the passive scalar spreads.\n"
+            "Smoke diffusion coefficient. Controls how fast"
+            " the passive scalar spreads.\n"
             "Higher values = more diffuse, blurry smoke.\n"
-            "Lower values = sharper, more detailed smoke patterns.\n"
+            "Lower values = sharper, more detailed smoke"
+            " patterns.\n"
             "Range: 0.0 (none) to 0.5 (highly diffuse)"
         )
         form.addRow("Smoke Diffusion", self._param_diff)
@@ -502,7 +504,7 @@ class ScenePanel(QWidget):
         cat_lists = [self.scene.obstacles, self.scene.emitters, self.scene.probes]
         self._top_items = {}
         self._item_to_data: dict[QTreeWidgetItem, tuple[str, int]] = {}
-        for idx, (name, items) in enumerate(zip(top_names, cat_lists)):
+        for idx, (name, items) in enumerate(zip(top_names, cat_lists, strict=False)):
             top = QTreeWidgetItem([f"{name} ({len(items)})"])
             top.setFlags(top.flags() & ~Qt.ItemFlag.ItemIsSelectable)
             self.tree.addTopLevelItem(top)

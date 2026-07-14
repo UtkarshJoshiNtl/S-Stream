@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from pathlib import Path
 
 import numpy as np
 
@@ -110,7 +109,9 @@ class STLObstacle(ObstacleSpec):
 
 
 def _rasterize_stl_2d(
-    mesh: "trimesh.Trimesh", sim: SimEngine, spec: STLObstacle
+    mesh: trimesh.Trimesh,  # noqa: F821
+    sim: SimEngine,
+    spec: STLObstacle,
 ) -> None:
     obs = sim.get_obstacles_mut()
     h, w = obs.shape
@@ -128,8 +129,6 @@ def _rasterize_stl_2d(
         max_y = min(h - 1, int(np.ceil(ys.max())))
         if min_x > max_x or min_y > max_y:
             continue
-        centroid_x = xs.mean()
-        centroid_y = ys.mean()
         for sy in range(min_y, max_y + 1):
             for sx in range(min_x, max_x + 1):
                 if _point_in_triangle(sx, sy, pts[0, :2], pts[1, :2], pts[2, :2]):
@@ -142,7 +141,9 @@ def _rasterize_stl_2d(
 
 
 def _rasterize_stl_3d(
-    mesh: "trimesh.Trimesh", sim: SimEngine, spec: STLObstacle
+    mesh: trimesh.Trimesh,  # noqa: F821
+    sim: SimEngine,
+    spec: STLObstacle,
 ) -> None:
     obs = sim.get_obstacles_mut()
     d, h, w = obs.shape
@@ -300,8 +301,6 @@ class AirfoilObstacle(ObstacleSpec):
             j = (i + 1) % n
             x0, y0 = x_grid[i], y_grid[i]
             x1, y1 = x_grid[j], y_grid[j]
-            x_min, x_max = max(0, min(x0, x1)), min(w - 1, max(x0, x1))
-            y_min, y_max = max(0, min(y0, y1)), min(h - 1, max(y0, y1))
             dx = x1 - x0
             dy = y1 - y0
             steps = max(abs(dx), abs(dy), 1)
@@ -318,7 +317,7 @@ class AirfoilObstacle(ObstacleSpec):
             j_idx = n - 1
             for i_idx in range(n):
                 xi, yi = int(x_grid[i_idx]), int(y_grid[i_idx])
-                xj, yj = int(x_grid[j_idx]), int(y_grid[j_idx])
+                _, yj = int(x_grid[j_idx]), int(y_grid[j_idx])
                 if ((yi > gy) != (yj > gy)) and (
                     gy < (yj - yi) * (gy - yi) / max(yj - yi, 1e-10) + xi
                 ):
@@ -327,9 +326,14 @@ class AirfoilObstacle(ObstacleSpec):
             if inside:
                 for gx in range(max(0, x_min_c), min(w, x_max_c + 1)):
                     if not obs[gy, gx]:
-                        if _point_in_poly(
-                            gx, gy, list(zip(x_grid.tolist(), y_grid.tolist()))
-                        ):
+                        pts = list(
+                            zip(
+                                x_grid.tolist(),
+                                y_grid.tolist(),
+                                strict=False,
+                            )
+                        )
+                        if _point_in_poly(gx, gy, pts):
                             obs[gy, gx] = True
 
 

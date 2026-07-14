@@ -135,7 +135,7 @@ def _build_d3q19() -> Lattice3D:
         1 / 18, 1 / 18, 1 / 18, 1 / 18, 1 / 18, 1 / 18,  # 1-6: face-center
         1 / 36, 1 / 36, 1 / 36, 1 / 36, 1 / 36, 1 / 36,  # 7-12: edge-center
         1 / 36, 1 / 36, 1 / 36, 1 / 36,                  # 13-16: edge-center
-        1 / 36, 1 / 36,                                   # 17-18: edge-center (wait, need to recount)
+        1 / 36, 1 / 36,                                   # 17-18: edge-center
     ], dtype=np.float32)
     # fmt: on
 

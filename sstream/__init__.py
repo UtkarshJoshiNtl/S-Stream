@@ -23,9 +23,9 @@ from __future__ import annotations
 
 from engines.base import SimEngine
 from engines.lbm2d import LBM2D
-from engines.lbm3d import LBM3D
 from engines.lbm2d_liquid import LBM2DLiquid
 from engines.lbm2d_multicomponent import LBM2DMultiComponent
+from engines.lbm3d import LBM3D
 from engines.particle_tracer import ParticleTracer
 
 try:

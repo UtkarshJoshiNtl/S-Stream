@@ -406,7 +406,6 @@ class NonNewtonianCollision:
         2. Compute local viscosity from strain rate using the model
         3. Apply variable-omega collision with local viscosity
         """
-        from engines.lbm_common import Lattice2D, Lattice3D
 
         if f.ndim == 4:
             depth, height, width = f.shape[1], f.shape[2], f.shape[3]

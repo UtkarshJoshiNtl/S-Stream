@@ -6,9 +6,9 @@ import numpy as np
 import pytest
 
 from engines.lbm2d import LBM2D
-from engines.lbm3d import LBM3D
 from engines.lbm2d_liquid import LBM2DLiquid
-from resources.colormaps import FIELD_REGISTRY, CORE_FIELDS, MODE_TO_CMAP, CMAP_LUTS
+from engines.lbm3d import LBM3D
+from resources.colormaps import CMAP_LUTS, CORE_FIELDS, FIELD_REGISTRY, MODE_TO_CMAP
 
 try:
     from workbench.viewport import Viewport

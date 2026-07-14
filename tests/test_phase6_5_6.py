@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import numpy as np
 import pytest
 
 from engines.lbm2d import LBM2D
@@ -127,6 +126,7 @@ class TestRESTAPI:
     @pytest.fixture()
     def client(self):
         from fastapi.testclient import TestClient
+
         from engines.api import create_app
 
         sim = LBM2D(width=32, height=32, viscosity=0.02)

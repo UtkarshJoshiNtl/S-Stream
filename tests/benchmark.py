@@ -9,10 +9,7 @@ Legal Reference: FluidX3D (MIT) for MLUPs/s metric definition.
 import time
 from dataclasses import dataclass
 
-import numpy as np
-
 from engines.lbm2d import LBM2D
-from engines.lbm_common import LATTICE_2D
 
 
 @dataclass
@@ -37,7 +34,7 @@ def benchmark_engine(
     """Benchmark a single engine configuration."""
     try:
         sim = engine_class(width, height, **engine_kwargs)
-    except Exception as e:
+    except Exception:
         # Engine not available (e.g., GPU not present)
         return BenchmarkResult(
             engine_name=engine_class.__name__,
@@ -123,9 +120,11 @@ def print_results(results: list[BenchmarkResult]) -> None:
     print("=" * 80)
     print("S-Stream Performance Benchmark Results")
     print("=" * 80)
-    print(
-        f"{'Engine':<20} {'Grid':<12} {'Steps':<8} {'Time (s)':<12} {'MLUPs/s':<12} {'FPS':<8}"
+    header = (
+        f"{'Engine':<20} {'Grid':<12} {'Steps':<8}"
+        f" {'Time (s)':<12} {'MLUPs/s':<12} {'FPS':<8}"
     )
+    print(header)
     print("-" * 80)
 
     for result in results:

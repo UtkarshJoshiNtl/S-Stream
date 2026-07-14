@@ -14,13 +14,13 @@ from engines.particle_tracer import ParticleTracer
 
 try:
     import torch
-    from lettuce import Lattice, UnitConversion
     from lettuce import D2Q9 as LettuceD2Q9
     from lettuce import BGKCollision as LettuceBGK
+    from lettuce import BoundaryCondition as LettuceBC  # noqa: F401
+    from lettuce import EquilibriumBoundary as LettuceEquilibrium  # noqa: F401
+    from lettuce import Lattice, UnitConversion  # noqa: F401
+    from lettuce import NoSlipBoundary as LettuceNoSlip  # noqa: F401
     from lettuce import StandardStreaming as LettuceStreaming
-    from lettuce import BoundaryCondition as LettuceBC
-    from lettuce import NoSlipBoundary as LettuceNoSlip
-    from lettuce import EquilibriumBoundary as LettuceEquilibrium
 
     TORCH_AVAILABLE = True
 except ImportError:
