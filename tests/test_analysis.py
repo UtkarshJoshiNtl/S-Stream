@@ -129,7 +129,7 @@ def test_check_sanity_fast_inflow() -> None:
     sim.u_inflow = 0.3
     scene = Scene()
     warnings = check_sanity(sim, scene, [], 0)
-    assert any(w.title == "Fast inlet" for w in warnings)
+    assert any("inlet" in w.title.lower() for w in warnings)
 
 
 def test_check_sanity_no_obstacle() -> None:

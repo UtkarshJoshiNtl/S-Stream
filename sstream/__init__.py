@@ -38,6 +38,11 @@ try:
 except ImportError:
     LBM2DGPU = None  # type: ignore[assignment,misc]
 
+try:
+    from engines.lbm3d_gpu import LBM3DGPU
+except ImportError:
+    LBM3DGPU = None  # type: ignore[assignment,misc]
+
 __all__ = [
     "SimEngine",
     "LBM2D",
@@ -46,6 +51,7 @@ __all__ = [
     "LBM2DMultiComponent",
     "LBM2DLettuce",
     "LBM2DGPU",
+    "LBM3DGPU",
     "ParticleTracer",
 ]
 

@@ -305,7 +305,8 @@ class LBM3D(SimEngine, SmokeMixin, ThermalMixin):
         return self.f
 
     def get_pressure(self) -> np.ndarray:
-        return self.rho - 1.0
+        """Lattice pressure p = ρ / 3 (c_s² = 1/3)."""
+        return self.rho / 3.0
 
     def get_field_names(self) -> list[str]:
         names = ["smoke", "speed", "vorticity", "pressure", "density"]

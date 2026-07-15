@@ -128,8 +128,7 @@ def run_sweep(
         sim = LBM2D(width=run_scene.width, height=run_scene.height)
         apply_to_sim(run_scene, sim)
 
-        for _ in range(steps_per_run):
-            sim.step()
+        sim.run(steps_per_run, physics_only=True)
 
         for m in measurements:
             func = _MEASUREMENT_FUNCS[m]

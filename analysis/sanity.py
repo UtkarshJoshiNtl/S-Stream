@@ -26,6 +26,24 @@ def check_sanity(
     length = characteristic_length(scene)
     re = reynolds_number(sim, obstacle_diameter=length)
 
+    omega = None
+    if hasattr(sim, "omega"):
+        try:
+            omega = float(sim.omega)
+        except Exception:
+            omega = None
+    if omega is not None and not (0.0 < omega < 2.0):
+        warnings.append(
+            SanityWarning(
+                "danger",
+                "Unstable relaxation",
+                (
+                    f"omega={omega:.3f} is outside (0, 2). "
+                    "Adjust viscosity so the simulation stays stable."
+                ),
+            )
+        )
+
     if sim.viscosity < 0.003:
         warnings.append(
             SanityWarning(
@@ -37,15 +55,24 @@ def check_sanity(
                 ),
             )
         )
-    if sim.u_inflow > 0.25:
+    # Low-Mach envelope: U ≲ 0.05 preferred; warn above 0.1
+    if sim.u_inflow > 0.1:
         warnings.append(
             SanityWarning(
                 "warn",
-                "Fast inlet",
+                "Fast inlet (Mach)",
                 (
-                    "High lattice velocity can reduce physical trust. "
-                    "Prefer lower inflow and tune viscosity for Re."
+                    "Lattice velocity above 0.1 hurts hydro accuracy. "
+                    "Prefer U ≤ 0.05 and set viscosity from Re = U L / ν."
                 ),
+            )
+        )
+    if sim.u_inflow > 0.25:
+        warnings.append(
+            SanityWarning(
+                "danger",
+                "Very fast inlet",
+                "u_inflow > 0.25 is outside the low-Mach regime for this solver.",
             )
         )
     if not scene.obstacles:

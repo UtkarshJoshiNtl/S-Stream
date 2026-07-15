@@ -45,7 +45,7 @@ a = Analysis(
         "workbench.app", "workbench.viewport",
         "workbench.panels.scene_panel", "workbench.panels.analysis_panel",
         "workbench.panels.outcome_panel",
-        "workbench.dialogs.presets_dialog", "workbench.dialogs.recipes_dialog",
+        "workbench.dialogs.wizard_dialog",
         "workbench.dialogs.sweep_dialog", "workbench.dialogs.export_dialog",
         "presets.loader",
         "resources.theme", "resources.colormaps",

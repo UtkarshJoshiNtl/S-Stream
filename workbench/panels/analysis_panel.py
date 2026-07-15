@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 
 from engines.base import SimEngine
 from scene.probe import Probe
+from scene.scene import Scene
 
 _COLORS = ["#4fc3f7", "#ff7043", "#66bb6a", "#ffca28", "#ab47bc"]
 
@@ -69,6 +70,7 @@ class AnalysisPanel(QWidget):
     def __init__(self, sim: SimEngine, parent=None):
         super().__init__(parent)
         self.sim = sim
+        self.scene: Scene | None = None
         self.probes: list[Probe] = []
         self._probe_widgets: list[_ProbePlot] = []
         self._tick_counter = 0
@@ -134,6 +136,10 @@ class AnalysisPanel(QWidget):
             self.probes_layout.removeWidget(w)
             w.deleteLater()
         self._probe_widgets.clear()
+        while self.probes_layout.count():
+            item = self.probes_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
         has_probes = len(self.probes) > 0
         self._no_probes_label.setVisible(not has_probes)
         self.probes_scroll.setVisible(has_probes)
@@ -159,10 +165,19 @@ class AnalysisPanel(QWidget):
             for pw in self._probe_widgets:
                 pw.update_plot()
 
-    def _update_physics(self, dt: float) -> None:
-        from analysis.physics import drag_coefficient, reynolds_number, strouhal_number
+    def set_scene(self, scene: Scene) -> None:
+        self.scene = scene
 
-        Re = reynolds_number(self.sim)
+    def _update_physics(self, dt: float) -> None:
+        from analysis.physics import (
+            characteristic_length,
+            drag_coefficient,
+            reynolds_number,
+            strouhal_number,
+        )
+
+        diam = characteristic_length(self.scene) if self.scene is not None else 1.0
+        Re = reynolds_number(self.sim, diam)
         self.re_label.setText(f"{Re:.1f}")
 
         Cd = drag_coefficient(self.sim)
@@ -171,7 +186,6 @@ class AnalysisPanel(QWidget):
         St = None
         if self.probes and self.sim.u_inflow > 0:
             v_data = self.probes[0].history.get("v", [])
-            diam = 1.0
             St = strouhal_number(v_data, dt, diameter=diam, velocity=self.sim.u_inflow)
         self.st_label.setText(f"{St:.3f}" if St is not None else "—")
 

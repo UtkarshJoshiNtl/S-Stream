@@ -518,14 +518,13 @@ def _mrt_collide_nb(
 
 
 class MRTCollision(CollisionOperator):
-    """Multiple-relaxation-time collision operator.
+    """Multiple-relaxation-time collision operator. **EXPERIMENTAL**.
 
-    Decouples all moment relaxation rates for maximum accuracy.
-    Requires transformation matrices M and M_inv for D2Q9.
-
-    Reference: d'Humières et al. (2002), "Multiple-relaxation-time Lattice
-    Boltzmann models for 3D simulations."
+    Decouples moment relaxation rates. Correctness of the 9-moment map is
+    under review (see TRUST.md) — do not treat as Verified.
     """
+
+    experimental = True
 
     def __init__(self) -> None:
         # Default MRT relaxation rates (s[0] is unused, kept for indexing)
@@ -560,9 +559,10 @@ class MRTCollision(CollisionOperator):
             raise NotImplementedError("MRT collision not yet implemented for 3D")
         omega = lattice.omega_from_viscosity(viscosity)
         s = self._s.copy()
-        s[1] = omega  # Set viscosity-related moment
-        s[7] = omega  # Set stress-related moment
-        s[8] = omega  # Set stress-related moment
+        s[1] = omega  # energy related to viscosity in some models
+        s[7] = omega  # pxx
+        s[8] = omega  # pyy
+        s[9] = omega  # pxy — must match viscosity for isotropy
         _mrt_collide_nb(
             f,
             rho,
@@ -634,24 +634,24 @@ def _smagorinsky_collide_2d_nb(
                 pi_neq_yy += cy[i] * cy[i] * fneq_i
                 pi_neq_xy += cx[i] * cy[i] * fneq_i
 
-            # Strain rate magnitude: |S| = sqrt(2 * (S_xx^2 + S_yy^2 + 2*S_xy^2))
-            # S_ij = -(1/2τ) * Π_neq_ij, but we only need the magnitude
-            # |S| = sqrt(2 * (S_xx^2 + S_yy^2 + 2*S_xy^2))
-            # Since S_xx + S_yy = 0 (incompressible), S_xx^2 + S_yy^2 = 2*S_xx^2
-            # |S| = sqrt(4*S_xx^2 + 4*S_xy^2) = 2*sqrt(S_xx^2 + S_xy^2)
-            # But we use the non-equilibrium moments directly for efficiency
+            # Strain rate: S_ij = -Π_neq_ij / (2 ρ τ c_s²), c_s²=1/3, τ=1/ω
+            # |S| = sqrt(2 Π:Π) / (2 ρ τ c_s²)
+            tau = 1.0 / omega_base
+            cs2 = 1.0 / 3.0
             s_mag_sq = (
                 pi_neq_xx * pi_neq_xx
                 + pi_neq_yy * pi_neq_yy
                 + 2.0 * pi_neq_xy * pi_neq_xy
             )
-            s_mag = np.sqrt(2.0 * s_mag_sq) if s_mag_sq > 0 else 0.0
+            denom = 2.0 * rho_safe * tau * cs2
+            s_mag = np.sqrt(2.0 * s_mag_sq) / denom if s_mag_sq > 0 else 0.0
 
-            # Turbulent viscosity: nu_t = (C_s * Δ)^2 * |S|  (Δ = 1 in lattice units)
+            # Turbulent viscosity: nu_t = (C_s * Δ)^2 * |S|  (Δ = 1)
             nu_t = cs * cs * s_mag
 
             # Effective omega with turbulent viscosity
-            omega_eff = 1.0 / (3.0 * (1.0 / (3.0 * omega_base - 1.5) + nu_t) + 0.5)
+            nu_mol = (1.0 / omega_base - 0.5) / 3.0
+            omega_eff = 1.0 / (3.0 * (nu_mol + nu_t) + 0.5)
             omega_eff = min(omega_eff, 1.99)  # Stability clamp
 
             for i in range(9):
@@ -973,13 +973,16 @@ def _wale_collide_3d_nb(
 
 
 class WaleCollision(CollisionOperator):
-    """WALE (Wall-Adapting Local Eddy-viscosity) turbulence model.
+    """WALE turbulence model. **EXPERIMENTAL** (∇u tensor incomplete).
 
-    Improved near-wall behavior compared to Smagorinsky. No explicit
-    damping function required.
+    Improved near-wall behavior compared to Smagorinsky when the full
+    velocity-gradient form is used. Current implementation may use
+    Π_neq proxies — see TRUST.md.
 
     Reference: Nicoud & Ducros (1999).
     """
+
+    experimental = True
 
     def __init__(self, cs: float = 0.1) -> None:
         """

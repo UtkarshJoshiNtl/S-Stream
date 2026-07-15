@@ -77,18 +77,18 @@ class PresetsDialog(QDialog):
 
     def __init__(self, presets: list[dict], parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Welcome to SStream")
+        self.setWindowTitle("Preset gallery")
         self.setMinimumSize(820, 560)
         self.setModal(True)
 
         layout = QVBoxLayout(self)
 
-        title = QLabel("<h1>Pick a beautiful flow story</h1>")
+        title = QLabel("<h1>Preset gallery</h1>")
         title.setStyleSheet("color: #f8fafc;")
         layout.addWidget(title)
 
         subtitle = QLabel(
-            "Start with a guided demo: SStream will choose the view, run the flow, "
+            "Pick a saved scene: S-Stream will choose the view, run the flow, "
             "explain what is happening, and help you export a figure."
         )
         subtitle.setWordWrap(True)

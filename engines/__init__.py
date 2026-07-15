@@ -10,4 +10,16 @@ try:
 except ImportError:
     LBM2DGPU = None  # type: ignore[assignment]
 
-__all__ = ["SimEngine", "LBM2D", "LBM2DGPU", "LBM2DLiquid", "LBM2DMultiComponent"]
+try:
+    from engines.lbm3d_gpu import LBM3DGPU
+except ImportError:
+    LBM3DGPU = None  # type: ignore[assignment]
+
+__all__ = [
+    "SimEngine",
+    "LBM2D",
+    "LBM2DGPU",
+    "LBM3DGPU",
+    "LBM2DLiquid",
+    "LBM2DMultiComponent",
+]

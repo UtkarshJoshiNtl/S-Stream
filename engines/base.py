@@ -152,7 +152,7 @@ class SimEngine(ABC):
 
     @abstractmethod
     def get_pressure(self) -> np.ndarray:
-        """Return the pressure field (rho - 1.0)."""
+        """Return lattice pressure p = ρ / 3 (c_s² = 1/3)."""
         ...
 
     # --- Emitters ---

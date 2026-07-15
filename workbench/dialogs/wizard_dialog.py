@@ -1,29 +1,36 @@
-"""Guided Setup Wizard — template selector for first-time users.
+"""Unified Start Dialog — templates, presets, and recipes in one place.
 
-Shows categorized flow templates so new users never see a blank screen.
-Each template auto-populates the scene with geometry, parameters, probes,
-and an optional autorun demo.
+Replaces the separate WizardDialog, PresetsDialog, and RecipesDialog
+with a single tabbed dialog. Shown on first launch and via the Start
+toolbar button.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QDialog,
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
+    QListWidget,
     QPushButton,
     QScrollArea,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
+from presets.loader import list_presets
 from scene.scene import (
     CircleObstacle,
     EmitterSpec,
+    LatticeObstacle,
     RectObstacle,
     Scene,
     SceneProductMeta,
@@ -42,10 +49,32 @@ class WizardTemplate:
     tips: list[str] = field(default_factory=list)
 
 
+RECIPES: dict[str, str] = {
+    "Show vortex shedding": (
+        "Open Cylinder Wake, run the demo, switch to vorticity, "
+        "and watch alternating wake structures."
+    ),
+    "Compare drag of two shapes": (
+        "Draw or load two obstacle scenes, run each to a settled wake, "
+        "then compare Cd and wake strength."
+    ),
+    "Generate Cd vs Re": (
+        "Use Sweep Re to vary inlet/viscosity and export the plotted drag trend."
+    ),
+    "Explain Reynolds number": (
+        "Start with Channel Flow, change viscosity, "
+        "and watch the Re readout and sanity notes."
+    ),
+    "Create a lab-report figure": (
+        "Run a flagship preset, wait for Demo ready, "
+        "then export a report PNG and Markdown summary."
+    ),
+}
+
+
 def _build_templates() -> list[WizardTemplate]:
     """Build all wizard templates."""
     return [
-        # --- Study Flow Physics ---
         WizardTemplate(
             name="Vortex Shedding",
             category="Study Flow Physics",
@@ -82,10 +111,17 @@ def _build_templates() -> list[WizardTemplate]:
                 name="Lid-Driven Cavity",
                 width=128,
                 height=128,
-                viscosity=0.01,
+                viscosity=0.128,
                 u_inflow=0.0,
-                obstacles=[],
-                emitters=[EmitterSpec(name="Smoke", x=2, y=2, strength=0.05)],
+                obstacles=[
+                    RectObstacle(name="Left Wall", x=0, y=1, w=2, h=126),
+                    RectObstacle(name="Right Wall", x=126, y=1, w=2, h=126),
+                ],
+                emitters=[EmitterSpec(name="Smoke", x=64, y=64, strength=0.05)],
+                description=(
+                    "Cavity mode: MovingWall lid is applied when "
+                    "domain_mode=cavity (lid_velocity≈0.1)."
+                ),
                 product=SceneProductMeta(
                     recommended_colormap="speed",
                     autorun_steps=3000,
@@ -95,8 +131,8 @@ def _build_templates() -> list[WizardTemplate]:
                 ),
             ),
             tips=[
-                "Speed colormap shows the primary vortex clearly",
-                "Try Re=100 (viscosity=0.01) vs Re=1000 (viscosity=0.001)",
+                "Engine switches to cavity mode with MovingWall lid (lid_velocity=0.1)",
+                "Re≈100 at viscosity=0.128; try Re≈1000 with viscosity≈0.0128",
                 "Compare with Ghia et al. (1982) benchmark data",
             ],
         ),
@@ -225,7 +261,17 @@ def _build_templates() -> list[WizardTemplate]:
                 height=128,
                 viscosity=0.005,
                 u_inflow=0.1,
-                obstacles=[],
+                obstacles=[
+                    LatticeObstacle(
+                        name="Screen",
+                        x=72,
+                        y=16,
+                        w=48,
+                        h=96,
+                        cell_size=8,
+                        wall_thickness=1,
+                    ),
+                ],
                 emitters=[EmitterSpec(name="Smoke", x=2, y=64, strength=0.05)],
                 product=SceneProductMeta(
                     recommended_colormap="speed",
@@ -239,7 +285,6 @@ def _build_templates() -> list[WizardTemplate]:
                 "Try different lattice cell sizes",
             ],
         ),
-        # --- Create & Experiment ---
         WizardTemplate(
             name="Blank Canvas",
             category="Create & Experiment",
@@ -289,7 +334,6 @@ def _build_templates() -> list[WizardTemplate]:
                 "Force arrows show drag on each cylinder",
             ],
         ),
-        # --- Learn LBM ---
         WizardTemplate(
             name="What is LBM?",
             category="Learn Lattice Boltzmann",
@@ -310,7 +354,7 @@ def _build_templates() -> list[WizardTemplate]:
                 ),
             ),
             tips=[
-                "LBM tracks probability distributions of虚拟 particles",
+                "LBM tracks probability distributions of virtual particles",
                 "Streaming moves particles to neighbors",
                 "Collision relaxes toward equilibrium (BGK model)",
             ],
@@ -318,10 +362,13 @@ def _build_templates() -> list[WizardTemplate]:
     ]
 
 
+# --- Card widgets ---
+
+
 class _TemplateCard(QFrame):
     """Clickable card representing a single wizard template."""
 
-    clicked = Signal(object)  # emits WizardTemplate
+    clicked = Signal(object)
 
     def __init__(self, template: WizardTemplate, parent=None):
         super().__init__(parent)
@@ -357,19 +404,80 @@ class _TemplateCard(QFrame):
         super().mousePressEvent(event)
 
 
-class WizardDialog(QDialog):
-    """Guided setup wizard shown on first launch.
+class _PresetCard(QWidget):
+    """Clickable card for a preset scene file."""
 
-    Emits template_selected(WizardTemplate) when user picks a template,
-    or finished() when user skips.
-    """
+    clicked = Signal(str)
 
-    template_selected = Signal(object)  # WizardTemplate
-
-    def __init__(self, parent=None):
+    def __init__(self, preset: dict, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Welcome to S-Stream")
-        self.setMinimumSize(860, 600)
+        self._file = preset["file"]
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(6)
+
+        self.setMinimumSize(220, 190)
+        self.setMaximumSize(260, 230)
+        self.setStyleSheet(
+            "QWidget { background: #111827; border: 1px solid #334155; "
+            "border-radius: 10px; } "
+            "QWidget:hover { border: 1px solid #38bdf8; background: #172033; }"
+        )
+
+        thumb_label = QLabel()
+        thumb_path = preset.get("thumbnail", "")
+        if thumb_path and Path(thumb_path).exists():
+            pix = QPixmap(thumb_path).scaled(
+                230,
+                86,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+            thumb_label.setPixmap(pix)
+        else:
+            thumb_label.setText("flow")
+            thumb_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            thumb_label.setStyleSheet("font-size: 24px; color: #38bdf8;")
+        thumb_label.setMinimumHeight(72)
+        layout.addWidget(thumb_label)
+
+        name_label = QLabel(f"<b>{preset['name']}</b>")
+        name_label.setStyleSheet("color: #f8fafc; font-size: 14px;")
+        layout.addWidget(name_label)
+
+        headline = (
+            preset.get("headline") or preset.get("recipe") or "Ready-made flow story"
+        )
+        headline_label = QLabel(headline)
+        headline_label.setWordWrap(True)
+        headline_label.setStyleSheet("color: #7dd3fc; font-size: 11px;")
+        layout.addWidget(headline_label)
+
+        desc = preset["description"]
+        desc_label = QLabel(desc[:92] + ("..." if len(desc) > 92 else ""))
+        desc_label.setWordWrap(True)
+        desc_label.setStyleSheet("color: #94a3b8; font-size: 11px;")
+        layout.addWidget(desc_label)
+
+    def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit(self._file)
+
+
+# --- Unified dialog ---
+
+
+class StartDialog(QDialog):
+    """Unified start dialog with three tabs: Flow Stories, Presets, Recipes."""
+
+    template_selected = Signal(object)
+    preset_selected = Signal(str)
+    recipe_selected = Signal(str)
+
+    def __init__(self, parent=None, tab: int = 0):
+        super().__init__(parent)
+        self.setWindowTitle("Start — S-Stream")
+        self.setMinimumSize(860, 620)
         self.setModal(True)
 
         self._templates = _build_templates()
@@ -377,20 +485,47 @@ class WizardDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.setSpacing(10)
 
-        # Title
-        title = QLabel("<h1>What would you like to study?</h1>")
+        title = QLabel("<h1>Start</h1>")
         title.setStyleSheet("color: #f8fafc;")
         layout.addWidget(title)
 
-        subtitle = QLabel(
-            "Pick a flow scenario to get started instantly. Each template "
-            "sets up the geometry, parameters, and probes for you."
-        )
-        subtitle.setWordWrap(True)
-        subtitle.setStyleSheet("color: #cbd5e1;")
-        layout.addWidget(subtitle)
+        tabs = QTabWidget()
+        tabs.addTab(self._build_stories_tab(), "Flow Stories")
+        tabs.addTab(self._build_presets_tab(), "Preset Gallery")
+        tabs.addTab(self._build_recipes_tab(), "Recipes")
+        tabs.setCurrentIndex(max(0, min(tab, 2)))
+        layout.addWidget(tabs, 1)
 
-        # Scrollable template grid
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        skip_btn = QPushButton("Skip — Start Empty")
+        skip_btn.clicked.connect(self.reject)
+        btn_row.addWidget(skip_btn)
+        layout.addLayout(btn_row)
+
+        self.setStyleSheet(
+            "QDialog { background: #020617; } "
+            "QLabel { color: #e5e7eb; } "
+            "QPushButton { color: #f8fafc; background: #1e293b; "
+            "border: 1px solid #475569; padding: 8px 20px; border-radius: 6px; "
+            "font-size: 13px; } "
+            "QPushButton:hover { background: #334155; }"
+            "QTabWidget::pane { border: 1px solid #334155; background: #020617; } "
+            "QTabBar::tab { background: #1e293b; color: #94a3b8; "
+            "padding: 8px 16px; border: 1px solid #334155; "
+            "border-bottom: none; border-radius: 6px 6px 0 0; } "
+            "QTabBar::tab:selected { background: #020617; color: #f8fafc; }"
+        )
+
+    def set_active_tab(self, index: int) -> None:
+        """Programmatically select the active tab (0=Stories, 1=Presets, 2=Recipes)."""
+        parent = self.parent()
+        if parent is not None:
+            for child in self.findChildren(QTabWidget):
+                child.setCurrentIndex(max(0, min(index, 2)))
+                break
+
+    def _build_stories_tab(self) -> QWidget:
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QScrollArea.Shape.NoFrame)
@@ -401,7 +536,14 @@ class WizardDialog(QDialog):
         main_layout = QVBoxLayout(container)
         main_layout.setSpacing(16)
 
-        # Group by category
+        subtitle = QLabel(
+            "Pick a scenario to begin. Each template sets up geometry, "
+            "parameters, and a short guided demo for you."
+        )
+        subtitle.setWordWrap(True)
+        subtitle.setStyleSheet("color: #cbd5e1;")
+        main_layout.addWidget(subtitle)
+
         categories: dict[str, list[WizardTemplate]] = {}
         for t in self._templates:
             categories.setdefault(t.category, []).append(t)
@@ -422,25 +564,95 @@ class WizardDialog(QDialog):
 
         main_layout.addStretch()
         scroll.setWidget(container)
-        layout.addWidget(scroll, 1)
+        return scroll
 
-        # Buttons
-        btn_row = QHBoxLayout()
-        btn_row.addStretch()
-        skip_btn = QPushButton("Skip — Start Empty")
-        skip_btn.clicked.connect(self.reject)
-        btn_row.addWidget(skip_btn)
-        layout.addLayout(btn_row)
+    def _build_presets_tab(self) -> QWidget:
+        presets = list_presets()
 
-        self.setStyleSheet(
-            "QDialog { background: #020617; } "
-            "QLabel { color: #e5e7eb; } "
-            "QPushButton { color: #f8fafc; background: #1e293b; "
-            "border: 1px solid #475569; padding: 8px 20px; border-radius: 6px; "
-            "font-size: 13px; } "
-            "QPushButton:hover { background: #334155; }"
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        scroll.setStyleSheet("QScrollArea { background: transparent; }")
+
+        container = QWidget()
+        container.setStyleSheet("background: transparent;")
+        outer = QVBoxLayout(container)
+        outer.setSpacing(10)
+
+        subtitle = QLabel(
+            "Pick a saved scene: S-Stream will choose the view, run the flow, "
+            "explain what is happening, and help you export a figure."
         )
+        subtitle.setWordWrap(True)
+        subtitle.setStyleSheet("color: #cbd5e1;")
+        outer.addWidget(subtitle)
+
+        if not presets:
+            no_presets = QLabel("No presets found.")
+            no_presets.setStyleSheet("color: #64748b;")
+            outer.addWidget(no_presets)
+        else:
+            grid_container = QWidget()
+            grid_container.setStyleSheet("background: transparent;")
+            grid = QGridLayout(grid_container)
+            grid.setSpacing(14)
+            for i, preset in enumerate(presets):
+                card = _PresetCard(preset)
+                card.clicked.connect(self._on_preset_clicked)
+                row, col = divmod(i, 3)
+                grid.addWidget(card, row, col)
+            outer.addWidget(grid_container)
+
+        outer.addStretch()
+        scroll.setWidget(container)
+        return scroll
+
+    def _build_recipes_tab(self) -> QWidget:
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setSpacing(8)
+
+        subtitle = QLabel("Choose a guided workflow to follow step-by-step.")
+        subtitle.setWordWrap(True)
+        subtitle.setStyleSheet("color: #cbd5e1;")
+        layout.addWidget(subtitle)
+
+        self._recipe_list = QListWidget()
+        for name in RECIPES:
+            self._recipe_list.addItem(name)
+        self._recipe_list.currentTextChanged.connect(self._show_recipe)
+        layout.addWidget(self._recipe_list)
+
+        self._recipe_details = QLabel("Select a recipe to see the workflow.")
+        self._recipe_details.setWordWrap(True)
+        layout.addWidget(self._recipe_details)
+
+        use_btn = QPushButton("Use This Recipe")
+        use_btn.clicked.connect(self._accept_recipe)
+        layout.addWidget(use_btn)
+
+        widget.setStyleSheet(
+            "QWidget { background: transparent; } "
+            "QListWidget { background: #0b1020; color: #e5e7eb; "
+            "border: 1px solid #374151; border-radius: 4px; } "
+            "QPushButton { background: #2563eb; color: white; "
+            "padding: 8px; border-radius: 5px; }"
+        )
+        return widget
 
     def _on_template_clicked(self, template: WizardTemplate) -> None:
         self.template_selected.emit(template)
+        self.accept()
+
+    def _on_preset_clicked(self, file_path: str) -> None:
+        self.preset_selected.emit(file_path)
+        self.accept()
+
+    def _show_recipe(self, name: str) -> None:
+        self._recipe_details.setText(RECIPES.get(name, ""))
+
+    def _accept_recipe(self) -> None:
+        item = self._recipe_list.currentItem()
+        if item:
+            self.recipe_selected.emit(item.text())
         self.accept()

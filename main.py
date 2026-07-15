@@ -1,14 +1,39 @@
 from __future__ import annotations
 
 import argparse
+import inspect
+import os
 import sys
 from pathlib import Path
+
+# Default to xcb on Wayland to avoid Qt6 buffer-size protocol errors
+# (xdg_surface buffer does not match configured maximized state).
+if "WAYLAND_DISPLAY" in os.environ and "QT_QPA_PLATFORM" not in os.environ:
+    os.environ["QT_QPA_PLATFORM"] = "xcb"
 
 from PySide6.QtGui import QIcon, QSurfaceFormat
 from PySide6.QtWidgets import QApplication
 
 from engines import LBM2D, LBM2DGPU, LBM2DLiquid, LBM2DMultiComponent
 from resources.theme import APP_STYLESHEET
+
+
+def _run_steps(sim, steps: int, physics_only: bool) -> None:
+    """Call eng.run with physics_only when the engine supports it."""
+    if not physics_only:
+        sim.run(steps)
+        return
+    try:
+        params = inspect.signature(sim.run).parameters
+        if "physics_only" in params:
+            sim.run(steps, physics_only=True)
+            return
+    except (TypeError, ValueError):
+        pass
+    try:
+        sim.run(steps, physics_only=True)
+    except TypeError:
+        sim.run(steps)
 
 
 def main() -> None:
@@ -26,6 +51,11 @@ def main() -> None:
     parser.add_argument("--height", type=int, default=128, help="Grid height")
     parser.add_argument("--headless", action="store_true", help="Run headless (no GUI)")
     parser.add_argument("--steps", type=int, default=0, help="Steps if headless")
+    parser.add_argument(
+        "--physics-only",
+        action="store_true",
+        help="Skip smoke/particles in headless runs (when the engine supports it)",
+    )
     parser.add_argument(
         "--serve",
         action="store_true",
@@ -63,7 +93,7 @@ def main() -> None:
 
     if args.headless:
         if args.steps > 0:
-            sim.run(args.steps)
+            _run_steps(sim, args.steps, physics_only=args.physics_only)
         print(f"Simulation: {sim.grid_shape[1]}x{sim.grid_shape[0]}")
         return
 

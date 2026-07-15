@@ -17,6 +17,67 @@ from numba import njit, prange
 
 
 @njit(parallel=True, cache=True, fastmath=True, boundscheck=False)
+def _stream_temperature_2d_nb(
+    f_T: np.ndarray,
+    f_T_new: np.ndarray,
+    cx: np.ndarray,
+    cy: np.ndarray,
+    height: int,
+    width: int,
+) -> None:
+    """Stream temperature distribution in 2D (D2Q9)."""
+    for y in prange(height):
+        for x in range(width):
+            for i in range(9):
+                sx = x - cx[i]
+                if sx < 0:
+                    sx += width
+                elif sx >= width:
+                    sx -= width
+                sy = y - cy[i]
+                if sy < 0:
+                    sy += height
+                elif sy >= height:
+                    sy -= height
+                f_T_new[i, y, x] = f_T[i, sy, sx]
+
+
+@njit(parallel=True, cache=True, fastmath=True, boundscheck=False)
+def _stream_temperature_3d_nb(
+    f_T: np.ndarray,
+    f_T_new: np.ndarray,
+    cx: np.ndarray,
+    cy: np.ndarray,
+    cz: np.ndarray,
+    n_vel: int,
+    depth: int,
+    height: int,
+    width: int,
+) -> None:
+    """Stream temperature distribution in 3D (D3Q19)."""
+    for z in prange(depth):
+        for y in range(height):
+            for x in range(width):
+                for i in range(n_vel):
+                    sx = x - cx[i]
+                    if sx < 0:
+                        sx += width
+                    elif sx >= width:
+                        sx -= width
+                    sy = y - cy[i]
+                    if sy < 0:
+                        sy += height
+                    elif sy >= height:
+                        sy -= height
+                    sz = z - cz[i]
+                    if sz < 0:
+                        sz += depth
+                    elif sz >= depth:
+                        sz -= depth
+                    f_T_new[i, z, y, x] = f_T[i, sz, sy, sx]
+
+
+@njit(parallel=True, cache=True, fastmath=True, boundscheck=False)
 def _collide_temperature_2d_nb(
     f_T: np.ndarray,
     rho: np.ndarray,
@@ -191,9 +252,13 @@ class ThermalMixin:
         # Temperature distribution and macroscopic field
         if self.ndim == 2:
             self.f_T = np.zeros((9, self.height, self.width), dtype=np.float32)
+            self._f_T_swap = np.zeros((9, self.height, self.width), dtype=np.float32)
             self.temperature = np.zeros((self.height, self.width), dtype=np.float32)
         else:
             self.f_T = np.zeros(
+                (19, self.depth, self.height, self.width), dtype=np.float32
+            )
+            self._f_T_swap = np.zeros(
                 (19, self.depth, self.height, self.width), dtype=np.float32
             )
             self.temperature = np.zeros(
@@ -236,6 +301,35 @@ class ThermalMixin:
                 self.height,
                 self.width,
             )
+
+    def streaming_temperature(self) -> None:
+        """Stream temperature distribution."""
+        if not hasattr(self, "thermal_enabled") or not self.thermal_enabled:
+            return
+
+        if self.ndim == 2:
+            _stream_temperature_2d_nb(
+                self.f_T,
+                self._f_T_swap,
+                self.lattice.cx,
+                self.lattice.cy,
+                self.height,
+                self.width,
+            )
+            self.f_T, self._f_T_swap = self._f_T_swap, self.f_T
+        else:
+            _stream_temperature_3d_nb(
+                self.f_T,
+                self._f_T_swap,
+                self.lattice.cx,
+                self.lattice.cy,
+                self.lattice.cz,
+                self.lattice.n_velocities,
+                self.depth,
+                self.height,
+                self.width,
+            )
+            self.f_T, self._f_T_swap = self._f_T_swap, self.f_T
 
     def apply_buoyancy(self) -> None:
         """Apply Boussinesq buoyancy force to velocity distributions."""

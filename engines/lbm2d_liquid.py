@@ -311,7 +311,7 @@ class LBM2DLiquid(SimEngine, SmokeMixin):
         return self.f
 
     def get_pressure(self) -> np.ndarray:
-        return self.rho - 1.0
+        return self.rho / 3.0
 
     def get_field_names(self) -> list[str]:
         return ["smoke", "speed", "vorticity", "pressure", "density", "phase"]

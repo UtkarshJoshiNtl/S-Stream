@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "s-stream"
-version = "0.3.5"
+version = "0.4.1"
 description = "2D/3D Lattice Boltzmann fluid simulation workbench with PySide6 UI"
 readme = "README.md"
 license = "MIT"

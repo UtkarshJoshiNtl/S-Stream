@@ -6,6 +6,7 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
+    QComboBox,
     QDoubleSpinBox,
     QFormLayout,
     QGroupBox,
@@ -181,6 +182,40 @@ class ScenePanel(QWidget):
         )
         form.addRow("Viscosity", self._param_visc)
 
+        # Collision operator selector (expert mode only, for engines that support it)
+        self._collision_combo = QComboBox()
+        self._collision_combo.addItem("BGK (Standard)", "bgk")
+        self._collision_combo.addItem("TRT  [Experimental]", "trt")
+        self._collision_combo.addItem("MRT  [Experimental]", "mrt")
+        self._collision_combo.addItem("Smagorinsky  [Experimental]", "smagorinsky")
+        self._collision_combo.addItem("WALE  [Experimental]", "wale")
+        self._collision_combo.setCurrentIndex(0)
+        self._collision_combo.currentIndexChanged.connect(self._on_collision_changed)
+        self._collision_combo.setToolTip(
+            "Collision operator for momentum relaxation.\n"
+            "BGK: Single-relaxation-time (default, verified).\n"
+            "TRT: Two-relaxation-time (better wall treatment, experimental).\n"
+            "MRT: Multi-relaxation-time (more stable, experimental).\n"
+            "Smagorinsky: Large-eddy simulation (turbulence, experimental).\n"
+            "WALE: Wall-adapting LES (turbulence, experimental)."
+        )
+        form.addRow("Collision", self._collision_combo)
+        self._collision_combo_label = form.labelForField(self._collision_combo)
+
+        # Boundary condition selector (expert mode only)
+        self._bc_combo = QComboBox()
+        self._bc_combo.addItem("Equilibrium Inflow", "equilibrium")
+        self._bc_combo.addItem("Zou-He  [Experimental]", "zou_he")
+        self._bc_combo.setCurrentIndex(0)
+        self._bc_combo.currentIndexChanged.connect(self._on_bc_changed)
+        self._bc_combo.setToolTip(
+            "Inflow boundary condition scheme.\n"
+            "Equilibrium: Sets left column to equilibrium (default, stable).\n"
+            "Zou-He: Second-order accurate boundary condition (experimental)."
+        )
+        form.addRow("Inflow BC", self._bc_combo)
+        self._bc_combo_label = form.labelForField(self._bc_combo)
+
         self._param_u_inflow = QDoubleSpinBox()
         self._param_u_inflow.setRange(0.0, 0.5)
         self._param_u_inflow.setSingleStep(0.005)
@@ -264,6 +299,7 @@ class ScenePanel(QWidget):
         form.addRow(self._particle_count_label)
 
         group.setLayout(form)
+        self._particle_group = group
         layout.addWidget(group)
 
     def _build_engine_specific_group(self, layout: QVBoxLayout) -> None:
@@ -272,6 +308,9 @@ class ScenePanel(QWidget):
             self._build_liquid_params(layout)
         elif engine_name == "LBM2DMultiComponent":
             self._build_multicomponent_params(layout)
+        elif engine_name in ("LBM2D", "LBM3D"):
+            self._build_thermal_params(layout)
+            self._build_non_newtonian_params(layout)
 
     def _build_liquid_params(self, layout: QVBoxLayout) -> None:
         group = QGroupBox("Liquid Parameters (Shan-Chen)")
@@ -403,6 +442,190 @@ class ScenePanel(QWidget):
         group.setLayout(form)
         layout.addWidget(group)
 
+    def _build_thermal_params(self, layout: QVBoxLayout) -> None:
+        """Build thermal physics parameters group for LBM2D/LBM3D."""
+        from PySide6.QtWidgets import QCheckBox
+
+        group = QGroupBox("Thermal Physics (Boussinesq)")
+        form = QFormLayout()
+        form.setContentsMargins(4, 4, 4, 4)
+
+        # Thermal enable checkbox
+        self._thermal_enabled_check = QCheckBox()
+        thermal_enabled = (
+            hasattr(self.sim, "thermal_enabled") and self.sim.thermal_enabled
+        )
+        self._thermal_enabled_check.setChecked(thermal_enabled)
+        self._thermal_enabled_check.toggled.connect(self._on_thermal_enabled)
+        self._thermal_enabled_check.setToolTip(
+            "Enable thermal physics with Boussinesq buoyancy.\n"
+            "Simulates natural convection and buoyancy-driven flows.\n"
+            "Requires engine reset to take effect."
+        )
+        form.addRow("Enable Thermal", self._thermal_enabled_check)
+
+        # Thermal diffusivity
+        self._param_thermal_diff = QDoubleSpinBox()
+        self._param_thermal_diff.setRange(0.001, 0.5)
+        self._param_thermal_diff.setSingleStep(0.005)
+        self._param_thermal_diff.setDecimals(4)
+        thermal_diff = getattr(self.sim, "thermal_diffusivity", 0.02)
+        self._param_thermal_diff.setValue(thermal_diff)
+        self._param_thermal_diff.valueChanged.connect(self._on_thermal_diff)
+        self._param_thermal_diff.setToolTip(
+            "Thermal diffusivity (α). Controls temperature diffusion rate.\n"
+            "Similar to kinematic viscosity for heat.\n"
+            "Typical: 0.01-0.1"
+        )
+        form.addRow("Thermal Diffusivity", self._param_thermal_diff)
+
+        # Thermal expansion coefficient (beta)
+        self._param_beta = QDoubleSpinBox()
+        self._param_beta.setRange(0.0, 1.0)
+        self._param_beta.setSingleStep(0.001)
+        self._param_beta.setDecimals(4)
+        beta = getattr(self.sim, "beta", 0.001)
+        self._param_beta.setValue(beta)
+        self._param_beta.valueChanged.connect(self._on_beta)
+        self._param_beta.setToolTip(
+            "Thermal expansion coefficient (β).\n"
+            "Controls buoyancy force strength: F = -β(T - T_ref)g.\n"
+            "Typical: 0.001-0.01 for gases, 0.0002 for liquids"
+        )
+        form.addRow("Expansion (β)", self._param_beta)
+
+        # Reference temperature
+        self._param_t_ref = QDoubleSpinBox()
+        self._param_t_ref.setRange(-10.0, 10.0)
+        self._param_t_ref.setSingleStep(0.1)
+        self._param_t_ref.setDecimals(2)
+        t_ref = getattr(self.sim, "T_ref", 0.0)
+        self._param_t_ref.setValue(t_ref)
+        self._param_t_ref.valueChanged.connect(self._on_t_ref)
+        self._param_t_ref.setToolTip(
+            "Reference temperature for buoyancy calculation.\n"
+            "Fluid rises when T > T_ref, sinks when T < T_ref."
+        )
+        form.addRow("T_ref", self._param_t_ref)
+
+        # Gravity direction (simplified to vertical for 2D)
+        self._param_gravity = QDoubleSpinBox()
+        self._param_gravity.setRange(-10.0, 10.0)
+        self._param_gravity.setSingleStep(0.1)
+        self._param_gravity.setDecimals(2)
+        g_y = getattr(self.sim, "g_y", -1.0)
+        self._param_gravity.setValue(g_y)
+        self._param_gravity.valueChanged.connect(self._on_gravity)
+        self._param_gravity.setToolTip(
+            "Gravity strength (y-direction).\n"
+            "Negative = gravity downward (hot fluid rises).\n"
+            "Positive = gravity upward (hot fluid sinks)."
+        )
+        form.addRow("Gravity (g_y)", self._param_gravity)
+
+        group.setLayout(form)
+        layout.addWidget(group)
+        self._thermal_group = group
+
+    def _build_non_newtonian_params(self, layout: QVBoxLayout) -> None:
+        """Build non-Newtonian model parameters group for LBM2D/LBM3D."""
+        from PySide6.QtWidgets import QCheckBox
+
+        group = QGroupBox("Non-Newtonian Rheology")
+        form = QFormLayout()
+        form.setContentsMargins(4, 4, 4, 4)
+
+        # Non-Newtonian enable checkbox
+        self._non_newtonian_enabled_check = QCheckBox()
+        self._non_newtonian_enabled_check.setChecked(False)
+        self._non_newtonian_enabled_check.toggled.connect(
+            self._on_non_newtonian_enabled
+        )
+        self._non_newtonian_enabled_check.setToolTip(
+            "Enable non-Newtonian viscosity models.\n"
+            "Simulates shear-dependent viscosity (e.g., blood, paint, cornstarch).\n"
+            "Requires engine reset to take effect."
+        )
+        form.addRow("Enable Non-Newtonian", self._non_newtonian_enabled_check)
+
+        # Model selector
+        self._non_newtonian_model_combo = QComboBox()
+        self._non_newtonian_model_combo.addItem("Power-Law", "power_law")
+        self._non_newtonian_model_combo.addItem("Carreau", "carreau")
+        self._non_newtonian_model_combo.addItem("Bingham", "bingham")
+        self._non_newtonian_model_combo.setCurrentIndex(0)
+        self._non_newtonian_model_combo.currentIndexChanged.connect(
+            self._on_non_newtonian_model_changed
+        )
+        self._non_newtonian_model_combo.setToolTip(
+            "Non-Newtonian viscosity model:\n"
+            "Power-Law: nu = nu_0 * gamma_dot^(n-1)\n"
+            "Carreau: Realistic polymer behavior with plateaus\n"
+            "Bingham: Yield stress fluid (e.g., toothpaste)"
+        )
+        form.addRow("Model", self._non_newtonian_model_combo)
+
+        # Power-law index (n)
+        self._param_power_law_n = QDoubleSpinBox()
+        self._param_power_law_n.setRange(0.1, 2.0)
+        self._param_power_law_n.setSingleStep(0.1)
+        self._param_power_law_n.setDecimals(2)
+        self._param_power_law_n.setValue(0.5)
+        self._param_power_law_n.valueChanged.connect(self._on_power_law_n)
+        self._param_power_law_n.setToolTip(
+            "Power-law index (n).\n"
+            "n < 1: Shear-thinning (pseudoplastic) - e.g., blood, paint\n"
+            "n = 1: Newtonian (constant viscosity)\n"
+            "n > 1: Shear-thickening (dilatant) - e.g., cornstarch"
+        )
+        form.addRow("Power-Law n", self._param_power_law_n)
+
+        # Carreau lambda (time constant)
+        self._param_carreau_lambda = QDoubleSpinBox()
+        self._param_carreau_lambda.setRange(0.1, 10.0)
+        self._param_carreau_lambda.setSingleStep(0.5)
+        self._param_carreau_lambda.setDecimals(2)
+        self._param_carreau_lambda.setValue(1.0)
+        self._param_carreau_lambda.valueChanged.connect(self._on_carreau_lambda)
+        self._param_carreau_lambda.setToolTip(
+            "Carreau time constant (λ).\n"
+            "Controls transition between Newtonian plateaus.\n"
+            "Typical: 0.5-2.0"
+        )
+        form.addRow("Carreau λ", self._param_carreau_lambda)
+
+        # Carreau nu_inf ratio
+        self._param_carreau_nu_inf = QDoubleSpinBox()
+        self._param_carreau_nu_inf.setRange(0.0, 1.0)
+        self._param_carreau_nu_inf.setSingleStep(0.01)
+        self._param_carreau_nu_inf.setDecimals(3)
+        self._param_carreau_nu_inf.setValue(0.01)
+        self._param_carreau_nu_inf.valueChanged.connect(self._on_carreau_nu_inf)
+        self._param_carreau_nu_inf.setToolTip(
+            "Carreau infinite-shear viscosity ratio.\n"
+            "Ratio of high-shear viscosity to zero-shear viscosity.\n"
+            "Typical: 0.01-0.1"
+        )
+        form.addRow("Carreau ν∞ ratio", self._param_carreau_nu_inf)
+
+        # Bingham yield stress
+        self._param_bingham_yield = QDoubleSpinBox()
+        self._param_bingham_yield.setRange(0.0, 1.0)
+        self._param_bingham_yield.setSingleStep(0.01)
+        self._param_bingham_yield.setDecimals(4)
+        self._param_bingham_yield.setValue(0.01)
+        self._param_bingham_yield.valueChanged.connect(self._on_bingham_yield)
+        self._param_bingham_yield.setToolTip(
+            "Bingham yield stress (τ_y).\n"
+            "Minimum stress required for flow.\n"
+            "Typical: 0.001-0.1"
+        )
+        form.addRow("Yield Stress", self._param_bingham_yield)
+
+        group.setLayout(form)
+        layout.addWidget(group)
+        self._non_newtonian_group = group
+
     def _on_param_g(self, val: float) -> None:
         self.sim.g = val
         self.parameters_changed.emit()
@@ -455,6 +678,167 @@ class ScenePanel(QWidget):
         self.sim.smoke_decay = val
         self.parameters_changed.emit()
 
+    def _on_collision_changed(self, index: int) -> None:
+        """Handle collision operator selection change."""
+        collision_type = self._collision_combo.currentData()
+        if not hasattr(self.sim, "collision_op"):
+            # Engine doesn't support pluggable collision operators
+            return
+
+        from engines.collision import (
+            BGKCollision,
+            MRTCollision,
+            SmagorinskyCollision,
+            TRTCollision,
+            WaleCollision,
+        )
+
+        # Map selection to collision operator
+        collision_map = {
+            "bgk": BGKCollision(),
+            "trt": TRTCollision(),
+            "mrt": MRTCollision(),
+            "smagorinsky": SmagorinskyCollision(),
+            "wale": WaleCollision(),
+        }
+
+        new_collision = collision_map.get(collision_type, BGKCollision())
+        self.sim.collision_op = new_collision
+        self.parameters_changed.emit()
+
+    def _on_bc_changed(self, index: int) -> None:
+        """Handle boundary condition selection change."""
+        bc_type = self._bc_combo.currentData()
+        if not hasattr(self.sim, "use_zou_he"):
+            # Engine doesn't support Zou-He
+            return
+
+        if bc_type == "zou_he":
+            self.sim.use_zou_he = True
+        else:
+            self.sim.use_zou_he = False
+        self.parameters_changed.emit()
+
+    def _on_thermal_enabled(self, checked: bool) -> None:
+        """Handle thermal physics enable/disable."""
+        if hasattr(self.sim, "init_thermal"):
+            if checked:
+                # Initialize thermal with current parameter values
+                thermal_diff = self._param_thermal_diff.value()
+                beta = self._param_beta.value()
+                t_ref = self._param_t_ref.value()
+                g_y = self._param_gravity.value()
+                self.sim.init_thermal(
+                    thermal_diffusivity=thermal_diff,
+                    beta=beta,
+                    T_ref=t_ref,
+                    g_x=0.0,
+                    g_y=g_y,
+                    g_z=0.0,
+                )
+            else:
+                self.sim.thermal_enabled = False
+            self.parameters_changed.emit()
+
+    def _on_thermal_diff(self, val: float) -> None:
+        """Handle thermal diffusivity change."""
+        if hasattr(self.sim, "thermal_diffusivity"):
+            self.sim.thermal_diffusivity = val
+            self.parameters_changed.emit()
+
+    def _on_beta(self, val: float) -> None:
+        """Handle thermal expansion coefficient change."""
+        if hasattr(self.sim, "beta"):
+            self.sim.beta = val
+            self.parameters_changed.emit()
+
+    def _on_t_ref(self, val: float) -> None:
+        """Handle reference temperature change."""
+        if hasattr(self.sim, "T_ref"):
+            self.sim.T_ref = val
+            self.parameters_changed.emit()
+
+    def _on_gravity(self, val: float) -> None:
+        """Handle gravity strength change."""
+        if hasattr(self.sim, "g_y"):
+            self.sim.g_y = val
+            self.parameters_changed.emit()
+
+    def _on_non_newtonian_enabled(self, checked: bool) -> None:
+        """Handle non-Newtonian enable/disable."""
+        if checked:
+            # Apply non-Newtonian collision operator
+            self._apply_non_newtonian_model()
+        else:
+            # Revert to standard BGK
+            if hasattr(self.sim, "collision_op"):
+                from engines.collision import BGKCollision
+
+                self.sim.collision_op = BGKCollision()
+        self.parameters_changed.emit()
+
+    def _on_non_newtonian_model_changed(self, index: int) -> None:
+        """Handle non-Newtonian model selection change."""
+        if self._non_newtonian_enabled_check.isChecked():
+            self._apply_non_newtonian_model()
+            self.parameters_changed.emit()
+
+    def _on_power_law_n(self, val: float) -> None:
+        """Handle power-law index change."""
+        if self._non_newtonian_enabled_check.isChecked():
+            self._apply_non_newtonian_model()
+            self.parameters_changed.emit()
+
+    def _on_carreau_lambda(self, val: float) -> None:
+        """Handle Carreau lambda change."""
+        if self._non_newtonian_enabled_check.isChecked():
+            self._apply_non_newtonian_model()
+            self.parameters_changed.emit()
+
+    def _on_carreau_nu_inf(self, val: float) -> None:
+        """Handle Carreau nu_inf ratio change."""
+        if self._non_newtonian_enabled_check.isChecked():
+            self._apply_non_newtonian_model()
+            self.parameters_changed.emit()
+
+    def _on_bingham_yield(self, val: float) -> None:
+        """Handle Bingham yield stress change."""
+        if self._non_newtonian_enabled_check.isChecked():
+            self._apply_non_newtonian_model()
+            self.parameters_changed.emit()
+
+    def _apply_non_newtonian_model(self) -> None:
+        """Apply the selected non-Newtonian model to the simulation."""
+        from engines.collision import BGKCollision
+        from engines.non_newtonian import (
+            BinghamModel,
+            CarreauModel,
+            NonNewtonianCollision,
+            PowerLawModel,
+        )
+
+        model_type = self._non_newtonian_model_combo.currentData()
+        base_viscosity = self.sim.viscosity
+
+        if model_type == "power_law":
+            n = self._param_power_law_n.value()
+            model = PowerLawModel(n=n)
+        elif model_type == "carreau":
+            n = self._param_power_law_n.value()
+            lambda_val = self._param_carreau_lambda.value()
+            nu_inf_ratio = self._param_carreau_nu_inf.value()
+            model = CarreauModel(n=n, lambda_val=lambda_val, nu_inf_ratio=nu_inf_ratio)
+        elif model_type == "bingham":
+            yield_stress = self._param_bingham_yield.value()
+            model = BinghamModel(yield_stress=yield_stress)
+        else:
+            model = PowerLawModel(n=0.5)
+
+        non_newtonian_collision = NonNewtonianCollision(
+            BGKCollision(), model, base_viscosity=base_viscosity
+        )
+        self.sim.collision_op = non_newtonian_collision
+
     def sync_params_from_scene(self) -> None:
         """Update spinner values to match the current scene (after load)."""
         self._param_visc.setValue(self.scene.viscosity)
@@ -488,14 +872,31 @@ class ScenePanel(QWidget):
     def set_expert_mode(self, expert: bool) -> None:
         """Toggle between beginner and expert mode."""
         self._expert_mode = expert
-        # In beginner mode, hide smoke diffusion and decay parameters
+        # In beginner mode, hide advanced smoke + particle controls
         self._param_diff.setVisible(expert)
         self._param_decay.setVisible(expert)
-        # Update the form layout labels visibility
         form = self._param_visc.parent().layout()
         if form:
             form.labelForField(self._param_diff).setVisible(expert)
             form.labelForField(self._param_decay).setVisible(expert)
+        if hasattr(self, "_particle_group"):
+            self._particle_group.setVisible(expert)
+        # Hide collision selector in beginner mode
+        if hasattr(self, "_collision_combo"):
+            self._collision_combo.setVisible(expert)
+            if hasattr(self, "_collision_combo_label"):
+                self._collision_combo_label.setVisible(expert)
+        # Hide boundary condition selector in beginner mode
+        if hasattr(self, "_bc_combo"):
+            self._bc_combo.setVisible(expert)
+            if hasattr(self, "_bc_combo_label"):
+                self._bc_combo_label.setVisible(expert)
+        # Thermal hidden per TRUST.md until step() integration complete
+        if hasattr(self, "_thermal_group"):
+            self._thermal_group.setVisible(expert)
+        # Hide non-Newtonian group in beginner mode
+        if hasattr(self, "_non_newtonian_group"):
+            self._non_newtonian_group.setVisible(expert)
 
     def _rebuild_tree(self) -> None:
         self.tree.blockSignals(True)

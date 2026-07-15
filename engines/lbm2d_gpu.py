@@ -1,3 +1,11 @@
+"""D2Q9 LBM on CuPy (Experimental).
+
+Transfer stream: getters copy host arrays with ``_stream_transfer`` then
+synchronize that stream. This is an async download pattern relative to the
+default stream, but dual-stream compute/transfer overlap is limited — we do
+not yet keep a compute kernel running while a previous frame downloads.
+"""
+
 from __future__ import annotations
 
 import cupy as cp
@@ -95,7 +103,7 @@ class LBM2DGPU(SimEngine, SmokeMixin):
         self.width = width
         self.height = height
         self.viscosity = viscosity
-        self.u_inflow = 0.15
+        self.u_inflow = 0.05  # low-Mach default (Ma ≈ 0.09)
 
         self.lattice = LATTICE_2D
         self.lattice.assert_stable(
@@ -127,16 +135,29 @@ class LBM2DGPU(SimEngine, SmokeMixin):
 
         self._kernel = cp.RawKernel(_KERNEL_SRC, "fused_step")
 
-        # CUDA streams for overlapping compute and transfer
+        # CUDA streams for compute vs host transfers (overlap limited — see module doc)
         self._stream_compute = cp.cuda.Stream()
         self._stream_transfer = cp.cuda.Stream()
 
-        self.initialize(rho=1.0, u=0.1, v=0.0)
+        self._ema_smoke_max = 0.001
+        self._ema_speed_max = 0.001
+        self._ema_vort_max = 0.001
+        self._ema_pres_max = 0.001
+        self._ema_alpha = 0.05
+
+        self.initialize(rho=1.0, u=0.05, v=0.0)
         self._warmup_jit()
 
     def _warmup_jit(self) -> None:
-        self.step()
-        self.initialize(rho=1.0, u=0.1, v=0.0)
+        self.step(physics_only=True)
+        self.initialize(rho=1.0, u=0.05, v=0.0)
+
+    def _asnumpy(self, arr: cp.ndarray) -> np.ndarray:
+        """Device→host copy on the transfer stream, then sync that stream."""
+        with self._stream_transfer:
+            out = cp.asnumpy(arr)
+        self._stream_transfer.synchronize()
+        return out
 
     # --- SimEngine interface ---
 
@@ -153,7 +174,7 @@ class LBM2DGPU(SimEngine, SmokeMixin):
         return self.lattice.omega_from_viscosity(self.viscosity)
 
     def initialize(
-        self, rho: float = 1.0, u: float = 0.1, v: float = 0.0, w: float = 0.0
+        self, rho: float = 1.0, u: float = 0.05, v: float = 0.0, w: float = 0.0
     ) -> None:
         self.rho[:] = rho
         self.u[:] = u
@@ -172,16 +193,13 @@ class LBM2DGPU(SimEngine, SmokeMixin):
         self.emitters.clear()
         self.clear_obstacles()
 
-    def step(self) -> None:
-        # Use optimized block size for better occupancy
-        # Try 32x8 = 256 threads per block (same as 16x16 but different shape)
+    def step(self, physics_only: bool = False) -> None:
         threads = (32, 8)
         blocks = (
             (self.width + 31) // 32,
             (self.height + 7) // 8,
         )
 
-        # Launch compute kernel on compute stream
         with self._stream_compute:
             self._kernel(
                 blocks,
@@ -206,39 +224,85 @@ class LBM2DGPU(SimEngine, SmokeMixin):
             self._f_swap[:, :, -1] = self._f_swap[:, :, -2]
             self.f, self._f_swap = self._f_swap, self.f
 
-        self.apply_emitters()
-        self.advect_smoke()
-        self.diffuse_smoke()
-        self.smoke[self.obstacles] = 0.0
-        self.decay_smoke()
+        if not physics_only:
+            self.apply_emitters()
+            self.advect_smoke()
+            self.diffuse_smoke()
+            self.smoke[self.obstacles] = 0.0
+            self.decay_smoke()
 
-    def run(self, steps: int) -> None:
+    def run(self, steps: int, physics_only: bool = False) -> None:
         for _ in range(steps):
-            self.step()
+            self.step(physics_only=physics_only)
 
     def get_density(self) -> np.ndarray:
-        return cp.asnumpy(self.rho)
+        return self._asnumpy(self.rho)
 
     def get_velocity(self) -> np.ndarray:
-        return cp.asnumpy(cp.stack([self.u, self.v], axis=2))
+        return self._asnumpy(cp.stack([self.u, self.v], axis=2))
 
     def get_velocity_at(self, x: int, y: int) -> tuple[float, float]:
-        return float(cp.asnumpy(self.u[y, x])), float(cp.asnumpy(self.v[y, x]))
+        return float(self._asnumpy(self.u[y, x])), float(self._asnumpy(self.v[y, x]))
 
     def get_smoke(self) -> np.ndarray:
-        return cp.asnumpy(self.smoke)
+        return self._asnumpy(self.smoke)
 
     def get_obstacles(self) -> np.ndarray:
-        return cp.asnumpy(self.obstacles)
+        return self._asnumpy(self.obstacles)
 
     def get_obstacles_mut(self) -> np.ndarray:
         return self.obstacles
 
     def get_f(self) -> np.ndarray:
-        return self.f
+        return self._asnumpy(self.f)
 
     def get_pressure(self) -> np.ndarray:
-        return cp.asnumpy(self.rho - 1.0)
+        """Lattice pressure p = ρ / 3 (c_s² = 1/3)."""
+        return self._asnumpy(self.rho / 3.0)
+
+    def get_field_names(self) -> list[str]:
+        return ["smoke", "speed", "vorticity", "pressure", "density"]
+
+    def get_field(self, name: str) -> np.ndarray:
+        a = self._ema_alpha
+        if name == "smoke":
+            smoke = self.get_smoke()
+            cur_max = max(float(np.max(smoke)), 0.001)
+            self._ema_smoke_max = (1 - a) * self._ema_smoke_max + a * cur_max
+            return np.clip(smoke / self._ema_smoke_max, 0, 1).astype(np.float32)
+        u = self._asnumpy(self.u)
+        v = self._asnumpy(self.v)
+        if name == "speed":
+            speed = np.sqrt(u.astype(np.float32) ** 2 + v.astype(np.float32) ** 2)
+            cur_max = max(float(np.max(speed)), 0.001)
+            self._ema_speed_max = (1 - a) * self._ema_speed_max + a * cur_max
+            mx = max(self.u_inflow * 1.5, self._ema_speed_max, 0.001)
+            return np.clip(speed / mx, 0, 1).astype(np.float32)
+        if name == "vorticity":
+            dvdx = np.zeros_like(u, dtype=np.float32)
+            dudy = np.zeros_like(u, dtype=np.float32)
+            dvdx[:, 1:-1] = (v[:, 2:] - v[:, :-2]) * 0.5
+            dudy[1:-1, :] = (u[2:, :] - u[:-2, :]) * 0.5
+            vort = dvdx - dudy
+            cur_max = max(float(np.max(np.abs(vort))), 0.001)
+            self._ema_vort_max = (1 - a) * self._ema_vort_max + a * cur_max
+            return np.clip(vort / self._ema_vort_max * 0.5 + 0.5, 0, 1).astype(
+                np.float32
+            )
+        if name == "pressure":
+            p = (self.get_density() - 1.0).astype(np.float32)
+            cur_max = max(float(np.max(np.abs(p))), 0.001)
+            self._ema_pres_max = (1 - a) * self._ema_pres_max + a * cur_max
+            return np.clip(p / self._ema_pres_max * 0.5 + 0.5, 0, 1).astype(np.float32)
+        if name == "density":
+            rho = self.get_density()
+            lo, hi = float(np.min(rho)), float(np.max(rho))
+            if hi - lo < 0.001:
+                return np.full_like(rho, 0.5, dtype=np.float32)
+            return np.clip((rho - lo) / (hi - lo), 0, 1).astype(np.float32)
+        raise ValueError(
+            f"Unknown field: {name!r}. Available: {self.get_field_names()}"
+        )
 
     def get_emitter_count(self) -> int:
         return len(self.emitters)
@@ -253,3 +317,6 @@ class LBM2DGPU(SimEngine, SmokeMixin):
 
     def add_emitter(self, x: int, y: int, strength: float = 0.05) -> None:
         self.emitters.append((x, y, strength))
+
+    def clear_emitters(self) -> None:
+        self.emitters.clear()

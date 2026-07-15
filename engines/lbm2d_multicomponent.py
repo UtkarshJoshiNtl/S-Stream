@@ -547,7 +547,7 @@ class LBM2DMultiComponent(SimEngine, SmokeMixin):
         return np.concatenate([self.f1, self.f2], axis=0)
 
     def get_pressure(self) -> np.ndarray:
-        return self.rho1 + self.rho2 - 1.0
+        return (self.rho1 + self.rho2) / 3.0
 
     def get_field_names(self) -> list[str]:
         return [

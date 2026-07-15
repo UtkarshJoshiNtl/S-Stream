@@ -64,8 +64,10 @@ class LBM2DLettuce(SimEngine, SmokeMixin):
         self.width = width
         self.height = height
         self.viscosity = viscosity
-        self.u_inflow = 0.15
+        self.u_inflow = 0.05  # low-Mach default
         self.device = device
+        # When True, skip smoke/particles and GPU→CPU syncs used only for viz
+        self.measure_mode = False
 
         # Initialize Lettuce lattice
         self._lattice = LettuceD2Q9(
@@ -120,7 +122,7 @@ class LBM2DLettuce(SimEngine, SmokeMixin):
         # Boundary conditions
         self._boundary_conditions = []
 
-        self.initialize(rho=1.0, u=0.1, v=0.0)
+        self.initialize(rho=1.0, u=0.05, v=0.0)
 
     # --- SimEngine interface ---
 
@@ -137,7 +139,7 @@ class LBM2DLettuce(SimEngine, SmokeMixin):
         return self._lattice.omega_from_viscosity(self.viscosity)
 
     def initialize(
-        self, rho: float = 1.0, u: float = 0.1, v: float = 0.0, w: float = 0.0
+        self, rho: float = 1.0, u: float = 0.05, v: float = 0.0, w: float = 0.0
     ) -> None:
         self._rho[:] = rho
         self._u[0, :, :] = u
@@ -150,7 +152,7 @@ class LBM2DLettuce(SimEngine, SmokeMixin):
         self.emitters.clear()
         self.clear_obstacles()
 
-    def step(self) -> None:
+    def step(self, physics_only: bool = False) -> None:
         # Apply collision
         self._f = self._collision(self._f)
 
@@ -165,6 +167,10 @@ class LBM2DLettuce(SimEngine, SmokeMixin):
         self._rho = self._lattice.rho(self._f)
         self._u = self._lattice.u(self._f)
 
+        # Skip smoke / particle path (and their .cpu() syncs) in measure mode
+        if physics_only or self.measure_mode:
+            return
+
         # Apply smoke operations (CPU-based for compatibility)
         self.apply_emitters()
         self.advect_smoke()
@@ -175,9 +181,9 @@ class LBM2DLettuce(SimEngine, SmokeMixin):
         vel = self.get_velocity()
         self._particle_tracer.step(vel)
 
-    def run(self, steps: int) -> None:
+    def run(self, steps: int, physics_only: bool = False) -> None:
         for _ in range(steps):
-            self.step()
+            self.step(physics_only=physics_only)
 
     def get_density(self) -> np.ndarray:
         return self._rho.cpu().numpy()
@@ -205,7 +211,7 @@ class LBM2DLettuce(SimEngine, SmokeMixin):
         return self._f.cpu().numpy()
 
     def get_pressure(self) -> np.ndarray:
-        return self._rho.cpu().numpy() - 1.0
+        return self._rho.cpu().numpy() / 3.0
 
     def get_field_names(self) -> list[str]:
         return ["smoke", "speed", "vorticity", "pressure", "density"]

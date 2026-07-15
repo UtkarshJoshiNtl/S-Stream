@@ -45,15 +45,21 @@ def benchmark_engine(
             fps=0.0,
         )
 
-    sim.initialize(1.0, 0.1, 0.0)
+    sim.initialize(1.0, 0.05, 0.0)
 
     # Warmup
-    sim.step()
-    sim.initialize(1.0, 0.1, 0.0)
+    try:
+        sim.step(physics_only=True)
+    except TypeError:
+        sim.step()
+    sim.initialize(1.0, 0.05, 0.0)
 
-    # Benchmark
+    # Benchmark — physics-only (skip smoke/particles) for honest MLUPs
     start = time.perf_counter()
-    sim.run(steps)
+    try:
+        sim.run(steps, physics_only=True)
+    except TypeError:
+        sim.run(steps)
     elapsed = time.perf_counter() - start
 
     mlups = (width * height * steps) / (elapsed * 1e6)
@@ -119,6 +125,7 @@ def print_results(results: list[BenchmarkResult]) -> None:
     """Print benchmark results in a formatted table."""
     print("=" * 80)
     print("S-Stream Performance Benchmark Results")
+    print("Measurements are physics-only (smoke/particles skipped).")
     print("=" * 80)
     header = (
         f"{'Engine':<20} {'Grid':<12} {'Steps':<8}"

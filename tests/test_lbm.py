@@ -36,7 +36,8 @@ class TestInit:
         assert np.allclose(sim.rho, 1.0)
 
     def test_initial_velocity_uniform(self, sim: LBM2D) -> None:
-        assert np.allclose(sim.u, 0.1)
+        # Quiescent init is the default (low-Mach channel drives via BC).
+        assert np.allclose(sim.u, 0.0)
         assert np.allclose(sim.v, 0.0)
 
 

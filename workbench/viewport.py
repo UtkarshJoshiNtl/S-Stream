@@ -125,10 +125,13 @@ class Viewport(QOpenGLWidget):
         self._show_contours = False
         self._show_force_arrows = False
         self._show_particles = False
+        self._slice_axis = 0  # 0=z midplane for 3D
+        self._slice_index: int | None = None
         self.draw_mode: str | None = None
         self._drag_start: tuple[float, float] | None = None
         self._drag_end: tuple[float, float] | None = None
         self._poly_points: list[tuple[float, float]] = []
+        self._cursor_pos: tuple[float, float] | None = None
         self._overlay_frame = 0
         self._streamline_cache: list | None = None
         self._contour_cache: tuple[list, int] | None = None
@@ -179,11 +182,30 @@ class Viewport(QOpenGLWidget):
         self._show_particles = show
         self.update()
 
+    def set_slice_index(self, index: int | None) -> None:
+        """Set 3D slice index along depth (None = midplane)."""
+        self._slice_index = index
+        self._tex_init = False
+        self.update()
+
+    def _field_to_2d(self, field: np.ndarray) -> np.ndarray:
+        """Reduce 3D fields to a 2D slice for the texture upload."""
+        if field.ndim == 2:
+            return field
+        if field.ndim == 3:
+            # (D, H, W) → mid z-slice (or selected)
+            d = field.shape[0]
+            idx = self._slice_index if self._slice_index is not None else d // 2
+            idx = int(np.clip(idx, 0, d - 1))
+            return field[idx]
+        raise ValueError(f"Unsupported field ndim={field.ndim}")
+
     def set_draw_mode(self, mode: str | None) -> None:
         self.draw_mode = mode
         self._drag_start = None
         self._drag_end = None
         self._poly_points = []
+        self._cursor_pos = None
         cursor = Qt.CursorShape.CrossCursor if mode else Qt.CursorShape.ArrowCursor
         self.setCursor(cursor)
         self.update()
@@ -296,7 +318,7 @@ class Viewport(QOpenGLWidget):
         except ValueError:
             field = self.sim.get_field("smoke")
 
-        field = np.ascontiguousarray(field)
+        field = self._field_to_2d(np.ascontiguousarray(field))
         h, w = field.shape
         if self._perf_mode:
             field_u8 = (field * 255).astype(np.uint8)
@@ -411,7 +433,7 @@ class Viewport(QOpenGLWidget):
             painter.drawLine(ix, iy - 6, ix, iy + 6)
             painter.drawText(ix + 8, iy + 4, p.spec.name)
 
-        if self.draw_mode == "polygon" and len(self._poly_points) > 1:
+        if self.draw_mode == "polygon" and self._poly_points:
             pen = QPen(QColor(255, 255, 255, 200), 2)
             painter.setPen(pen)
             pts = [self._grid_to_widget(px, py) for px, py in self._poly_points]
@@ -419,6 +441,13 @@ class Viewport(QOpenGLWidget):
                 x0, y0 = int(pts[i][0]), int(pts[i][1])
                 x1, y1 = int(pts[i + 1][0]), int(pts[i + 1][1])
                 painter.drawLine(x0, y0, x1, y1)
+            if self._cursor_pos is not None and len(pts) >= 1:
+                last = pts[-1]
+                cx, cy = self._grid_to_widget(*self._cursor_pos)
+                dash_pen = QPen(QColor(255, 255, 255, 120), 1)
+                dash_pen.setStyle(Qt.PenStyle.DashLine)
+                painter.setPen(dash_pen)
+                painter.drawLine(int(last[0]), int(last[1]), int(cx), int(cy))
 
         self._draw_colorbar(painter)
 
@@ -438,7 +467,7 @@ class Viewport(QOpenGLWidget):
             painter.drawText(
                 self.rect().adjusted(0, 0, 0, -40),
                 Qt.AlignmentFlag.AlignCenter,
-                "SStream",
+                "S-Stream",
             )
             font.setPointSize(13)
             font.setBold(False)
@@ -1004,6 +1033,7 @@ class Viewport(QOpenGLWidget):
 
         if self.draw_mode == "polygon":
             self._poly_points.append((gx, gy))
+            self._cursor_pos = (gx, gy)
             self.update()
         else:
             self._drag_start = (gx, gy)
@@ -1011,10 +1041,12 @@ class Viewport(QOpenGLWidget):
 
     def mouseDoubleClickEvent(self, event) -> None:
         if self.draw_mode == "polygon" and len(self._poly_points) >= 3:
+            self._poly_points.pop()
             pts = [(int(round(x)), int(round(y))) for x, y in self._poly_points]
             obs = PolygonObstacle(name="Polygon", points=pts)
             self.obstacle_created.emit(obs)
             self._poly_points = []
+            self._cursor_pos = None
             self.update()
             return
         super().mouseDoubleClickEvent(event)
@@ -1024,7 +1056,9 @@ class Viewport(QOpenGLWidget):
             self._drag_start = None
             self._drag_end = None
             self._poly_points = []
+            self._cursor_pos = None
             self.update()
+            event.accept()
             return
         if event.key() in (Qt.Key_Return, Qt.Key_Enter):
             if self.draw_mode == "polygon" and len(self._poly_points) >= 3:
@@ -1032,7 +1066,9 @@ class Viewport(QOpenGLWidget):
                 obs = PolygonObstacle(name="Polygon", points=pts)
                 self.obstacle_created.emit(obs)
                 self._poly_points = []
+                self._cursor_pos = None
                 self.update()
+                event.accept()
                 return
         super().keyPressEvent(event)
 
@@ -1043,7 +1079,7 @@ class Viewport(QOpenGLWidget):
         gx, gy = self._widget_to_grid(event.position().x(), event.position().y())
         if self.draw_mode == "polygon":
             if self._poly_points:
-                self._poly_points[-1] = (gx, gy)
+                self._cursor_pos = (gx, gy)
                 self.update()
         elif self._drag_start is not None:
             self._drag_end = (gx, gy)
@@ -1054,12 +1090,8 @@ class Viewport(QOpenGLWidget):
             super().mouseReleaseEvent(event)
             return
         if self.draw_mode == "polygon":
-            if len(self._poly_points) >= 3:
-                pts = [(int(round(x)), int(round(y))) for x, y in self._poly_points]
-                obs = PolygonObstacle(name="Polygon", points=pts)
-                self.obstacle_created.emit(obs)
-            self._poly_points = []
-            self.update()
+            # Finalize only via Enter or double-click (not mouse release).
+            return
         elif self._drag_start is not None and self._drag_end is not None:
             gx1, gy1 = self._drag_start
             gx2, gy2 = self._drag_end

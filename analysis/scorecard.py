@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 
@@ -19,6 +19,7 @@ class DesignScorecard:
     pressure_drop: float
     shedding_confidence: float
     summary: str
+    range_checks: dict[str, dict] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {
@@ -28,6 +29,7 @@ class DesignScorecard:
             "pressure_drop": self.pressure_drop,
             "shedding_confidence": self.shedding_confidence,
             "summary": self.summary,
+            "range_checks": self.range_checks,
         }
 
 
@@ -46,9 +48,30 @@ def compute_scorecard(
     regime = detect_flow_regime(sim, scene, probes, step_count)
     cd = drag_coefficient(sim)
     re = reynolds_number(sim, characteristic_length(scene))
+    st = regime.strouhal
+
+    expected = scene.product.expected_ranges
+    range_checks: dict[str, dict] = {}
+    summary_parts: list[str] = []
+
+    for key, value in [("Re", re), ("Cd", cd), ("St", st)]:
+        if key in expected and value is not None:
+            lo, hi = expected[key]
+            in_range = lo <= value <= hi
+            range_checks[key] = {
+                "value": value,
+                "lo": lo,
+                "hi": hi,
+                "pass": in_range,
+            }
+            indicator = "within" if in_range else "outside"
+            summary_parts.append(f"{key} {value:.2f} {indicator} [{lo:.1f}, {hi:.1f}]")
+
     if not scene.obstacles:
         summary = "Open flow: add an obstacle to compare drag or wake designs."
-    elif regime.strouhal is not None:
+    elif summary_parts:
+        summary = "; ".join(summary_parts)
+    elif st is not None:
         summary = (
             "Wake has a measurable rhythm; "
             "this is a good candidate for a visual/report export."
@@ -58,6 +81,7 @@ def compute_scorecard(
             "Flow is useful for intuition; "
             "run longer or add a wake probe for stronger metrics."
         )
+
     return DesignScorecard(
         drag_coefficient=float(cd),
         reynolds_number=float(re),
@@ -67,4 +91,5 @@ def compute_scorecard(
             regime.confidence if "shedding" in regime.label.lower() else 0.0
         ),
         summary=summary,
+        range_checks=range_checks,
     )

@@ -1,14 +1,16 @@
 from __future__ import annotations
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QFormLayout,
+    QFrame,
+    QHBoxLayout,
     QLabel,
     QProgressBar,
-    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
 
-from analysis.ai_context import build_ai_context, local_ai_response
 from analysis.physics import characteristic_length, drag_coefficient, reynolds_number
 from analysis.regimes import detect_flow_regime
 from analysis.sanity import check_sanity
@@ -16,6 +18,18 @@ from analysis.scorecard import compute_scorecard
 from engines.base import SimEngine
 from scene.probe import Probe
 from scene.scene import Scene
+
+
+class _Badge(QLabel):
+    """Small colored pill badge."""
+
+    def __init__(self, text: str, color: str, parent=None):
+        super().__init__(text, parent)
+        self.setStyleSheet(
+            f"QLabel {{ background: {color}; color: white; padding: 2px 8px; "
+            f"border-radius: 8px; font-size: 11px; font-weight: bold; }}"
+        )
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
 
 class OutcomePanel(QWidget):
@@ -31,37 +45,54 @@ class OutcomePanel(QWidget):
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(8)
 
+        # --- Zone A: Regime headline + confidence badge ---
+        zone_a = QHBoxLayout()
+        zone_a.setSpacing(8)
         self.headline = QLabel("<b>What am I seeing?</b>")
         self.headline.setWordWrap(True)
-        layout.addWidget(self.headline)
+        zone_a.addWidget(self.headline, 1)
+        self.confidence_badge = _Badge("", "#374151")
+        zone_a.addWidget(self.confidence_badge)
+        layout.addLayout(zone_a)
 
         self.summary = QLabel("Load a preset or draw a shape to get an explanation.")
         self.summary.setWordWrap(True)
         layout.addWidget(self.summary)
 
+        # --- Progress bar ---
         self.progress = QProgressBar()
         self.progress.setVisible(False)
         layout.addWidget(self.progress)
 
-        self.readouts = QLabel("")
-        self.readouts.setWordWrap(True)
-        layout.addWidget(self.readouts)
+        # --- Zone B: Scorecard grid ---
+        score_frame = QFrame()
+        score_frame.setStyleSheet(
+            "QFrame { background: #0f172a; border: 1px solid #1e293b; "
+            "border-radius: 6px; padding: 4px; }"
+        )
+        score_layout = QFormLayout(score_frame)
+        score_layout.setContentsMargins(8, 6, 8, 6)
+        self.re_value = QLabel("—")
+        self.cd_value = QLabel("—")
+        self.st_value = QLabel("—")
+        self.pdrop_value = QLabel("—")
+        score_layout.addRow("Re", self.re_value)
+        score_layout.addRow("Cd", self.cd_value)
+        score_layout.addRow("St", self.st_value)
+        score_layout.addRow("Δp", self.pdrop_value)
+        layout.addWidget(score_frame)
 
-        self.warnings = QLabel("")
-        self.warnings.setWordWrap(True)
-        layout.addWidget(self.warnings)
+        # --- Zone C: Sanity warnings ---
+        self.warnings_layout = QVBoxLayout()
+        self.warnings_layout.setSpacing(4)
+        layout.addLayout(self.warnings_layout)
 
-        self.ai_box = QTextEdit()
-        self.ai_box.setReadOnly(True)
-        self.ai_box.setMinimumHeight(160)
-        self.ai_box.setPlaceholderText("AI tutor preview appears here.")
-        layout.addWidget(self.ai_box, 1)
+        layout.addStretch()
 
         self.setStyleSheet(
             "QWidget { background: #111827; color: #e5e7eb; } "
             "QLabel { color: #e5e7eb; } "
-            "QTextEdit { background: #0b1020; color: #d1d5db; "
-            "border: 1px solid #374151; }"
+            "QFormLayout QLabel { color: #94a3b8; }"
         )
 
     def set_scene(self, scene: Scene) -> None:
@@ -91,43 +122,78 @@ class OutcomePanel(QWidget):
         length = characteristic_length(self.scene)
         re = reynolds_number(self.sim, length)
         cd = drag_coefficient(self.sim)
+        st_text = f"{regime.strouhal:.3f}" if regime.strouhal else "settling"
 
+        # --- Zone A: headline + confidence badge ---
         headline = self.scene.product.lesson_headline or regime.label
         self.headline.setText(f"<b>{headline}</b>")
         self.summary.setText(regime.explanation)
-        st_text = f"{regime.strouhal:.3f}" if regime.strouhal else "settling"
-        self.readouts.setText(
-            f"Re {re:.1f} | Cd {cd:.3f} | St {st_text}<br>"
-            f"Scorecard: wake {score.wake_strength:.4f}, "
-            f"pressure-drop proxy {score.pressure_drop:.4f}<br>"
-            f"{score.summary}"
-        )
-        if warnings:
-            self.warnings.setText(
-                "<br>".join(f"<b>{w.title}</b>: {w.message}" for w in warnings[:3])
-            )
-        else:
-            self.warnings.setText("No major sanity warnings.")
 
-        if self.demo_target > 0:
-            self.progress.setVisible(True)
-            self.progress.setValue(min(self.step_count, self.demo_target))
-            self.progress.setFormat(
-                "Building the flow story... %v/%m steps"
-                if self.step_count < self.demo_target
-                else "Demo ready"
-            )
+        conf = regime.confidence
+        if conf >= 0.8:
+            badge_color = "#16a34a"
+            badge_text = f"Confident {conf:.0%}"
+        elif conf >= 0.6:
+            badge_color = "#ca8a04"
+            badge_text = f"Moderate {conf:.0%}"
+        else:
+            badge_color = "#dc2626"
+            badge_text = f"Uncertain {conf:.0%}"
+        self.confidence_badge.setText(badge_text)
+        self.confidence_badge.setStyleSheet(
+            f"QLabel {{ background: {badge_color}; color: white; padding: 2px 8px; "
+            f"border-radius: 8px; font-size: 11px; font-weight: bold; }}"
+        )
+
+        # --- Zone B: scorecard with range checks ---
+        expected = self.scene.product.expected_ranges
+        self.re_value.setText(self._range_text(re, "Re", expected))
+        self.cd_value.setText(self._range_text(cd, "Cd", expected))
+        self.st_value.setText(st_text if regime.strouhal is not None else "—")
+        self.pdrop_value.setText(f"{score.pressure_drop:.4f}")
+
+        # --- Zone C: sanity warnings as colored pills ---
+        self._clear_warnings()
+        for w in warnings[:3]:
+            self._add_warning_pill(w.title, w.message, w.level)
+
+    def _range_text(
+        self, value: float, key: str, expected: dict[str, list[float]]
+    ) -> str:
+        if key not in expected:
+            return f"{value:.2f}"
+        lo, hi = expected[key]
+        in_range = lo <= value <= hi
+        indicator = "✓" if in_range else "✗"
+        color = "#16a34a" if in_range else "#dc2626"
+        return (
+            f"{value:.2f}  "
+            f"<span style='color:{color}; font-weight:bold'>{indicator}</span>"
+            f" <span style='color:#64748b'>[{lo:.1f}–{hi:.1f}]</span>"
+        )
+
+    def _clear_warnings(self) -> None:
+        while self.warnings_layout.count():
+            item = self.warnings_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+    def _add_warning_pill(self, title: str, message: str, level: str = "warn") -> None:
+        color_map = {
+            "danger": "#7f1d1d",
+            "error": "#7f1d1d",
+            "warn": "#78350f",
+            "warning": "#78350f",
+            "info": "#1e3a5f",
+        }
+        bg = color_map.get(level, "#78350f")
+        pill = QLabel(f"<b>{title}</b>: {message}")
+        pill.setWordWrap(True)
+        pill.setStyleSheet(
+            f"QLabel {{ background: {bg}; color: #e5e7eb; padding: 4px 8px; "
+            f"border-radius: 4px; font-size: 11px; }}"
+        )
+        self.warnings_layout.addWidget(pill)
 
     def refresh_ai_preview(self, has_api_key: bool = False) -> None:
-        regime = detect_flow_regime(self.sim, self.scene, self.probes, self.step_count)
-        warnings = check_sanity(self.sim, self.scene, self.probes, self.step_count)
-        context = build_ai_context(
-            self.scene,
-            self.sim,
-            regime=regime,
-            warnings=warnings,
-            step_count=self.step_count,
-        )
-        self.ai_box.setPlainText(
-            local_ai_response(context, has_api_key) + "\n\n" + context
-        )
+        _ = has_api_key
