@@ -60,7 +60,7 @@ htmlcov/
 # Tooling configuration (local)
 .opencode/
 AGENTS.md
-PLAN.md
+!PLAN.md
 plan.md
 
 # Qt settings
