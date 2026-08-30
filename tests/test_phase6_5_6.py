@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import re
+from pathlib import Path
+
 import pytest
 
 from engines.lbm2d import LBM2D
@@ -112,10 +115,30 @@ class TestSStreamPackage:
         assert hasattr(sstream, "SimEngine")
         assert hasattr(sstream, "ParticleTracer")
 
-    def test_sstream_version(self) -> None:
+    def test_sstream_version_matches_pyproject(self) -> None:
+        import tomllib
+
         import sstream
 
-        assert sstream.__version__ == "0.3.5"
+        root = Path(__file__).resolve().parents[1]
+        declared = tomllib.loads((root / "pyproject.toml").read_text())["project"][
+            "version"
+        ]
+        assert declared == sstream.__version__
+
+    def test_no_hardcoded_version_literals(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        pattern = re.compile(r"""version\s*=\s*["']\d+\.\d+\.\d+["']""")
+        offenders = []
+        for path in sorted(root.rglob("*.py")):
+            if any(
+                part in {".git", "venv", "build", "dist", ".ruff_cache"}
+                for part in path.parts
+            ):
+                continue
+            if pattern.search(path.read_text(encoding="utf-8")):
+                offenders.append(str(path.relative_to(root)))
+        assert offenders == []
 
     def test_sstream_lbm2d_works(self) -> None:
         import sstream

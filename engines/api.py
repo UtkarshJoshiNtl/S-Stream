@@ -40,6 +40,17 @@ except ImportError:
 from engines.base import SimEngine
 
 
+def _resolve_version() -> str:
+    try:
+        from sstream import __version__ as resolved
+    except Exception:  # pragma: no cover - partially initialised package
+        return "0.0.0+unknown"
+    return resolved
+
+
+__version__ = _resolve_version()
+
+
 class RunRequest(BaseModel):
     steps: int = 100
 
@@ -67,14 +78,14 @@ def create_app(sim: SimEngine) -> Any:
     app = FastAPI(
         title="S-Stream API",
         description="Lattice Boltzmann fluid simulation REST API",
-        version="0.3.0",
+        version=__version__,
     )
 
     @app.get("/")
     def root() -> dict[str, Any]:
         return {
             "name": "S-Stream API",
-            "version": "0.3.0",
+            "version": __version__,
             "engine": type(sim).__name__,
             "grid": list(sim.grid_shape),
             "fields": sim.get_field_names(),

@@ -21,6 +21,8 @@ Available engines:
 
 from __future__ import annotations
 
+import pathlib
+
 from engines.base import SimEngine
 from engines.lbm2d import LBM2D
 from engines.lbm2d_liquid import LBM2DLiquid
@@ -55,4 +57,37 @@ __all__ = [
     "ParticleTracer",
 ]
 
-__version__ = "0.3.5"
+
+def _resolve_version() -> str:
+    """Resolve the package version from its single source of truth.
+
+    ``pyproject.toml`` wins because that is what a developer edits and what
+    build backends read. Installed distribution metadata is the fallback for
+    layouts where the source tree is unavailable.
+    """
+    root = pathlib.Path(__file__).resolve().parent.parent
+    pyproject = root / "pyproject.toml"
+    try:
+        import tomllib
+    except ImportError:  # pragma: no cover - Python < 3.11
+        pass
+    else:
+        try:
+            data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            pass
+        else:
+            found = data.get("project", {}).get("version")
+            if isinstance(found, str):
+                return found
+    try:
+        from importlib.metadata import version
+    except ImportError:  # pragma: no cover - Python < 3.8
+        return "0.0.0+unknown"
+    try:
+        return version("s-stream")
+    except Exception:
+        return "0.0.0+unknown"
+
+
+__version__ = _resolve_version()
