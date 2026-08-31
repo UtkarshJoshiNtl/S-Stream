@@ -4,6 +4,35 @@ All notable changes to S-Stream will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+Release entries separate what is implemented, what is verified by an automated
+test, and what is planned. Capability labels come from [TRUST.md](TRUST.md); an
+entry here never implies a stronger label than the trust matrix assigns.
+
+## [Unreleased]
+
+See [PLAN.md](PLAN.md) §11 for the commit-by-commit plan. Work in this release is
+a trust-first correctness pass, not a feature release.
+
+### Fixed
+
+- **Trust metadata**
+  - `Development Status` classifier corrected from `Production/Stable` to `Beta`
+    to match the educational scope and the trust matrix.
+  - Package version is now resolved from `pyproject.toml` instead of being
+    declared independently in four places, two of which were stale.
+
+### Planned
+
+- Phase 0 trust freeze: solver boundary-condition corrections, 3D thermal
+  stepping, optional-dependency import guards, trust-label reconciliation.
+- Phase 1 P0 correctness: engine rebuild on scene dimension change, engine-aware
+  field catalog with no silent fallback, engine-driven probe fields, runtime
+  state reset, single scene owner with reliable undo/redo.
+- Phase 2 scientific truth: one canonical pressure quantity with units,
+  cadence-correct Strouhal, region-defined wake metrics.
+- Phase 3 maneuverability, Phase 4 performance, Phase 5 3D/multiphase gating,
+  and release hardening. See PLAN.md §11 for all 69 commits.
+
 ## [0.3.5] - 2026-07-15
 
 ### Added
@@ -25,7 +54,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   - Power-law (shear-thinning/thickening)
   - Carreau (polymer behavior)
   - Bingham (yield stress fluids)
-- **Thermal LBM** — Boussinesq buoyancy for natural convection
+- **Thermal LBM** — Boussinesq buoyancy for natural convection (2D stepping;
+  see corrections below for the 3D status)
 - **Geometry**
   - STL mesh import via trimesh
   - Image-to-obstacle (PNG/BMP → obstacle mask)
@@ -57,6 +87,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - All engines inherit `SmokeMixin` for shared smoke advection/diffusion/decay
 - All engines inherit `ThermalMixin` for shared temperature distribution
 - Scene panel dynamically adapts controls based on active engine type
+
+### Corrections
+
+Entries above are historical claims. Two were overstated and are being fixed in
+this release:
+
+- `LBM3D` never advanced temperature collision, streaming, or buoyancy in its
+  step path, so "thermal buoyancy" applied to 2D only. The 3D kernels exist and
+  are wired up here.
+- The published version for this release was `0.4.1`, not `0.3.5`; the two
+  disagreed with each other and with `pyproject.toml`.
 
 ## [0.3.0] - 2026-06-01
 

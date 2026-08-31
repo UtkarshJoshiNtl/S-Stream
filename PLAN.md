@@ -296,8 +296,8 @@ behavior are considered for the viewport and status indicators.
 
 | # | Date | Commit | Scope | Findings |
 |---|------|--------|-------|----------|
-| [ ] | 08-30 | `chore(release): drop Production/Stable classifier for educational scope` | `pyproject.toml` | §6.3 |
-| [ ] | 08-30 | `chore(release): single-source version 0.6.0 from package metadata` | `sstream/__init__.py`, `engines/api.py`, tests | §6.3 |
+| [x] | 08-30 | `chore(release): drop Production/Stable classifier for educational scope` | `pyproject.toml` | §6.3 |
+| [x] | 08-30 | `chore(release): single-source version 0.6.0 from package metadata` | `sstream/__init__.py`, `engines/api.py`, tests | §6.3 |
 | [ ] | 08-31 | `docs(changelog): 0.6.0 entry separating shipped from planned work` | `CHANGELOG.md` | §6.3 |
 | [ ] | 08-31 | `fix(api): import engines.api safely without the fastapi extra` | `engines/api.py` | §6.3 |
 | [ ] | 09-01 | `fix(rheology): wire BinghamModel yield-stress constructor` | `workbench/panels/scene_panel.py` | §6.3 |
@@ -515,4 +515,6 @@ Appended in commit order. Each entry records the commit id, what changed, and wh
 
 | Commit | Date | Outcome |
 |--------|------|---------|
-| — | — | Plan restructured into 69 commits (C01–C69) spanning 2026-08-30 → 2026-10-03, with findings traced to commits and a progress log opened. Baseline: `pytest` = 306 passed, 27 skipped. |
+| C01 | 08-30 | **Done.** `pyproject.toml` classifier `5 - Production/Stable` → `4 - Beta`. The 0.6.0 metadata claimed the highest tier while `README.md` disclaims production use and `TRUST.md` labels most capabilities Experimental/Hidden. Plan itself landed here: 69 commits, traceability matrix, progress log. `.gitignore` un-ignores `PLAN.md` so it stays tracked. |
+| C02 | 08-30 | **Done.** Version was declared four times and disagreed in all four: `pyproject.toml` 0.6.0, `sstream/__init__.py` 0.3.5, a test pinning 0.3.5, `engines/api.py` hard-coding 0.3.0 twice. `sstream.__version__` now resolves from `pyproject.toml` (installed metadata as fallback), and `engines/api.py` reports it instead of a literal. The pinned assertion is replaced by a pyproject-consistency check plus a scan for hard-coded `version=` literals. |
+| C03 | 08-31 | **Done.** `CHANGELOG.md` gains an `[Unreleased]` section that separates implemented, verified, and planned work, states that entries never imply a stronger label than `TRUST.md`, and adds a Corrections block under 0.3.5 recording the overstated 3D thermal claim and the version disagreement. |
