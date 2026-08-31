@@ -34,8 +34,11 @@ try:
     from pydantic import BaseModel
 
     HAS_FASTAPI = True
-except ImportError:
+except ImportError as exc:  # pragma: no cover - depends on optional extra
     HAS_FASTAPI = False
+    _IMPORT_ERROR = exc
+else:
+    _IMPORT_ERROR = None
 
 from engines.base import SimEngine
 
@@ -50,30 +53,33 @@ def _resolve_version() -> str:
 
 __version__ = _resolve_version()
 
-
-class RunRequest(BaseModel):
-    steps: int = 100
-
-
-class ObstacleRequest(BaseModel):
-    x: int = 64
-    y: int = 64
-    radius: int = 8
+_MISSING_FASTAPI_MESSAGE = (
+    "REST API mode requires FastAPI and pydantic, which ship in the 'api' extra. "
+    "Install them with: pip install sstream[api]"
+)
 
 
-class EmitterRequest(BaseModel):
-    x: int = 2
-    y: int = 32
-    strength: float = 0.05
+def _require_fastapi() -> None:
+    if not HAS_FASTAPI:
+        raise ImportError(_MISSING_FASTAPI_MESSAGE) from _IMPORT_ERROR
 
 
 def create_app(sim: SimEngine) -> Any:
     """Create a FastAPI app wrapping the given simulation engine."""
-    if not HAS_FASTAPI:
-        raise ImportError(
-            "FastAPI is required for REST API mode. "
-            "Install with: pip install sstream[api]"
-        )
+    _require_fastapi()
+
+    class RunRequest(BaseModel):
+        steps: int = 100
+
+    class ObstacleRequest(BaseModel):
+        x: int = 64
+        y: int = 64
+        radius: int = 8
+
+    class EmitterRequest(BaseModel):
+        x: int = 2
+        y: int = 32
+        strength: float = 0.05
 
     app = FastAPI(
         title="S-Stream API",

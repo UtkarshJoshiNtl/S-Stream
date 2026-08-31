@@ -149,6 +149,52 @@ class TestSStreamPackage:
 
 
 # ---------------------------------------------------------------------------
+# Optional dependency surface
+# ---------------------------------------------------------------------------
+
+
+class TestOptionalDependencySurface:
+    """`engines.api` must import cleanly without the `api` extra installed."""
+
+    def test_api_module_imports_without_fastapi(self) -> None:
+        import subprocess
+        import sys
+
+        script = (
+            "import sys;"
+            "sys.modules['fastapi'] = None;"
+            "sys.modules['pydantic'] = None;"
+            "import engines.api as api;"
+            "print(api.HAS_FASTAPI)"
+        )
+        root = Path(__file__).resolve().parents[1]
+        proc = subprocess.run(
+            [sys.executable, "-c", script],
+            capture_output=True,
+            text=True,
+            cwd=root,
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert proc.stdout.strip() == "False"
+
+    def test_create_app_reports_installation_guidance(self) -> None:
+        import engines.api
+
+        sim = LBM2D(width=16, height=16)
+        if engines.api.HAS_FASTAPI:
+            pytest.skip("fastapi is installed; the missing-extra path cannot run")
+        with pytest.raises(ImportError) as excinfo:
+            engines.api.create_app(sim)
+        assert "sstream[api]" in str(excinfo.value)
+
+    def test_api_reports_package_version(self) -> None:
+        import engines.api
+        import sstream
+
+        assert engines.api.__version__ == sstream.__version__
+
+
+# ---------------------------------------------------------------------------
 # 6.6 REST API
 # ---------------------------------------------------------------------------
 
