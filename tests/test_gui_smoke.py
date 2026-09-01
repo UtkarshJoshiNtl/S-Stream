@@ -145,3 +145,24 @@ def test_expert_mode_toggles(window):
     window.set_expert_mode(False)
     assert not window._expert_mode
     assert not window.tool_strip.polygon_btn().isVisible()
+
+
+@pytest.mark.parametrize(
+    "model_type",
+    ["power_law", "carreau", "bingham"],
+)
+def test_every_non_newtonian_model_applies(window, model_type):
+    """Each rheology preset must reach the engine without a TypeError.
+
+    The Bingham branch used to call BinghamModel(yield_stress=...), which is
+    not a parameter name, so selecting Bingham raised inside the Qt slot and
+    left the engine silently on its previous collision operator.
+    """
+    from engines.non_newtonian import NonNewtonianCollision
+
+    panel = window.scene_panel
+    panel._non_newtonian_model_combo.setCurrentIndex(
+        panel._non_newtonian_model_combo.findData(model_type)
+    )
+    panel._apply_non_newtonian_model()
+    assert isinstance(window.sim.collision_op, NonNewtonianCollision)

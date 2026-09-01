@@ -884,8 +884,8 @@ class ScenePanel(QWidget):
             nu_inf_ratio = self._param_carreau_nu_inf.value()
             model = CarreauModel(n=n, lambda_val=lambda_val, nu_inf_ratio=nu_inf_ratio)
         elif model_type == "bingham":
-            yield_stress = self._param_bingham_yield.value()
-            model = BinghamModel(yield_stress=yield_stress)
+            tau_y = self._param_bingham_yield.value()
+            model = BinghamModel(tau_y=tau_y)
         else:
             model = PowerLawModel(n=0.5)
 
