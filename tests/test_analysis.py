@@ -6,6 +6,7 @@ from analysis.ai_context import build_ai_context, local_ai_response
 from analysis.physics import (
     characteristic_length,
     drag_coefficient,
+    drive_velocity,
     reynolds_number,
     strouhal_number,
 )
@@ -97,6 +98,38 @@ def test_detect_flow_regime_no_flow() -> None:
     regime = detect_flow_regime(sim, scene, [], 0)
     assert regime.label == "No driven flow"
     assert regime.confidence == 0.95
+
+
+def test_detect_flow_regime_lid_driven_cavity_is_driven() -> None:
+    """A cavity is driven by the lid; u_inflow is zero by construction.
+
+    The shipped Lid-Driven Cavity preset sets lid_velocity=0.1 and
+    u_inflow=0.0, so reading u_inflow alone reported "No driven flow" at 0.95
+    confidence for a scene that is demonstrably running.
+    """
+    sim = LBM2D(32, 32, viscosity=0.02)
+    sim.domain_mode = "cavity"
+    sim.lid_velocity = 0.1
+    sim.u_inflow = 0.0
+    scene = Scene()
+    regime = detect_flow_regime(sim, scene, [], 500)
+    assert regime.label != "No driven flow"
+
+
+def test_drive_velocity_resolution() -> None:
+    channel = LBM2D(16, 16)
+    channel.u_inflow = 0.05
+    assert drive_velocity(channel) == 0.05
+
+    cavity = LBM2D(16, 16)
+    cavity.domain_mode = "cavity"
+    cavity.u_inflow = 0.0
+    cavity.lid_velocity = 0.1
+    assert drive_velocity(cavity) == 0.1
+
+    still = LBM2D(16, 16)
+    still.u_inflow = 0.0
+    assert drive_velocity(still) == 0.0
 
 
 def test_detect_flow_regime_developing() -> None:

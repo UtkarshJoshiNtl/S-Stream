@@ -16,6 +16,22 @@ def characteristic_length(scene: Scene) -> float:
     return float(scene.width)
 
 
+def drive_velocity(sim: SimEngine) -> float:
+    """Resolve the velocity that actually drives the flow.
+
+    ``reynolds_number`` and ``drag_coefficient`` already know that a lid-driven
+    cavity is driven by ``lid_velocity`` rather than by the inlet. Regime
+    classification needs the same resolution, otherwise a cavity preset is
+    reported as having no driven flow at all.
+    """
+    inlet = float(getattr(sim, "u_inflow", 0.0) or 0.0)
+    if inlet > 0:
+        return inlet
+    if getattr(sim, "domain_mode", None) == "cavity":
+        return float(getattr(sim, "lid_velocity", 0.0) or 0.0)
+    return inlet
+
+
 def reynolds_number(sim: SimEngine, obstacle_diameter: float | None = None) -> float:
     L = obstacle_diameter or float(sim.grid_shape[1])
     U = float(sim.u_inflow)

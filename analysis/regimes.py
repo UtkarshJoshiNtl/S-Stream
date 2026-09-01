@@ -4,7 +4,12 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from analysis.physics import characteristic_length, reynolds_number, strouhal_number
+from analysis.physics import (
+    characteristic_length,
+    drive_velocity,
+    reynolds_number,
+    strouhal_number,
+)
 from engines.base import SimEngine
 from scene.probe import Probe
 from scene.scene import Scene
@@ -49,20 +54,22 @@ def detect_flow_regime(
     step_count: int = 0,
 ) -> FlowRegime:
     probes = probes or []
+
+    if drive_velocity(sim) <= 0:
+        return FlowRegime(
+            "No driven flow",
+            0.95,
+            (
+                "Neither the inlet nor the lid is moving, so there is no "
+                "sustained flow to classify."
+            ),
+        )
+
     length = characteristic_length(scene)
     re = reynolds_number(sim, obstacle_diameter=length)
     vort = _max_vorticity(sim)
     oscillation, st = _probe_oscillation(probes)
 
-    if sim.u_inflow <= 0:
-        return FlowRegime(
-            "No driven flow",
-            0.95,
-            "The inlet velocity is zero, so the simulation has no sustained flow.",
-            st,
-            oscillation,
-            vort,
-        )
     if step_count < 250:
         return FlowRegime(
             "Developing flow",
