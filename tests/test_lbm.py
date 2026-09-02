@@ -130,6 +130,57 @@ class TestObstacles:
                 )
 
 
+class TestFusedPathContract:
+    """The fused fast path must never substitute a different obstacle BC."""
+
+    @staticmethod
+    def _run(fused: bool, obstacle_bc: str) -> np.ndarray:
+        sim = LBM2D(width=48, height=40, viscosity=0.02)
+        sim.u_inflow = 0.05
+        sim.initialize()
+        sim.add_obstacle(24, 20, radius=5)
+        sim.obstacle_bc = obstacle_bc
+        sim.use_fused = fused
+        sim.run(30)
+        return sim.get_density()
+
+    def test_obstacle_scene_never_uses_fused_kernel(self) -> None:
+        sim = LBM2D(width=32, height=32)
+        assert sim._can_use_fused() is True
+        sim.add_obstacle(16, 16, radius=4)
+        assert sim._can_use_fused() is False
+
+    def test_fused_flag_does_not_change_obstacle_physics(self) -> None:
+        """use_fused must be a performance switch only, never a physics one.
+
+        The fused kernel performed an on-node swap while the configured default
+        is halfway bounce-back, so enabling the fast path silently moved the
+        no-slip surface and changed drag.
+        """
+        np.testing.assert_allclose(
+            self._run(True, "halfway"),
+            self._run(False, "halfway"),
+            atol=1e-6,
+            err_msg="fused flag changed the physics of an obstacle scene",
+        )
+
+    def test_configured_obstacle_bc_is_actually_applied(self) -> None:
+        """halfway and fullway must still give different answers.
+
+        Guards against 'fixing' the contract by making obstacle_bc inert.
+        """
+        assert not np.allclose(
+            self._run(False, "halfway"),
+            self._run(False, "fullway"),
+            atol=1e-6,
+        )
+
+    def test_empty_scene_still_uses_fused_kernel(self) -> None:
+        sim = LBM2D(width=32, height=32)
+        sim.clear_obstacles()
+        assert sim._can_use_fused() is True
+
+
 class TestStep:
     def test_step_changes_state(self, sim: LBM2D) -> None:
         f_before = sim.f.copy()

@@ -283,12 +283,21 @@ class LBM2D(SimEngine, SmokeMixin, ThermalMixin):
         self.clear_obstacles()
 
     def _can_use_fused(self) -> bool:
+        """Whether the fused single-kernel fast path is valid for this state.
+
+        The fused kernel does its own on-node (full-way) obstacle bounce-back
+        and never consults ``obstacle_bc``. Fusing it with the configured
+        halfway scheme would silently place the no-slip surface half a lattice
+        unit away and change drag, so any scene with obstacles takes the
+        non-fused path that honours ``obstacle_bc``.
+        """
         return (
             self.use_fused
             and isinstance(self.collision_op, BGKCollision)
             and self.domain_mode == DOMAIN_CHANNEL
             and self.body_force == (0.0, 0.0)
             and not self.use_zou_he
+            and not self.obstacles.any()
         )
 
     def step(self, physics_only: bool = False) -> None:
