@@ -181,6 +181,54 @@ class TestFusedPathContract:
         assert sim._can_use_fused() is True
 
 
+class TestPeriodicDomain:
+    def test_obstacles_apply_in_periodic_mode(self) -> None:
+        """Periodic streaming must not pass through a solid.
+
+        apply_boundary_conditions() used to return before obstacle handling in
+        periodic mode, so the obstacle mask was a render-only overlay there.
+        """
+        sim = LBM2D(width=32, height=32, viscosity=0.02)
+        sim.domain_mode = "periodic"
+        sim.initialize()
+        sim.obstacles[12, 16] = True  # (x=16, y=12)
+        assert not sim.obstacles[11, 16]
+        direction = 2  # (0, +1) points at the solid
+        sim.f[direction, 11, 16] = 0.123
+        sim.apply_boundary_conditions()
+        opp = int(sim.lattice.opp[direction])
+        assert sim.f[opp, 11, 16] == pytest.approx(sim.f[direction, 11, 16], abs=1e-5)
+        assert sim.f[direction, 11, 16] == pytest.approx(0.123, abs=1e-6)
+
+    def test_periodic_run_keeps_obstacle_solid(self) -> None:
+        sim = LBM2D(width=32, height=32, viscosity=0.02)
+        sim.domain_mode = "periodic"
+        sim.initialize()
+        sim.add_obstacle(16, 16, radius=4)
+        sim.run(40)
+        assert np.all(np.isfinite(sim.rho))
+        assert np.all(sim.rho > 0)
+
+
+class TestHalfwayBounceBack:
+    def test_opposite_solid_neighbours_do_not_alias(self) -> None:
+        """A fluid cell walled on both sides must reflect, not swap to zero.
+
+        The kernel wrote f[opp[i]] = f[i] in direction order, so for a cell
+        with solids on both sides the second write read the value the first
+        write had just produced. Sources are now read before any write.
+        """
+        sim = LBM2D(width=32, height=32)
+        sim.initialize()
+        sim.obstacles[16, 15] = True  # (x=15, y=16)
+        sim.obstacles[16, 17] = True  # (x=17, y=16)
+        sim.f[1, 16, 16] = 0.7  # +x heading toward the solid at x=17
+        sim.f[3, 16, 16] = 0.2  # -x heading toward the solid at x=15
+        sim.apply_obstacles()
+        assert sim.f[3, 16, 16] == pytest.approx(0.7, abs=1e-6)
+        assert sim.f[1, 16, 16] == pytest.approx(0.2, abs=1e-6)
+
+
 class TestStep:
     def test_step_changes_state(self, sim: LBM2D) -> None:
         f_before = sim.f.copy()

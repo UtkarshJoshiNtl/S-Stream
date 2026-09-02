@@ -142,19 +142,29 @@ def _halfway_bb_2d_nb(f, mask, cx, cy, opp, height, width):
     For each fluid→solid link along c_i, the missing population at the
     fluid node (incoming from the solid) is the opposite direction opp[i].
     Set f[opp] = f[i] (stationary wall).
+
+    The writes are simultaneous equations: a fluid cell with solids on two
+    opposite sides needs f[opp[i]] = f[i] and f[i] = f[opp[i]] at the same
+    time, so every source value is read before any of them is written.
     """
     for y in prange(height):
         for x in range(width):
             if mask[y, x]:
                 continue
+            sources = np.empty(8, dtype=np.float32)
+            targets = np.empty(8, dtype=np.int64)
+            count = 0
             for i in range(1, 9):
                 nx = x + cx[i]
                 ny = y + cy[i]
                 if nx < 0 or nx >= width or ny < 0 or ny >= height:
                     continue
                 if mask[ny, nx]:
-                    oi = opp[i]
-                    f[oi, y, x] = f[i, y, x]
+                    sources[count] = f[i, y, x]
+                    targets[count] = opp[i]
+                    count += 1
+            for k in range(count):
+                f[targets[k], y, x] = sources[k]
 
 
 @njit(parallel=True, cache=True, fastmath=True, boundscheck=False)
@@ -354,10 +364,14 @@ class LBM2D(SimEngine, SmokeMixin, ThermalMixin):
 
     def apply_boundary_conditions(self) -> None:
         mode = self.domain_mode
+
+        # Obstacles are interior boundaries, so they apply in every domain mode
+        # including periodic. Returning before this point left a periodic scene
+        # rendering its solids while the solver streamed straight through them.
+        self.apply_obstacles()
+
         if mode == DOMAIN_PERIODIC:
             return
-
-        self.apply_obstacles()
 
         if mode == DOMAIN_CAVITY:
             apply_moving_wall_bottom(self.f, 0.0, self.lattice)
@@ -561,6 +575,8 @@ class LBM2D(SimEngine, SmokeMixin, ThermalMixin):
         )
 
     def apply_obstacles(self) -> None:
+        if not self.obstacles.any():
+            return
         if self.obstacle_bc == "halfway":
             _halfway_bb_2d_nb(
                 self.f,
