@@ -111,14 +111,33 @@ class OpenOutflow(BoundaryCondition):
 # ---------------------------------------------------------------------------
 
 
+def _as_mask(f: np.ndarray, obstacles: np.ndarray | None) -> np.ndarray:
+    """Normalise an obstacle mask to ``[y, x]`` with shape ``f.shape[1:]``.
+
+    Accepts ``None`` (no solids) so callers can stay branch-free. The mask is
+    forced to C-contiguous bool because numba requires a concrete layout.
+    """
+    if obstacles is None:
+        return np.zeros(f.shape[1:], dtype=np.bool_)
+    return np.ascontiguousarray(obstacles, dtype=np.bool_)
+
+
 @njit(cache=True, fastmath=True, boundscheck=False)
-def _zou_he_left_nb(f: np.ndarray, ux: float, uy: float, height: int) -> None:
+def _zou_he_left_nb(
+    f: np.ndarray, ux: float, uy: float, height: int, mask: np.ndarray
+) -> None:
     """Zou–He velocity BC on left inlet x=0.
 
     After streaming, unknowns pointing into the domain: f1 (E), f5 (NE),
     f8 (SE).  Density is recovered from known populations + prescribed ux.
+
+    ``mask`` is the obstacle mask indexed ``[y, x]``. Solid cells on the
+    boundary are skipped: writing an inlet equilibrium into a solid turns it
+    into a fluid source that pumps mass into the domain every step.
     """
     for y in range(height):
+        if mask[y, 0]:
+            continue
         f0 = f[0, y, 0]
         f2 = f[2, y, 0]
         f3 = f[3, y, 0]
@@ -139,17 +158,23 @@ def _zou_he_right_pressure_nb(
     f: np.ndarray,
     rho_out: float,
     height: int,
+    mask: np.ndarray,
 ) -> None:
     """Zou–He pressure BC on right outlet x = width-1.
 
     Prescribes density ``rho_out`` (lattice pressure p = rho / 3).
     Unknowns after streaming: f3 (W), f6 (NW), f7 (SW).
     Transverse velocity is taken as uy = 0 at the outlet.
+
+    ``mask`` is the obstacle mask indexed ``[y, x]``; solid cells on the
+    outlet are skipped so the outlet cannot rewrite a no-slip surface.
     """
     x = f.shape[2] - 1
     rho = rho_out if rho_out > 0.0 else 1.0
     uy = 0.0
     for y in range(height):
+        if mask[y, x]:
+            continue
         f0 = f[0, y, x]
         f1 = f[1, y, x]
         f2 = f[2, y, x]
@@ -167,24 +192,31 @@ def apply_zou_he_left(
     ux: float,
     uy: float,
     lattice: Lattice2D,
+    obstacles: np.ndarray | None = None,
 ) -> None:
-    """Apply Zou–He velocity inlet on the left column (x=0)."""
+    """Apply Zou–He velocity inlet on the left column (x=0).
+
+    ``obstacles`` is an optional ``[y, x]`` mask; masked cells are left alone.
+    """
     del lattice  # D2Q9 indices are hard-coded to LATTICE_2D ordering
-    _zou_he_left_nb(f, float(ux), float(uy), f.shape[1])
+    _zou_he_left_nb(f, float(ux), float(uy), f.shape[1], _as_mask(f, obstacles))
 
 
 def apply_zou_he_right_pressure(
     f: np.ndarray,
     rho_out: float,
     lattice: Lattice2D,
+    obstacles: np.ndarray | None = None,
 ) -> None:
     """Apply Zou–He pressure outlet on the right column.
 
     Pass density directly, or convert pressure via ``rho = 3 * p``
     (cs2 = 1/3).
+
+    ``obstacles`` is an optional ``[y, x]`` mask; masked cells are left alone.
     """
     del lattice
-    _zou_he_right_pressure_nb(f, float(rho_out), f.shape[1])
+    _zou_he_right_pressure_nb(f, float(rho_out), f.shape[1], _as_mask(f, obstacles))
 
 
 class ZouHeVelocity(BoundaryCondition):
@@ -243,13 +275,18 @@ def _moving_wall_top_nb(
     rho_row: np.ndarray,
     width: int,
     row: int,
+    active: np.ndarray,
 ) -> None:
     """Moving wall on a horizontal row (unknowns: f4, f7, f8).
 
     f_i = f_opp + 2 * w_i * rho * (c_i · u_wall) / cs2
         = f_opp + 6 * w_i * rho * (c_i · u_wall)   with cs2 = 1/3
+
+    ``active[x]`` is False for obstacle cells, which the wall must not touch.
     """
     for x in range(width):
+        if not active[x]:
+            continue
         rho = rho_row[x]
         if rho <= 0.0:
             rho = 1.0
@@ -270,9 +307,15 @@ def _moving_wall_bottom_nb(
     rho_row: np.ndarray,
     width: int,
     row: int,
+    active: np.ndarray,
 ) -> None:
-    """Moving wall on a horizontal row (unknowns: f2, f5, f6)."""
+    """Moving wall on a horizontal row (unknowns: f2, f5, f6).
+
+    ``active[x]`` is False for obstacle cells, which the wall must not touch.
+    """
     for x in range(width):
+        if not active[x]:
+            continue
         rho = rho_row[x]
         if rho <= 0.0:
             rho = 1.0
@@ -282,6 +325,13 @@ def _moving_wall_bottom_nb(
         f[5, row, x] = f[7, row, x] + 6.0 * w[5] * rho * (u_wall + v_wall)
         # i=6 NW (-1,1), opp=8; c·u = -u_wall + v_wall
         f[6, row, x] = f[8, row, x] + 6.0 * w[6] * rho * (-u_wall + v_wall)
+
+
+def _row_free(f: np.ndarray, row: int, obstacles: np.ndarray | None) -> np.ndarray:
+    """Boolean per-column flag: True where a wall row cell is fluid."""
+    if obstacles is None:
+        return np.ones(f.shape[2], dtype=np.bool_)
+    return ~np.ascontiguousarray(obstacles, dtype=np.bool_)[int(row), :]
 
 
 def _row_density(f: np.ndarray, row: int, rho_row: np.ndarray | None) -> np.ndarray:
@@ -299,13 +349,24 @@ def apply_moving_wall_top(
     *,
     v_wall: float = 0.0,
     row: int | None = None,
+    obstacles: np.ndarray | None = None,
 ) -> None:
-    """Moving lid on the top row (default y = height-1)."""
+    """Moving lid on the top row (default y = height-1).
+
+    ``obstacles`` is an optional ``[y, x]`` mask; masked cells are left alone.
+    """
     if row is None:
         row = f.shape[1] - 1
     rho = _row_density(f, row, rho_row)
     _moving_wall_top_nb(
-        f, float(u_wall), float(v_wall), lattice.w, rho, f.shape[2], int(row)
+        f,
+        float(u_wall),
+        float(v_wall),
+        lattice.w,
+        rho,
+        f.shape[2],
+        int(row),
+        _row_free(f, row, obstacles),
     )
 
 
@@ -317,13 +378,24 @@ def apply_moving_wall_bottom(
     *,
     v_wall: float = 0.0,
     row: int | None = None,
+    obstacles: np.ndarray | None = None,
 ) -> None:
-    """Moving (or stationary) wall on the bottom row (default y = 0)."""
+    """Moving (or stationary) wall on the bottom row (default y = 0).
+
+    ``obstacles`` is an optional ``[y, x]`` mask; masked cells are left alone.
+    """
     if row is None:
         row = 0
     rho = _row_density(f, row, rho_row)
     _moving_wall_bottom_nb(
-        f, float(u_wall), float(v_wall), lattice.w, rho, f.shape[2], int(row)
+        f,
+        float(u_wall),
+        float(v_wall),
+        lattice.w,
+        rho,
+        f.shape[2],
+        int(row),
+        _row_free(f, row, obstacles),
     )
 
 
@@ -365,6 +437,7 @@ class MovingWall(BoundaryCondition):
                 rho_row,
                 v_wall=v_wall,
                 row=0 if row is None else int(row),
+                obstacles=obstacles,
             )
         else:
             apply_moving_wall_top(
@@ -374,6 +447,7 @@ class MovingWall(BoundaryCondition):
                 rho_row,
                 v_wall=v_wall,
                 row=(height - 1) if row is None else int(row),
+                obstacles=obstacles,
             )
 
 

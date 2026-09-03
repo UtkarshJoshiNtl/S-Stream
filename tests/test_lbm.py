@@ -325,3 +325,103 @@ class TestSmoke:
         sim.initialize(rho=1.0, u=0.1, v=0.0)
         assert np.allclose(sim.smoke, 0.0)
         assert len(sim.emitters) == 0
+
+
+class TestBoundaryConditionsRespectObstacles:
+    """No domain boundary condition may write populations into a solid.
+
+    A blockage that touches the inlet used to receive a fresh equilibrium
+    every step, which made the solid a mass source and quietly corrupted
+    both blockage ratio and drag.
+    """
+
+    @staticmethod
+    def _channel(**kwargs) -> LBM2D:
+        sim = LBM2D(width=32, height=32, viscosity=0.02)
+        for key, value in kwargs.items():
+            setattr(sim, key, value)
+        sim.initialize()
+        return sim
+
+    def test_inflow_skips_solid_inlet_cells(self) -> None:
+        sim = self._channel(u_inflow=0.1)
+        sim.obstacles[10, 0] = True  # (x=0, y=10)
+        sim.f[:, 10, 0] = 0.321
+        sim.apply_inflow()
+        assert sim.f[0, 10, 0] == pytest.approx(0.321, abs=1e-6)
+        assert sim.f[1, 11, 0] != pytest.approx(0.321, abs=1e-6)
+
+    def test_inflow_zou_he_skips_solid_inlet_cells(self) -> None:
+        sim = self._channel(u_inflow=0.1, use_zou_he=True)
+        sim.obstacles[10, 0] = True
+        sim.f[:, 10, 0] = 0.321
+        sim.apply_inflow()
+        assert sim.f[0, 10, 0] == pytest.approx(0.321, abs=1e-6)
+
+    def test_outflow_skips_solid_outlet_cells(self) -> None:
+        sim = self._channel()
+        sim.obstacles[20, 31] = True  # (x=31, y=20)
+        sim.f[:, 20, 31] = 0.654
+        sim.apply_outflow()
+        assert sim.f[0, 20, 31] == pytest.approx(0.654, abs=1e-6)
+
+    def test_outflow_zou_he_skips_solid_outlet_cells(self) -> None:
+        sim = self._channel(use_zou_he=True)
+        sim.obstacles[20, 31] = True
+        # Zou-He writes f3/f6/f7 at the outlet, so assert on one of those.
+        sim.f[3, 20, 31] = 0.654
+        sim.f[6, 20, 31] = 0.654
+        sim.f[7, 20, 31] = 0.654
+        sim.apply_outflow()
+        assert sim.f[3, 20, 31] == pytest.approx(0.654, abs=1e-6)
+        assert sim.f[6, 20, 31] == pytest.approx(0.654, abs=1e-6)
+
+    def test_walls_skip_solid_edge_cells(self) -> None:
+        sim = self._channel()
+        sim.obstacles[0, 5] = True  # (x=5, y=0) on the bottom wall
+        # Break the resting symmetry: on a symmetric equilibrium the wall
+        # swap is a no-op and would hide a missing mask.
+        sim.f[1, 0, 5] = 0.31
+        sim.f[3, 0, 5] = 0.02
+        before = sim.f[:, 0, 5].copy()
+        sim.apply_walls()
+        np.testing.assert_allclose(sim.f[:, 0, 5], before, atol=1e-6)
+        # Control: the same swap does happen on the neighbouring free cell.
+        sim.f[1, 0, 6] = 0.31
+        sim.f[3, 0, 6] = 0.02
+        sim.apply_walls()
+        assert sim.f[1, 0, 6] == pytest.approx(0.02, abs=1e-6)
+
+    def test_cavity_lid_skips_solid_cells(self) -> None:
+        sim = self._channel(domain_mode="cavity", lid_velocity=0.1)
+        sim.obstacles[31, 7] = True  # (x=7, y=31) on the lid row
+        sim.f[2, 31, 7] = 0.44
+        before = sim.f[:, 31, 7].copy()
+        sim.apply_boundary_conditions()
+        np.testing.assert_allclose(sim.f[:, 31, 7], before, atol=1e-6)
+
+    def test_cavity_side_wall_skips_solid_cells(self) -> None:
+        sim = self._channel(domain_mode="cavity", lid_velocity=0.1)
+        sim.obstacles[9, 0] = True  # (x=0, y=9) on the left side wall
+        sim.f[1, 9, 0] = 0.31
+        sim.f[3, 9, 0] = 0.02
+        before = sim.f[:, 9, 0].copy()
+        sim.apply_boundary_conditions()
+        np.testing.assert_allclose(sim.f[:, 9, 0], before, atol=1e-6)
+
+    def test_channel_boundaries_leave_solid_cells_untouched(self) -> None:
+        """A full boundary pass must not alter a single solid population.
+
+        The inlet used to rewrite the whole left column with a fresh
+        equilibrium, so a blockage touching x=0 acted as a mass source rather
+        than a wall.
+        """
+        sim = self._channel(u_inflow=0.08)
+        sim.f += np.linspace(0.01, 0.09, 9, dtype=np.float32)[:, None, None]
+        sim.obstacles[10:20, 0] = True
+        sim.obstacles[20:26, 31] = True
+        sim.obstacles[0, 3:9] = True
+        sim.obstacles[31, 3:9] = True
+        before = sim.f[:, sim.obstacles].copy()
+        sim.apply_boundary_conditions()
+        np.testing.assert_allclose(sim.f[:, sim.obstacles], before, atol=1e-6)

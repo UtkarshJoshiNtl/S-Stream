@@ -186,18 +186,25 @@ def _update_macros_nb(f, rho, u, v, cx, cy, height, width):
 
 
 @njit(parallel=True, cache=True, fastmath=True, boundscheck=False)
-def _wall_bb_nb(f, opp, height, width):
-    """Stationary bounce-back on top and bottom rows."""
+def _wall_bb_nb(f, opp, height, width, mask):
+    """Stationary bounce-back on top and bottom rows.
+
+    Cells that are obstacles are left untouched: the wall scheme must not
+    rotate populations into a solid that already received its no-slip
+    treatment from ``_halfway_bb_2d_nb``.
+    """
     for i in range(9):
         opp_i = opp[i]
         if i < opp_i:
             for x in prange(width):
-                tmp = f[i, 0, x]
-                f[i, 0, x] = f[opp_i, 0, x]
-                f[opp_i, 0, x] = tmp
-                tmp = f[i, height - 1, x]
-                f[i, height - 1, x] = f[opp_i, height - 1, x]
-                f[opp_i, height - 1, x] = tmp
+                if not mask[0, x]:
+                    tmp = f[i, 0, x]
+                    f[i, 0, x] = f[opp_i, 0, x]
+                    f[opp_i, 0, x] = tmp
+                if not mask[height - 1, x]:
+                    tmp = f[i, height - 1, x]
+                    f[i, height - 1, x] = f[opp_i, height - 1, x]
+                    f[opp_i, height - 1, x] = tmp
 
 
 class LBM2D(SimEngine, SmokeMixin, ThermalMixin):
@@ -374,9 +381,13 @@ class LBM2D(SimEngine, SmokeMixin, ThermalMixin):
             return
 
         if mode == DOMAIN_CAVITY:
-            apply_moving_wall_bottom(self.f, 0.0, self.lattice)
+            apply_moving_wall_bottom(
+                self.f, 0.0, self.lattice, obstacles=self.obstacles
+            )
             self._bounce_side_walls()
-            apply_moving_wall_top(self.f, self.lid_velocity, self.lattice)
+            apply_moving_wall_top(
+                self.f, self.lid_velocity, self.lattice, obstacles=self.obstacles
+            )
             return
 
         if mode == DOMAIN_FORCE:
@@ -385,23 +396,27 @@ class LBM2D(SimEngine, SmokeMixin, ThermalMixin):
 
         # CHANNEL: walls, then inlet / outlet
         self.apply_walls()
-        if self.use_zou_he:
-            apply_zou_he_left(self.f, self.u_inflow, 0.0, self.lattice)
-            apply_zou_he_right_pressure(self.f, self.rho_outlet, self.lattice)
-        else:
-            self.apply_inflow()
-            self.f[:, :, -1] = self.f[:, :, -2]
+        self.apply_inflow()
+        self.apply_outflow()
 
     def _bounce_side_walls(self) -> None:
-        """Full-way bounce-back on left and right columns (cavity sides)."""
+        """Full-way bounce-back on left and right columns (cavity sides).
+
+        Obstacle cells are skipped so the side wall cannot rotate populations
+        into a solid.
+        """
         opp = self.lattice.opp
         for i in range(9):
             oi = int(opp[i])
             if i < oi:
                 for col in (0, self.width - 1):
-                    tmp = self.f[i, :, col].copy()
-                    self.f[i, :, col] = self.f[oi, :, col]
-                    self.f[oi, :, col] = tmp
+                    free = ~self.obstacles[:, col]
+                    if not free.any():
+                        continue
+                    a = self.f[i, free, col].copy()
+                    b = self.f[oi, free, col].copy()
+                    self.f[i, free, col] = b
+                    self.f[oi, free, col] = a
 
     def run(self, steps: int, physics_only: bool = False) -> None:
         for _ in range(steps):
@@ -593,17 +608,38 @@ class LBM2D(SimEngine, SmokeMixin, ThermalMixin):
             )
 
     def apply_inflow(self) -> None:
+        """Prescribe the inlet on the left column.
+
+        Cells occupied by an obstacle are skipped. Overwriting them used to
+        inject a fresh fluid equilibrium into the solid every step, turning any
+        blockage touching x=0 into a mass source.
+        """
+        if self.use_zou_he:
+            apply_zou_he_left(self.f, self.u_inflow, 0.0, self.lattice, self.obstacles)
+            return
         u_in = self.u_inflow
         u2 = u_in * u_in
         cu = self.lattice.cx * u_in
         feq = self.lattice.w * (1.0 + 3.0 * cu + 4.5 * cu**2 - 1.5 * u2)
-        self.f[:, :, 0] = feq[:, np.newaxis]
+        inlet = feq[:, np.newaxis]
+        solid = self.obstacles[:, 0]
+        if not solid.any():
+            self.f[:, :, 0] = inlet
+        else:
+            self.f[:, :, 0] = np.where(solid, self.f[:, :, 0], inlet)
 
     def apply_outflow(self) -> None:
+        """Prescribe the outlet on the right column, skipping obstacle cells."""
         if self.use_zou_he and self.domain_mode == DOMAIN_CHANNEL:
-            apply_zou_he_right_pressure(self.f, self.rho_outlet, self.lattice)
-        else:
+            apply_zou_he_right_pressure(
+                self.f, self.rho_outlet, self.lattice, self.obstacles
+            )
+            return
+        solid = self.obstacles[:, -1]
+        if not solid.any():
             self.f[:, :, -1] = self.f[:, :, -2]
+        else:
+            self.f[:, :, -1] = np.where(solid, self.f[:, :, -1], self.f[:, :, -2])
 
     def apply_walls(self) -> None:
-        _wall_bb_nb(self.f, self.lattice.opp, self.height, self.width)
+        _wall_bb_nb(self.f, self.lattice.opp, self.height, self.width, self.obstacles)
