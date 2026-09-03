@@ -242,6 +242,16 @@ class LBM2DLiquid(SimEngine, SmokeMixin):
         self.emitters.clear()
         self.clear_obstacles()
 
+    def reset_for_scene(self, scene) -> None:
+        """Use this engine's own initial condition, not the scene's.
+
+        The domain is closed, so ``scene.u_inflow`` describes a drive that
+        does not exist. Seeding it also starts the droplet moving before the
+        surface tension can act on it.
+        """
+        del scene
+        self.initialize()
+
     def step(self) -> None:
         _compute_force_nb(
             self.rho,

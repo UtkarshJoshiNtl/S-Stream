@@ -7,6 +7,7 @@ import numpy as np
 
 if TYPE_CHECKING:
     from engines.particle_tracer import ParticleTracer
+    from scene.scene import Scene
 
 
 class SimEngine(ABC):
@@ -51,6 +52,21 @@ class SimEngine(ABC):
         Specific subclasses may accept additional keyword arguments.
         """
         ...
+
+    def reset_for_scene(self, scene: Scene) -> None:
+        """Reset to the initial condition a scene should start from.
+
+        Each engine owns its own initial condition. The default suits
+        driven (inflow) domains, where the scene's inlet velocity is the
+        physically meaningful seed. Engines that are closed-domain or
+        seeded with a phase structure must override this: forcing
+        ``rho=1.0, u=scene.u_inflow`` on them overwrites the background
+        density and start the flow moving before the physics does.
+
+        Callers must use this rather than calling :meth:`initialize`
+        directly when applying a scene.
+        """
+        self.initialize(rho=1.0, u=scene.u_inflow, v=0.0)
 
     # --- Tunable physical parameters (UI sliders write to these) ---
     # Concrete subclasses MUST set these as instance attributes in __init__.

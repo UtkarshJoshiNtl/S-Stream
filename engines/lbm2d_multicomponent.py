@@ -417,6 +417,16 @@ class LBM2DMultiComponent(SimEngine, SmokeMixin):
         self.emitters.clear()
         self.clear_obstacles()
 
+    def reset_for_scene(self, scene) -> None:
+        """Use this engine's own initial condition, not the scene's.
+
+        The domain is closed, so ``scene.u_inflow`` describes a drive that
+        does not exist. Seeding it also starts the phase separation moving
+        before the interfacial tension can act on it.
+        """
+        del scene
+        self.initialize()
+
     def step(self) -> None:
         # Compute Shan-Chen forces for both components
         _compute_force_multicomponent_nb(

@@ -479,7 +479,7 @@ class Scene:
 
 
 def apply_to_sim(scene: Scene, sim: SimEngine) -> None:
-    sim.initialize(rho=1.0, u=scene.u_inflow, v=0.0)
+    sim.reset_for_scene(scene)
     sim.viscosity = scene.viscosity
     sim.u_inflow = scene.u_inflow
     sim.smoke_diffusion = scene.smoke_diffusion
