@@ -147,40 +147,38 @@ class TestThermalLBM:
         sim.init_thermal(thermal_diffusivity=0.02, beta=0.001)
         sim.set_temperature_boundary(1.0, region="bottom")
         sim.set_temperature_boundary(0.0, region="top")
-        # Modified step to include thermal
-        for _ in range(10):
-            sim.streaming()
-            sim.apply_boundary_conditions()
-            sim.apply_buoyancy()
-            sim.collision()
-            sim.collision_temperature()
-            sim.apply_outflow()
+        sim.run(10)
         rho = sim.get_density()
         T = sim.get_temperature()
         assert np.all(np.isfinite(rho))
         assert np.all(np.isfinite(T))
+        assert T.max() > 0.0
 
     def test_buoyancy_creates_convection(self) -> None:
-        """Boussinesq buoyancy creates vertical motion when heated from below."""
+        """Boussinesq buoyancy must drive a Rayleigh-Benard cell the right way.
+
+        Uses the production ``step()`` path rather than a hand-rolled loop, so
+        the ordering of collide / stream / buoyancy is the one that actually
+        runs.
+        """
         sim = LBM2D(width=32, height=32, viscosity=0.02)
-        sim.init_thermal(thermal_diffusivity=0.02, beta=0.01, g_y=-1.0)
+        sim.u_inflow = 0.0
+        sim.init_thermal(thermal_diffusivity=0.02, beta=0.01, g_y=-1.0, T_ref=0.0)
         sim.set_temperature_boundary(1.0, region="bottom")
         sim.set_temperature_boundary(0.0, region="top")
         sim.initialize(rho=1.0, u=0.0, v=0.0)
+        sim.run(60)
 
-        # Run with thermal coupling
-        for _ in range(200):
-            sim.streaming()
-            sim.apply_boundary_conditions()
-            sim.apply_buoyancy()
-            sim.collision()
-            sim.collision_temperature()
-            sim.apply_outflow()
-
-        # Should have some vertical velocity due to buoyancy
-        u = sim.get_velocity()
-        v_vertical = u[:, :, 1]
-        assert np.max(np.abs(v_vertical)) > 1e-6
+        vel = sim.get_velocity()
+        v_vertical = vel[:, :, 1]
+        # Heated from below with gravity -y: fluid at the floor must rise and
+        # fluid at the ceiling must sink. This is the assertion the previous
+        # version refused to make (it accepted either sign).
+        assert v_vertical[:8].mean() > 0.0
+        assert v_vertical[-8:].mean() < 0.0
+        # The driven axis must dominate the unforced one.
+        assert abs(float(v_vertical.mean())) > abs(float(vel[:, :, 0].mean()))
+        assert sim.get_temperature().max() > 0.05
 
 
 # =============================================================================

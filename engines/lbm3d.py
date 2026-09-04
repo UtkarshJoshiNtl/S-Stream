@@ -259,7 +259,22 @@ class LBM3D(SimEngine, SmokeMixin, ThermalMixin):
     def step(self) -> None:
         self.streaming()
         self.apply_boundary_conditions()
+
+        # Thermal physics (Boussinesq). Buoyancy is injected before the
+        # velocity collision so the body force is relaxed with the rest of
+        # the populations rather than sitting un-relaxed until the next step.
+        # Temperature at t drives the force at t; the collision then produces
+        # T(t+1) for the next step.
+        thermal = getattr(self, "thermal_enabled", False)
+        if thermal:
+            self.streaming_temperature()
+            self.apply_buoyancy()
+
         self.collision()
+
+        if thermal:
+            self.collision_temperature()
+
         self.apply_outflow()
         self.apply_emitters()
         self.advect_smoke()

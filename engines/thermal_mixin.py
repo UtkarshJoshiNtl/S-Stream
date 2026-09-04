@@ -152,26 +152,36 @@ def _apply_buoyancy_2d_nb(
     T_ref: float,
     g_x: float,
     g_y: float,
+    w: np.ndarray,
+    cx: np.ndarray,
+    cy: np.ndarray,
     height: int,
     width: int,
+    mask: np.ndarray,
 ) -> None:
-    """Apply Boussinesq buoyancy force to velocity distributions in 2D.
+    """Apply a Boussinesq body force to the velocity distribution in 2D.
 
-    Force: F = -beta * (T - T_ref) * g_hat
-    Applied as a forcing term to the equilibrium distribution.
+    F = -beta * (T - T_ref) * g
+
+    The force enters as the discrete body-force term ``w_i * (F . c_i) / cs2``
+    with cs2 = 1/3. Summing over i, the added momentum is exactly F, so the
+    scheme carries no spurious directional component.
+
+    ``mask`` is the obstacle mask; the force is not applied inside solids.
     """
+    inv_cs2 = 3.0
     for y in prange(height):
         for x in range(width):
+            if mask[y, x]:
+                continue
             T = temperature[y, x]
-            r = rho[y, x]
-            if r > 0:
-                # Buoyancy force magnitude
-                force = -beta * (T - T_ref)
-                # Apply as momentum forcing
-                f[3, y, x] += force * g_y * 0.5  # +y direction
-                f[4, y, x] -= force * g_y * 0.5  # -y direction
-                f[1, y, x] += force * g_x * 0.5  # +x direction
-                f[2, y, x] -= force * g_x * 0.5  # -x direction
+            if rho[y, x] <= 0.0:
+                continue
+            magnitude = -beta * (T - T_ref)
+            fx = magnitude * g_x
+            fy = magnitude * g_y
+            for i in range(9):
+                f[i, y, x] += w[i] * inv_cs2 * (fx * cx[i] + fy * cy[i])
 
 
 @njit(parallel=True, cache=True, fastmath=True, boundscheck=False)
@@ -184,25 +194,42 @@ def _apply_buoyancy_3d_nb(
     g_x: float,
     g_y: float,
     g_z: float,
+    w: np.ndarray,
+    cx: np.ndarray,
+    cy: np.ndarray,
+    cz: np.ndarray,
+    n_vel: int,
     depth: int,
     height: int,
     width: int,
+    mask: np.ndarray,
 ) -> None:
-    """Apply Boussinesq buoyancy force to velocity distributions in 3D."""
+    """Apply a Boussinesq body force to the velocity distribution in 3D.
+
+    F = -beta * (T - T_ref) * g, applied as ``w_i * (F . c_i) / cs2`` over all
+    n_vel directions. The previous implementation added the force only to the
+    six axis-aligned populations, which applied a strongly anisotropic body
+    force to D3Q19 and no force along the twelve diagonals at all.
+
+    ``mask`` is the obstacle mask; the force is not applied inside solids.
+    """
+    inv_cs2 = 3.0
     for z in prange(depth):
         for y in range(height):
             for x in range(width):
+                if mask[z, y, x]:
+                    continue
                 T = temperature[z, y, x]
-                r = rho[z, y, x]
-                if r > 0:
-                    force = -beta * (T - T_ref)
-                    # D3Q19 directions: 1-6 are face centers
-                    f[5, z, y, x] += force * g_z * 0.5  # +z
-                    f[6, z, y, x] -= force * g_z * 0.5  # -z
-                    f[3, z, y, x] += force * g_y * 0.5  # +y
-                    f[4, z, y, x] -= force * g_y * 0.5  # -y
-                    f[1, z, y, x] += force * g_x * 0.5  # +x
-                    f[2, z, y, x] -= force * g_x * 0.5  # -x
+                if rho[z, y, x] <= 0.0:
+                    continue
+                magnitude = -beta * (T - T_ref)
+                fx = magnitude * g_x
+                fy = magnitude * g_y
+                fz = magnitude * g_z
+                for i in range(n_vel):
+                    f[i, z, y, x] += (
+                        w[i] * inv_cs2 * (fx * cx[i] + fy * cy[i] + fz * cz[i])
+                    )
 
 
 class ThermalMixin:
@@ -332,10 +359,11 @@ class ThermalMixin:
             self.f_T, self._f_T_swap = self._f_T_swap, self.f_T
 
     def apply_buoyancy(self) -> None:
-        """Apply Boussinesq buoyancy force to velocity distributions."""
+        """Apply the Boussinesq buoyancy force to the velocity distributions."""
         if not hasattr(self, "thermal_enabled") or not self.thermal_enabled:
             return
 
+        mask = self.get_obstacles()
         if self.ndim == 2:
             _apply_buoyancy_2d_nb(
                 self.f,
@@ -345,8 +373,12 @@ class ThermalMixin:
                 self.T_ref,
                 self.g_x,
                 self.g_y,
+                self.lattice.w,
+                self.lattice.cx,
+                self.lattice.cy,
                 self.height,
                 self.width,
+                mask,
             )
         else:
             _apply_buoyancy_3d_nb(
@@ -358,9 +390,15 @@ class ThermalMixin:
                 self.g_x,
                 self.g_y,
                 self.g_z,
+                self.lattice.w,
+                self.lattice.cx,
+                self.lattice.cy,
+                self.lattice.cz,
+                self.lattice.n_velocities,
                 self.depth,
                 self.height,
                 self.width,
+                mask,
             )
 
     def set_temperature_boundary(self, value: float, region: str = "left") -> None:
@@ -369,6 +407,11 @@ class ThermalMixin:
         Args:
             value: Temperature value to impose.
             region: Which boundary to set ('left', 'right', 'top', 'bottom').
+
+        'top' is the last row and 'bottom' is row 0, matching
+        ``apply_moving_wall_top`` / ``apply_moving_wall_bottom``. The two were
+        previously swapped, so asking for a heated floor heated the ceiling and
+        every Rayleigh-Benard setup was stratified the wrong way up.
         """
         if not hasattr(self, "thermal_enabled") or not self.thermal_enabled:
             return
@@ -379,9 +422,9 @@ class ThermalMixin:
             elif region == "right":
                 self.f_T[:, :, -1] = self.lattice.w[:, np.newaxis] * value
             elif region == "top":
-                self.f_T[:, 0, :] = self.lattice.w[:, np.newaxis] * value
-            elif region == "bottom":
                 self.f_T[:, -1, :] = self.lattice.w[:, np.newaxis] * value
+            elif region == "bottom":
+                self.f_T[:, 0, :] = self.lattice.w[:, np.newaxis] * value
         else:
             if region == "left":
                 self.f_T[:, :, :, 0] = self.lattice.w[:, np.newaxis, np.newaxis] * value
@@ -390,11 +433,11 @@ class ThermalMixin:
                     self.lattice.w[:, np.newaxis, np.newaxis] * value
                 )
             elif region == "top":
-                self.f_T[:, :, 0, :] = self.lattice.w[:, np.newaxis, np.newaxis] * value
-            elif region == "bottom":
                 self.f_T[:, :, -1, :] = (
                     self.lattice.w[:, np.newaxis, np.newaxis] * value
                 )
+            elif region == "bottom":
+                self.f_T[:, :, 0, :] = self.lattice.w[:, np.newaxis, np.newaxis] * value
 
     def get_temperature(self) -> np.ndarray:
         """Get temperature field."""
