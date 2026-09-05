@@ -67,6 +67,7 @@ from PySide6.QtGui import (  # noqa: E402
     QFontMetrics,
     QPainter,
     QPen,
+    QPolygonF,
 )
 from PySide6.QtOpenGLWidgets import QOpenGLWidget  # noqa: E402
 
@@ -416,8 +417,8 @@ class Viewport(QOpenGLWidget):
             pen = QPen(QColor(255, 90, 90, 200), 2)
             painter.setPen(pen)
             painter.setBrush(QColor(255, 90, 90, 35))
-            for obs in self.scene.obstacles:
-                self._draw_obstacle_shape(painter, obs)
+            for shape in self.scene.obstacles:
+                self._draw_obstacle_shape(painter, shape)
 
         if self.scene:
             pen = QPen(QColor(0, 220, 220, 200), 2)
@@ -646,9 +647,13 @@ class Viewport(QOpenGLWidget):
                 ax2 = cx + dx - math.cos(angle + ha) * hl
                 ay2 = cy + dy - math.sin(angle + ha) * hl
                 painter.drawPolygon(
-                    QPointF(cx + dx, cy + dy),
-                    QPointF(ax1, ay1),
-                    QPointF(ax2, ay2),
+                    QPolygonF(
+                        [
+                            QPointF(cx + dx, cy + dy),
+                            QPointF(ax1, ay1),
+                            QPointF(ax2, ay2),
+                        ]
+                    )
                 )
 
     # --- streamlines ---
@@ -905,9 +910,13 @@ class Viewport(QOpenGLWidget):
             ax2 = px + dx - math.cos(angle + ha) * hl
             ay2 = py + dy - math.sin(angle + ha) * hl
             painter.drawPolygon(
-                QPointF(px + dx, py + dy),
-                QPointF(ax1, ay1),
-                QPointF(ax2, ay2),
+                QPolygonF(
+                    [
+                        QPointF(px + dx, py + dy),
+                        QPointF(ax1, ay1),
+                        QPointF(ax2, ay2),
+                    ]
+                )
             )
             painter.setBrush(Qt.BrushStyle.NoBrush)
             font = QFont("monospace", 8)
@@ -941,6 +950,18 @@ class Viewport(QOpenGLWidget):
         ch: int,
         u_inflow: float,
     ) -> tuple[float, float]:
+        """Momentum deficit over a body's footprint, as a dimensionless ratio.
+
+        This is the standard momentum-deficit estimate: the momentum the flow
+        would have carried through the body's projected area, minus what it
+        actually carries there. Returns ``(deficit_x, deficit_y)`` normalised by
+        the driving inflow, so 0.0 means the body disturbs nothing and 1.0 means
+        the flow is completely stalled across its footprint.
+
+        The average is taken over the *body* cells rather than the bounding
+        box, so a circular body is not diluted by the fluid in its box corners,
+        and a rectangular body that tiles its own box is not discarded.
+        """
         h, w = vel.shape[:2]
         x1 = max(1, cx)
         x2 = min(w - 1, cx + cw)
@@ -950,13 +971,15 @@ class Viewport(QOpenGLWidget):
             return 0.0, 0.0
         region_u = vel[y1:y2, x1:x2, 0]
         region_v = vel[y1:y2, x1:x2, 1]
-        obs_region = obs[y1:y2, x1:x2]
-        interior = obs_region
-        if not interior.any():
+        body = obs[y1:y2, x1:x2]
+        if not body.any():
             return 0.0, 0.0
-        drag_x = float(np.sum(region_u[interior]))
-        drag_y = float(np.sum(region_v[interior]))
-        return -drag_x, -drag_y
+        # Free stream is (u_inflow, 0); a stalled body therefore shows a unit
+        # deficit and an undisturbed body shows none.
+        deficit_u = u_inflow - float(np.mean(region_u[body]))
+        deficit_v = -float(np.mean(region_v[body]))
+        scale = abs(u_inflow) if abs(u_inflow) > 1e-12 else 1.0
+        return deficit_u / scale, deficit_v / scale
 
     # --- particles ---
 
