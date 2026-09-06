@@ -16,6 +16,7 @@
     {"name": "Profile", "x": 64, "y": 32, "fields": ["u", "speed"]}
   ],
   "product": {
+    "preset_id": "channel_flow",
     "recommended_colormap": "speed",
     "autorun_steps": 2500,
     "lesson_headline": "Wall friction shapes a smooth channel-flow profile.",

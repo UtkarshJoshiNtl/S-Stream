@@ -450,6 +450,7 @@ class ProbeSpec:
 
 @dataclass
 class SceneProductMeta:
+    preset_id: str = ""
     recommended_colormap: str = "smoke"
     autorun_steps: int = 0
     lesson_headline: str = ""

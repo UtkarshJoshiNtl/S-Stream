@@ -19,6 +19,7 @@
     {"name": "Shear Layer", "x": 80, "y": 34, "fields": ["v"]}
   ],
   "product": {
+    "preset_id": "backward_facing_step",
     "recommended_colormap": "vorticity",
     "autorun_steps": 4000,
     "lesson_headline": "Flow separates at sharp edges and reattaches downstream.",

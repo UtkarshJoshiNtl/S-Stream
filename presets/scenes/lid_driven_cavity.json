@@ -21,6 +21,7 @@
     {"name": "Bottom Corner", "x": 96, "y": 96, "fields": ["v"]}
   ],
   "product": {
+    "preset_id": "lid_driven_cavity",
     "recommended_colormap": "vorticity",
     "autorun_steps": 3000,
     "lesson_headline": "A moving lid drives a large recirculating vortex in a closed box.",

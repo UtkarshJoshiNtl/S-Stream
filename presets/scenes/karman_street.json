@@ -20,6 +20,7 @@
     {"name": "Shear Layer", "x": 180, "y": 100, "fields": ["v"]}
   ],
   "product": {
+    "preset_id": "karman_street",
     "recommended_colormap": "vorticity",
     "autorun_steps": 6500,
     "lesson_headline": "Higher Re wakes grow richer, longer, and more animated.",

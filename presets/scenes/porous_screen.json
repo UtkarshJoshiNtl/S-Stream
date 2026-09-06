@@ -23,6 +23,7 @@
     {"name": "Downstream", "x": 122, "y": 64, "fields": ["pressure", "speed"]}
   ],
   "product": {
+    "preset_id": "porous_screen",
     "recommended_colormap": "pressure",
     "autorun_steps": 3500,
     "lesson_headline": "A screen trades flow speed for pressure loss and mixing.",

@@ -20,6 +20,7 @@
     {"name": "Outlet", "x": 170, "y": 64, "fields": ["u", "speed", "pressure"]}
   ],
   "product": {
+    "preset_id": "nozzle_diffuser",
     "recommended_colormap": "speed",
     "autorun_steps": 3500,
     "lesson_headline": "Constricting a channel speeds the flow through the throat.",

@@ -154,6 +154,7 @@ def scene_to_dict(scene: Scene) -> dict:
         d["sweeps"] = scene.sweeps
     product = scene.product
     product_dict = {
+        "preset_id": product.preset_id,
         "recommended_colormap": product.recommended_colormap,
         "autorun_steps": product.autorun_steps,
         "lesson_headline": product.lesson_headline,
@@ -172,6 +173,7 @@ def scene_to_dict(scene: Scene) -> dict:
 def _product_from_dict(d: dict) -> SceneProductMeta:
     product = d.get("product", {})
     return SceneProductMeta(
+        preset_id=product.get("preset_id", ""),
         recommended_colormap=product.get("recommended_colormap", "smoke"),
         autorun_steps=int(product.get("autorun_steps", 0)),
         lesson_headline=product.get("lesson_headline", ""),

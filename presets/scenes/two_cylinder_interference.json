@@ -20,6 +20,7 @@
     {"name": "Upper Wake", "x": 132, "y": 42, "fields": ["v"]}
   ],
   "product": {
+    "preset_id": "two_cylinder_interference",
     "recommended_colormap": "vorticity",
     "autorun_steps": 5500,
     "lesson_headline": "Multiple bodies can synchronize, shield, or amplify wakes.",

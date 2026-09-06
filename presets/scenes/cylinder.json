@@ -19,6 +19,7 @@
     {"name": "Wake Offset", "x": 130, "y": 48, "fields": ["v"]}
   ],
   "product": {
+    "preset_id": "cylinder",
     "recommended_colormap": "vorticity",
     "autorun_steps": 5000,
     "lesson_headline": "Re near 240: a laminar Karman vortex street should appear.",
