@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import time
 from pathlib import Path
 
@@ -31,7 +32,7 @@ from export.data import export_field_snapshot, export_probe_csv
 from export.image import export_image
 from export.report import export_markdown_report
 from export.video import VideoRecorder
-from presets.loader import list_presets, load_preset
+from presets.loader import find_preset, load_preset, validate_presets
 from resources.theme import APP_STYLESHEET
 from scene.probe import Probe
 from scene.scene import ProbeSpec, Scene, apply_to_sim, default_scene
@@ -47,6 +48,8 @@ from workbench.panels.sidebar import Sidebar, SidebarSection
 from workbench.viewport import Viewport
 from workbench.widgets.tool_strip import ToolStrip
 from workbench.widgets.transport_bar import TransportBar
+
+logger = logging.getLogger(__name__)
 
 _COLORMAPS = [
     "speed",
@@ -217,6 +220,17 @@ class MainWindow(QMainWindow):
 
         self._update_re_label()
         self._update_sanity_banner()
+        self._report_recipe_problems()
+
+    def _report_recipe_problems(self) -> None:
+        problems = self._check_recipe_actions()
+        if not problems:
+            return
+        for problem in problems:
+            logger.error("Preset library problem: %s", problem)
+        self.status.showMessage(
+            f"{len(problems)} preset problem(s): {problems[0]}", 12000
+        )
 
     def _setup_toolbar(self) -> None:
         self.toolbar = QToolBar("Simulation")
@@ -1066,24 +1080,35 @@ class MainWindow(QMainWindow):
                     6000,
                 )
             return
-        preset_name, colormap = action
-        presets = list_presets()
-        matched = next((p for p in presets if preset_name in p["name"].lower()), None)
-        if matched is None:
-            name_lower = preset_name.replace("_", " ")
-            matched = next(
-                (p for p in presets if name_lower in p["name"].lower()),
-                None,
-            )
-        if matched is not None:
-            self._load_preset_file(matched["file"])
-            if colormap:
-                self._set_colormap(colormap)
-        else:
+        preset_id, colormap = action
+        preset = find_preset(preset_id)
+        if preset is None:
             self.status.showMessage(
-                f"Preset '{preset_name}' not found. Check presets/ folder.",
-                6000,
+                f"Recipe '{name}' refers to preset id '{preset_id}', "
+                "which is not in the library.",
+                8000,
             )
+            logger.error("Recipe %r references unknown preset id %r", name, preset_id)
+            return
+        self._load_preset_file(preset["file"])
+        if colormap:
+            self._set_colormap(colormap)
+
+    def _check_recipe_actions(self) -> list[str]:
+        """Report recipes whose preset id is missing from the library.
+
+        Called once at startup. Without this a dangling id is invisible until a
+        user clicks the recipe, and the only symptom is a status-bar message.
+        """
+        problems = [
+            f"Recipe '{label}' -> preset id '{preset_id}' not found"
+            for label, action in self._RECIPE_ACTIONS.items()
+            if action is not None
+            for preset_id in [action[0]]
+            if find_preset(preset_id) is None
+        ]
+        problems.extend(validate_presets())
+        return problems
 
     def _open_sweep_dialog(self) -> None:
         dialog = SweepDialog(self.scene, self)
