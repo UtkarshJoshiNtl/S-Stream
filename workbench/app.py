@@ -51,18 +51,11 @@ from workbench.widgets.transport_bar import TransportBar
 
 logger = logging.getLogger(__name__)
 
-_COLORMAPS = [
-    "speed",
-    "smoke",
-    "vorticity",
-    "pressure",
-    "density",
-    "phase",
-    "temperature",
-    "component1",
-    "component2",
-    "color",
-]
+# Field names are not listed here on purpose. Every engine declares its own via
+# `SimEngine.get_field_names()`, and the UI reads that list, so a field cannot be
+# offered by the UI unless the active engine can actually produce it.
+
+_DEFAULT_FIELD = "smoke"
 
 
 class MainWindow(QMainWindow):
@@ -526,10 +519,6 @@ class MainWindow(QMainWindow):
         self.scene_panel.sync_params_from_scene()
         self.grid_label.setText(self._grid_label_text())
         cmap = self.scene.product.recommended_colormap
-        if type(self.sim).__name__ == "LBM2DLiquid" and cmap == "smoke":
-            cmap = "density"
-        if type(self.sim).__name__ == "LBM2DMultiComponent" and cmap == "smoke":
-            cmap = "component1"
         self._set_colormap(cmap)
         self.outcome_panel.set_scene(self.scene)
         self._demo_target = self.scene.product.autorun_steps
@@ -751,11 +740,13 @@ class MainWindow(QMainWindow):
         self._fps_count = 0
 
     def _auto_detect_view(self) -> None:
-        name = type(self.sim).__name__
-        if name == "LBM2DLiquid":
-            self._set_colormap("density")
-        elif name == "LBM2DMultiComponent":
-            self._set_colormap("component1")
+        if not hasattr(self, "field_combo"):
+            return
+        available = self._available_fields()
+        preferred = (
+            getattr(self.scene.product, "recommended_colormap", "") or _DEFAULT_FIELD
+        )
+        self._set_colormap(preferred if preferred in available else available[0])
 
     def _build_parameters_widget(self) -> QWidget:
         widget = QWidget()
@@ -788,7 +779,7 @@ class MainWindow(QMainWindow):
         field_lbl.setStyleSheet("color: #8b949e; font-size: 11px; font-weight: 600;")
         field_row.addWidget(field_lbl)
         self.field_combo = QComboBox()
-        for name in _COLORMAPS:
+        for name in self._available_fields():
             info = FIELD_REGISTRY.get(name)
             label = info.label if info else name.capitalize()
             self.field_combo.addItem(label, name)
@@ -830,9 +821,29 @@ class MainWindow(QMainWindow):
         }
         setters[key](checked)
 
+    def _available_fields(self) -> list[str]:
+        """Field names the active engine can actually produce.
+
+        Always includes "smoke" as a fallback so the combo is never empty; if an
+        engine ever fails to declare its fields we would rather show smoke than
+        leave the user with nothing.
+        """
+        names = list(self.sim.get_field_names())
+        if _DEFAULT_FIELD not in names:
+            names.insert(0, _DEFAULT_FIELD)
+        return names
+
     def _set_colormap(self, name: str) -> None:
-        if name not in _COLORMAPS:
-            name = _COLORMAPS[0]
+        available = self._available_fields()
+        if name not in available:
+            fallback = available[0]
+            logger.warning(
+                "Field %r is not available on %s; falling back to %r",
+                name,
+                type(self.sim).__name__,
+                fallback,
+            )
+            name = fallback
         self.viewport.set_colormap(name)
         self.analysis_panel.set_colormap(name)
         if hasattr(self, "field_combo"):
