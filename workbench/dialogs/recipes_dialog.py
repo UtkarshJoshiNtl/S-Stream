@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
 
 RECIPES = {
     "Show vortex shedding": (
-        "Open Cylinder Wake, run the demo, switch to vorticity, "
+        "Open High-Re Wake, run the demo, switch to vorticity, "
         "and watch alternating wake structures."
     ),
     "Compare drag of two shapes": (
