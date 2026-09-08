@@ -369,13 +369,20 @@ class LBM3D(SimEngine, SmokeMixin, ThermalMixin):
                 return np.full_like(self.rho, 0.5, dtype=np.float32)
             return np.clip((self.rho - lo) / (hi - lo), 0, 1).astype(np.float32)
         if name == "temperature":
-            if getattr(self, "thermal_enabled", False):
-                T = self.temperature.copy()
-                lo, hi = float(np.min(T)), float(np.max(T))
-                if hi - lo < 0.001:
-                    return np.full_like(T, 0.5, dtype=np.float32)
-                return np.clip((T - lo) / (hi - lo), 0, 1).astype(np.float32)
-            return np.full(self.grid_shape, 0.5, dtype=np.float32)
+            # See the identical note in lbm2d.get_field: a flat 0.5 field for a
+            # disabled thermal model is a plausible render of a quantity that
+            # was never computed, so refuse instead.
+            if not getattr(self, "thermal_enabled", False):
+                raise ValueError(
+                    "Field 'temperature' requires thermal_enabled; "
+                    f"{type(self).__name__} currently provides "
+                    f"{', '.join(self.get_field_names())}"
+                )
+            T = self.temperature.copy()
+            lo, hi = float(np.min(T)), float(np.max(T))
+            if hi - lo < 0.001:
+                return np.full_like(T, 0.5, dtype=np.float32)
+            return np.clip((T - lo) / (hi - lo), 0, 1).astype(np.float32)
         raise ValueError(
             f"Unknown field: {name!r}. Available: {self.get_field_names()}"
         )

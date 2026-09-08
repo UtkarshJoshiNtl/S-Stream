@@ -499,13 +499,22 @@ class LBM2D(SimEngine, SmokeMixin, ThermalMixin):
                 return np.full_like(self.rho, 0.5, dtype=np.float32)
             return np.clip((self.rho - lo) / (hi - lo), 0, 1).astype(np.float32)
         if name == "temperature":
-            if getattr(self, "thermal_enabled", False):
-                T = self.temperature.copy()
-                lo, hi = float(np.min(T)), float(np.max(T))
-                if hi - lo < 0.001:
-                    return np.full_like(T, 0.5, dtype=np.float32)
-                return np.clip((T - lo) / (hi - lo), 0, 1).astype(np.float32)
-            return np.full(self.grid_shape, 0.5, dtype=np.float32)
+            # Thermal fields only exist when the thermal mixin is on. Returning
+            # a flat 0.5 field here produced a plausible-looking render of a
+            # quantity the simulation never computed, and get_field_names()
+            # already omits "temperature" in this state -- so this is a
+            # contract violation, not a convenience.
+            if not getattr(self, "thermal_enabled", False):
+                raise ValueError(
+                    "Field 'temperature' requires thermal_enabled; "
+                    f"{type(self).__name__} currently provides "
+                    f"{', '.join(self.get_field_names())}"
+                )
+            T = self.temperature.copy()
+            lo, hi = float(np.min(T)), float(np.max(T))
+            if hi - lo < 0.001:
+                return np.full_like(T, 0.5, dtype=np.float32)
+            return np.clip((T - lo) / (hi - lo), 0, 1).astype(np.float32)
         raise ValueError(
             f"Unknown field: {name!r}. Available: {self.get_field_names()}"
         )

@@ -41,6 +41,19 @@ _ENGINES = ["LBM2D", "LBM2DLiquid", "LBM2DMultiComponent"]
 _MULTIPHASE_ONLY = ["phase", "component1", "component2", "color"]
 
 
+# Both LBM2D and LBM3D had the flat-0.5 fallback. Only LBM2D was listed in the
+# plan; LBM3D is included so the two engines cannot drift apart again.
+_THERMAL_ENGINES = ["LBM2D", "LBM3D"]
+
+
+def _thermal_sim(name: str):
+    if name == "LBM2D":
+        return LBM2D(32, 32)
+    from engines.lbm3d import LBM3D
+
+    return LBM3D(12, 12, 12)
+
+
 def _sim(name: str):
     if name == "LBM2D":
         return LBM2D(48, 48)
@@ -206,3 +219,49 @@ class TestNoSilentFieldFallback:
             colormap="vorticity",
         )
         assert out.exists()
+
+
+class TestDisabledThermalRefusesTemperature:
+    """C20: a flat 0.5 field looks like a real result but is not one.
+
+    With thermal off, `get_field("temperature")` used to return a correctly
+    shaped float32 array of all 0.5 -- indistinguishable, on screen, from a
+    uniform-temperature simulation. `get_field_names()` omits the field in that
+    state, so honouring the declared catalog is the whole point.
+    """
+
+    @pytest.mark.parametrize("engine", _THERMAL_ENGINES)
+    def test_temperature_is_not_declared_when_thermal_is_off(self, engine):
+        sim = _thermal_sim(engine)
+        assert not getattr(sim, "thermal_enabled", False), engine
+        assert "temperature" not in sim.get_field_names()
+
+    @pytest.mark.parametrize("engine", _THERMAL_ENGINES)
+    def test_get_field_temperature_raises_when_thermal_is_off(self, engine):
+        sim = _thermal_sim(engine)
+        with pytest.raises(ValueError, match="thermal_enabled"):
+            sim.get_field("temperature")
+
+    # The two tests below range over every engine, not just the thermal ones:
+    # LBM2DLiquid and LBM2DMultiComponent subclass LBM2D and so inherit the
+    # temperature branch, and the guarantee has to hold for them too.
+    @pytest.mark.parametrize("engine", _ENGINES)
+    def test_the_error_lists_the_fields_that_do_exist(self, engine):
+        sim = _thermal_sim(engine)
+        with pytest.raises(ValueError) as exc:
+            sim.get_field("temperature")
+        message = str(exc.value)
+        for available in sim.get_field_names():
+            assert available in message
+
+    @pytest.mark.parametrize("engine", _ENGINES)
+    def test_declared_fields_still_work_after_the_change(self, engine):
+        sim = _thermal_sim(engine)
+        for field in sim.get_field_names():
+            assert sim.get_field(field) is not None
+
+    def test_ui_cannot_reach_temperature_without_thermal(self):
+        """The catalog change (C18) already prevents selection; assert the
+        engine now agrees, so neither layer can be the only thing holding."""
+        sim = LBM2D(32, 32)
+        assert "temperature" not in _bare_window(sim)._available_fields()
