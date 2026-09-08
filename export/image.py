@@ -31,10 +31,12 @@ def export_image(
     step_count: int = 0,
     colormap: str = "smoke",
 ) -> None:
-    try:
-        field = sim.get_field(colormap)
-    except ValueError:
-        field = sim.get_field("smoke")
+    if colormap not in sim.get_field_names():
+        raise ValueError(
+            f"Cannot export field {colormap!r}: {type(sim).__name__} provides "
+            f"{', '.join(sim.get_field_names())}"
+        )
+    field = sim.get_field(colormap)
     h, w = field.shape
     out_w = w * scale
     out_h = h * scale

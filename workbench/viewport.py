@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ctypes
+import logging
 import math
 
 import numpy as np
@@ -89,6 +90,8 @@ from scene.scene import (  # noqa: E402
     STLObstacle,
 )
 
+logger = logging.getLogger(__name__)
+
 _VERT_SRC = """
 #version 330 core
 layout(location = 0) in vec2 aPos;
@@ -172,6 +175,22 @@ class Viewport(QOpenGLWidget):
         return self._colormap
 
     def set_colormap(self, name: str) -> None:
+        """Select the displayed field.
+
+        The engine is the authority on which fields exist. C18 made the UI derive
+        the catalog from `get_field_names()`, so an invalid name here means
+        something bypassed that (a stale preset, a saved colormap). Report it
+        loudly rather than quietly displaying a different field than asked for.
+        """
+        available = self.sim.get_field_names()
+        if name not in available:
+            logger.error(
+                "Colormap %r is not a field of %s; available: %s",
+                name,
+                type(self.sim).__name__,
+                ", ".join(available),
+            )
+            name = "smoke"
         self._colormap = name
         if self._cmap_tex is not None:
             self._upload_colormap()
@@ -364,10 +383,10 @@ class Viewport(QOpenGLWidget):
 
     def _upload_smoke(self) -> None:
         cmap = self._colormap
-        try:
-            field = self.sim.get_field(cmap)
-        except ValueError:
-            field = self.sim.get_field("smoke")
+        # No try/except here. set_colormap() already rejects unknown fields, so a
+        # failure now means the engine disagrees with itself -- which must be
+        # visible rather than papered over with a different field.
+        field = self.sim.get_field(cmap)
 
         field = self._field_to_2d(np.ascontiguousarray(field))
         h, w = field.shape

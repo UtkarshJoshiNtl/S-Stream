@@ -12,6 +12,7 @@ The contract now: the UI shows exactly `SimEngine.get_field_names()`.
 from __future__ import annotations
 
 import ast
+import os
 from pathlib import Path
 
 import numpy as np
@@ -22,6 +23,17 @@ from engines.lbm2d_liquid import LBM2DLiquid
 from engines.lbm2d_multicomponent import LBM2DMultiComponent
 from resources.colormaps import FIELD_REGISTRY, MODE_TO_CMAP
 from workbench.app import _DEFAULT_FIELD, MainWindow
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+
+@pytest.fixture(scope="module")
+def qapp():
+    """QPainter onto a QImage needs a QApplication, even offscreen."""
+    from PySide6.QtWidgets import QApplication
+
+    return QApplication.instance() or QApplication([])
+
 
 _APP_PY = Path(__file__).resolve().parents[1] / "workbench" / "app.py"
 
@@ -138,3 +150,59 @@ class TestNoHardcodedCatalog:
         window._set_colormap("vorticity")
         assert window.viewport.calls == ["vorticity"]
         assert window.analysis_panel.calls == ["vorticity"]
+
+
+class TestNoSilentFieldFallback:
+    """C19: a request for an unavailable field must be reported, not quietly
+    satisfied with a different field."""
+
+    def test_viewport_logs_and_refuses_an_unknown_field(self, caplog):
+        from workbench.viewport import Viewport
+
+        viewport = Viewport.__new__(Viewport)
+        viewport.sim = LBM2D(48, 48)
+        viewport._cmap_tex = None
+        with caplog.at_level("ERROR"):
+            viewport.set_colormap("component1")
+        assert viewport._colormap == _DEFAULT_FIELD
+        assert any("component1" in r.getMessage() for r in caplog.records)
+
+    def test_viewport_accepts_a_valid_field(self):
+        from workbench.viewport import Viewport
+
+        viewport = Viewport.__new__(Viewport)
+        viewport.sim = LBM2D(48, 48)
+        viewport._cmap_tex = None
+        viewport.set_colormap("vorticity")
+        assert viewport._colormap == "vorticity"
+
+    def test_export_refuses_to_substitute_another_field(self, tmp_path, qapp):
+        """An exported figure labelled with one field but showing another is
+        the worst possible outcome, so the export must fail instead."""
+        from export.image import export_image
+        from scene.scene import default_scene
+
+        out = tmp_path / "wrong.png"
+        with pytest.raises(ValueError, match="component1"):
+            export_image(
+                sim=LBM2D(32, 32),
+                scene=default_scene(),
+                path=out,
+                include_annotations=False,
+                colormap="component1",
+            )
+        assert not out.exists(), "export wrote a file despite the bad field"
+
+    def test_export_still_works_for_a_valid_field(self, tmp_path, qapp):
+        from export.image import export_image
+        from scene.scene import default_scene
+
+        out = tmp_path / "ok.png"
+        export_image(
+            sim=LBM2D(32, 32),
+            scene=default_scene(),
+            path=out,
+            include_annotations=False,
+            colormap="vorticity",
+        )
+        assert out.exists()
