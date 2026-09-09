@@ -37,6 +37,45 @@ def recordable_fields(sim: SimEngine) -> list[str]:
     return names
 
 
+def default_probe_fields(sim: SimEngine) -> list[str]:
+    """Fields to give a newly placed probe.
+
+    Derived from the engine rather than hardcoded, for the same reason the field
+    combo is: a default that happens to be unavailable on some engine is a
+    silently dead probe. LOCAL_FIELDS are always safe, so they come first and
+    `pressure` is added when the engine offers it.
+    """
+    names = list(LOCAL_FIELDS)
+    available = sim.get_field_names()
+    if "pressure" in available:
+        names.append("pressure")
+    return names
+
+
+def validate_probe_fields(sim: SimEngine, spec: ProbeSpec) -> list[str]:
+    """Requested fields this engine cannot record. Empty means the probe is sound.
+
+    Probe fields reach a scene two ways that can go stale: hand-written or
+    edited JSON, and a scene carrying fields from an engine the user has since
+    swapped out. Both are invisible until the trace just sits flat.
+    """
+    available = set(recordable_fields(sim))
+    return [f for f in spec.fields if f not in available]
+
+
+def validate_scene_probes(sim: SimEngine, scene) -> list[str]:
+    """Human-readable problems for every probe in a scene. Empty means fine."""
+    problems = []
+    for index, spec in enumerate(getattr(scene, "probes", []) or []):
+        for field in validate_probe_fields(sim, spec):
+            label = spec.name or f"probe {index + 1}"
+            problems.append(
+                f"{label}: field {field!r} is not available on "
+                f"{type(sim).__name__} and will not be recorded"
+            )
+    return problems
+
+
 class Probe:
     def __init__(self, spec: ProbeSpec) -> None:
         self.spec = spec

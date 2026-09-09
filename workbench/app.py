@@ -34,7 +34,7 @@ from export.report import export_markdown_report
 from export.video import VideoRecorder
 from presets.loader import find_preset, load_preset, validate_presets
 from resources.theme import APP_STYLESHEET
-from scene.probe import Probe
+from scene.probe import Probe, validate_scene_probes
 from scene.scene import ProbeSpec, Scene, apply_to_sim, default_scene
 from scene.serializer import load as scene_load
 from scene.serializer import save as scene_save
@@ -510,6 +510,7 @@ class MainWindow(QMainWindow):
         self._configure_domain_for_scene()
         apply_to_sim(self.scene, self.sim)
         self.step_count = 0
+        self._report_probe_field_problems()
         self._rebuild_probes()
         self._sync_analysis_probes()
         self.analysis_panel.set_scene(self.scene)
@@ -527,6 +528,23 @@ class MainWindow(QMainWindow):
         self._update_sanity_banner()
         self._update_re_label()
         self._focus_outcome()
+
+    def _report_probe_field_problems(self) -> None:
+        """Surface probe fields the engine cannot record.
+
+        Reached whenever a scene is applied -- loading a preset, opening a saved
+        file, or switching engine -- so a probe that will never record anything
+        says so now instead of showing a permanently flat trace.
+        """
+        problems = validate_scene_probes(self.sim, self.scene)
+        for problem in problems:
+            logger.warning("Probe field problem: %s", problem)
+        if problems:
+            self.status.showMessage(
+                f"{len(problems)} probe field(s) unavailable on "
+                f"{type(self.sim).__name__} — see log",
+                8000,
+            )
 
     def _configure_domain_for_scene(self) -> None:
         """Enable cavity lid when the Start template / scene name matches."""

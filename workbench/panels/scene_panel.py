@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 )
 
 from engines.base import SimEngine
+from scene.probe import default_probe_fields
 from scene.scene import (
     AirfoilObstacle,
     ChannelObstacle,
@@ -1092,7 +1093,12 @@ class ScenePanel(QWidget):
     def _add_probe(self) -> None:
         self._save_state()
         cx, cy = self.scene.width // 2, self.scene.height // 2
-        probe = ProbeSpec(name="Probe", x=cx, y=cy)
+        probe = ProbeSpec(
+            name="Probe",
+            x=cx,
+            y=cy,
+            fields=default_probe_fields(self.sim),
+        )
         self.scene.probes.append(probe)
         self._reapply()
         self._rebuild_tree()

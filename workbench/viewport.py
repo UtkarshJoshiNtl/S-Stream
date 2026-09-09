@@ -74,7 +74,7 @@ from PySide6.QtOpenGLWidgets import QOpenGLWidget  # noqa: E402
 
 from engines.base import SimEngine  # noqa: E402
 from resources.colormaps import CMAP_LUTS, MODE_TO_CMAP  # noqa: E402
-from scene.probe import Probe  # noqa: E402
+from scene.probe import Probe, default_probe_fields  # noqa: E402
 from scene.scene import (  # noqa: E402
     AirfoilObstacle,
     ChannelObstacle,
@@ -1217,7 +1217,9 @@ class Viewport(QOpenGLWidget):
         if self.draw_mode == "probe":
             ix, iy = int(round(gx)), int(round(gy))
             name = f"Probe_{len(self.scene.probes) + 1}"
-            spec = ProbeSpec(name=name, x=ix, y=iy)
+            spec = ProbeSpec(
+                name=name, x=ix, y=iy, fields=default_probe_fields(self.sim)
+            )
             self.probe_placed.emit(spec)
             return
 
