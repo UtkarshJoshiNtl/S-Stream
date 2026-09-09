@@ -209,8 +209,11 @@ class AnalysisPanel(QWidget):
         self._record_stability()
 
         if self._tick_counter % 2 == 0:
+            # One shared per-step field cache: a field is a whole-domain array,
+            # so without it every probe would recompute each field it watches.
+            cache: dict[str, np.ndarray] = {}
             for probe in self.probes:
-                probe.record(self.sim)
+                probe.record(self.sim, cache)
 
         if self._tick_counter % 5 == 0:
             self._update_physics(dt)
