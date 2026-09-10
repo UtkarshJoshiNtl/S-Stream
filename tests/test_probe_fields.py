@@ -11,6 +11,7 @@ trace visible in the UI, just a channel that never moved.
 
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
@@ -27,7 +28,8 @@ from scene.probe import (
     validate_probe_fields,
     validate_scene_probes,
 )
-from scene.scene import ProbeSpec
+from scene.scene import ProbeSpec, apply_to_sim
+from scene.serializer import load as load_preset
 
 
 def _probe(x=10, y=10, fields=("u", "v")) -> Probe:
@@ -354,3 +356,94 @@ class TestEveryPresetProbeIsValid:
         for path in sorted(directory.glob("*.json")):
             product = json.loads(path.read_text()).get("product", {})
             assert "engine" not in product, path.name
+
+
+class TestPresetProbesActuallyRecord:
+    """C23: validation returning clean is not the same as recording.
+
+    The C21 failure mode was silent -- a probe asked for a real field, produced
+    no samples, and nothing objected. `validate_scene_probes` only knows what the
+    engine *declares*; this class loads each shipped preset, builds the engine
+    that preset needs, and checks every requested channel actually fills up.
+    """
+
+    # No preset declares its engine (see TestEveryPresetProbeIsValid), so the
+    # engine is resolved by which one can record every field the preset asks for.
+    CANDIDATES = {
+        "LBM2D": LBM2D,
+        "LBM2DLiquid": LBM2DLiquid,
+        "LBM2DMultiComponent": LBM2DMultiComponent,
+    }
+
+    def _preset_files(self):
+        directory = Path(__file__).resolve().parents[1] / "presets" / "scenes"
+        return sorted(directory.glob("*.json"))
+
+    def _engine_for(self, specs):
+        for factory in self.CANDIDATES.values():
+            sim = factory(32, 32)
+            if all(not validate_probe_fields(sim, spec) for spec in specs):
+                return factory
+        return None
+
+    def test_every_preset_loads_with_probes(self):
+        for path in self._preset_files():
+            scene = load_preset(path)
+            assert scene.probes, f"{path.name} has no probes to check"
+
+    def test_every_preset_probe_field_records_a_live_sample(self):
+        """End to end, on the preset's own declared grid."""
+        for path in self._preset_files():
+            scene = load_preset(path)
+            factory = self._engine_for(scene.probes)
+            assert factory is not None, f"{path.name} needs an engine that exists"
+            sim = factory(scene.width, scene.height)
+            apply_to_sim(scene, sim)
+            for spec in scene.probes:
+                probe = Probe(spec)
+                probe.record(sim)
+                assert probe.unavailable_fields == set(), (
+                    f"{path.name}: {spec.name} could not record "
+                    f"{sorted(probe.unavailable_fields)} on {factory.__name__}"
+                )
+                for name in spec.fields:
+                    assert (
+                        len(probe.history[name]) == 1
+                    ), f"{path.name}: {spec.name} field {name!r} recorded nothing"
+                    assert np.isfinite(
+                        probe.history[name][0]
+                    ), f"{path.name}: {spec.name} field {name!r} is not finite"
+
+    def test_recorded_samples_stay_within_normalised_range(self):
+        """Engine fields are display-normalised to 0..1, so a wildly out-of-range
+        sample means the probe is reading the wrong array."""
+        for path in self._preset_files():
+            scene = load_preset(path)
+            factory = self._engine_for(scene.probes)
+            sim = factory(scene.width, scene.height)
+            apply_to_sim(scene, sim)
+            local = set(LOCAL_FIELDS)
+            for spec in scene.probes:
+                probe = Probe(spec)
+                probe.record(sim)
+                for name in spec.fields:
+                    value = probe.history[name][0]
+                    if name not in local:
+                        assert (
+                            -1e-6 <= value <= 1.0 + 1e-6
+                        ), f"{path.name}: {name!r} sampled {value}, outside 0..1"
+
+    def test_repeated_recording_keeps_growing(self):
+        """Guards against a channel that records once and then sticks."""
+        scene = load_preset(
+            Path(__file__).resolve().parents[1] / "presets" / "scenes" / "cylinder.json"
+        )
+        factory = self._engine_for(scene.probes)
+        sim = factory(scene.width, scene.height)
+        apply_to_sim(scene, sim)
+        for spec in scene.probes:
+            probe = Probe(spec)
+            for _ in range(4):
+                probe.record(sim)
+            for name in spec.fields:
+                assert len(probe.history[name]) == 4, name
