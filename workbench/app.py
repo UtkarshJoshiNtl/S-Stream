@@ -508,6 +508,10 @@ class MainWindow(QMainWindow):
 
     def _apply_and_refresh(self) -> None:
         self._configure_domain_for_scene()
+        # Before apply_to_sim: it seeds the initial condition but cannot resize,
+        # and a scene loaded onto a mismatched engine silently mis-places every
+        # obstacle and probe.
+        self._ensure_engine_matches_scene()
         apply_to_sim(self.scene, self.sim)
         self.step_count = 0
         self._report_probe_field_problems()
@@ -655,6 +659,10 @@ class MainWindow(QMainWindow):
             if confirm != QMessageBox.StandardButton.Yes:
                 return
         self._configure_domain_for_scene()
+        # reset() applies directly rather than via _apply_and_refresh, so it
+        # needs the same grid guard: the scene's width/height can have been
+        # edited in the properties editor since the engine was built.
+        self._ensure_engine_matches_scene()
         apply_to_sim(self.scene, self.sim)
         self.step_count = 0
         self._state_history.clear()
@@ -1009,35 +1017,84 @@ class MainWindow(QMainWindow):
         if mode:
             self._set_physics_mode(str(mode))
 
-    def _set_physics_mode(self, mode: str) -> None:
-        """Recreate LBM2D / Liquid / MultiComponent and rewire panels."""
-        from engines import LBM2D, LBM2DLiquid, LBM2DMultiComponent
+    def _adopt_engine(self, sim: SimEngine) -> None:
+        """Install a freshly built engine everywhere that holds a reference.
 
-        w, h = self.scene.width, self.scene.height
-        nu = self.scene.viscosity
-        current = type(self.sim).__name__
-        if mode == "liquid" and current == "LBM2DLiquid":
-            return
-        if mode == "oil-water" and current == "LBM2DMultiComponent":
-            return
-        if mode == "standard" and current == "LBM2D":
-            return
-
-        if mode == "liquid":
-            sim: SimEngine = LBM2DLiquid(width=w, height=h, viscosity=nu)
-            label = "Liquid"
-        elif mode == "oil-water":
-            sim = LBM2DMultiComponent(width=w, height=h, viscosity=nu)
-            label = "Oil-water"
-        else:
-            sim = LBM2D(width=w, height=h, viscosity=nu)
-            label = "Standard"
-
+        Four objects capture the engine at construction time, so replacing it
+        means re-pointing all of them or they keep reporting from the old
+        instance. Engine recreation (physics-mode switch, engine switch, grid
+        resize) all funnel through here so that list cannot drift.
+        """
         self.sim = sim
         self.viewport.set_sim(sim)
         self.scene_panel.sim = sim
         self.analysis_panel.sim = sim
         self.outcome_panel.sim = sim
+
+    def _engine_factories(self) -> dict[str, type[SimEngine]]:
+        from engines import LBM2D, LBM2DLiquid, LBM2DMultiComponent
+
+        return {
+            "standard": LBM2D,
+            "liquid": LBM2DLiquid,
+            "oil-water": LBM2DMultiComponent,
+        }
+
+    def _ensure_engine_matches_scene(self) -> bool:
+        """Rebuild the engine when the scene's grid differs from the engine's.
+
+        `apply_to_sim` seeds the initial condition but never resizes: an engine
+        built at 128x128 stays 128x128 when handed a 512x256 scene. Nothing
+        errors. Obstacles land on a different part of the domain than the scene
+        describes, and probes past the edge are silently clamped into the last
+        column -- so a Karman Street probe meant to sit at x=300 measures the
+        same cell as one at x=180. Rebuilding is the only correct response,
+        since the field arrays are allocated in the engine constructor.
+        """
+        h, w = self.sim.grid_shape
+        if (w, h) == (self.scene.width, self.scene.height):
+            return False
+
+        old = f"{w}x{h}"
+        factory = type(self.sim)
+        sim = factory(width=self.scene.width, height=self.scene.height)
+        self._adopt_engine(sim)
+        logger.info(
+            "Rebuilt %s from %s to %dx%d to match the scene",
+            factory.__name__,
+            old,
+            self.scene.width,
+            self.scene.height,
+        )
+        self.status.showMessage(
+            f"Grid resized {old} to {self.scene.width}x{self.scene.height} "
+            "(engine rebuilt)",
+            6000,
+        )
+        return True
+
+    _MODE_LABELS = {
+        "standard": "Standard",
+        "liquid": "Liquid",
+        "oil-water": "Oil-water",
+    }
+
+    def _set_physics_mode(self, mode: str) -> None:
+        """Recreate LBM2D / Liquid / MultiComponent and rewire panels."""
+        factories = self._engine_factories()
+        current = type(self.sim).__name__
+        target = factories.get(mode)
+        if target is not None and target.__name__ == current:
+            return
+
+        factory = target or factories["standard"]
+        label = self._MODE_LABELS.get(mode, "Standard")
+        sim = factory(
+            width=self.scene.width,
+            height=self.scene.height,
+            viscosity=self.scene.viscosity,
+        )
+        self._adopt_engine(sim)
         self._apply_and_refresh()
         self._auto_detect_view()
         self.status.showMessage(f"Physics mode: {label} (engine recreated)", 6000)
@@ -1075,11 +1132,7 @@ class MainWindow(QMainWindow):
 
         # Recreate engine
         sim: SimEngine = target_engine(width=w, height=h, viscosity=nu)
-        self.sim = sim
-        self.viewport.set_sim(sim)
-        self.scene_panel.sim = sim
-        self.analysis_panel.sim = sim
-        self.outcome_panel.sim = sim
+        self._adopt_engine(sim)
         self._apply_and_refresh()
         self._auto_detect_view()
         self.status.showMessage(f"Engine: {label} (recreated)", 6000)
