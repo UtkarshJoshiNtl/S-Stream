@@ -206,3 +206,87 @@ class TestOtherApplySitesAreSafe:
         assert (
             "_ensure_engine_matches_scene()" in reset_body
         ), "reset() calls apply_to_sim directly and needs its own grid guard"
+
+
+class TestGridInvariantHolds:
+    """The invariant: (engine.height, engine.width) == (scene.height, scene.width).
+
+    C24 fixed the mechanism. This is the standing check that the mechanism keeps
+    holding for every shipped preset and for shapes nobody has tried yet.
+    """
+
+    def _assert_matches(self, sim, scene) -> None:
+        h, w = sim.grid_shape
+        assert (w, h) == (
+            scene.width,
+            scene.height,
+        ), f"scene {scene.width}x{scene.height} vs engine {w}x{h}"
+
+    @pytest.mark.parametrize("factory", _ENGINES)
+    def test_matching_sizes_are_already_consistent(self, factory):
+        scene = Scene(width=64, height=48)
+        window = _window(factory(64, 48), scene)
+        window._ensure_engine_matches_scene()
+        self._assert_matches(window.sim, scene)
+
+    @pytest.mark.parametrize(
+        ("scene_w", "scene_h", "engine_w", "engine_h"),
+        [
+            (32, 32, 64, 64),
+            (64, 32, 32, 64),
+            (128, 128, 128, 64),
+            (256, 96, 128, 128),
+            (512, 256, 128, 128),
+            (65, 33, 64, 32),  # odd sizes must not be silently rounded
+        ],
+    )
+    def test_any_mismatch_is_repaired(self, scene_w, scene_h, engine_w, engine_h):
+        scene = Scene(width=scene_w, height=scene_h)
+        window = _window(LBM2D(engine_w, engine_h), scene)
+        window._ensure_engine_matches_scene()
+        self._assert_matches(window.sim, scene)
+
+    def test_apply_to_sim_does_not_break_the_invariant(self):
+        scene = Scene(width=96, height=72)
+        window = _window(LBM2D(64, 64), scene)
+        window._ensure_engine_matches_scene()
+        apply_to_sim(scene, window.sim)
+        self._assert_matches(window.sim, scene)
+
+    def test_every_shipped_preset_lands_on_its_own_grid(self):
+        from presets.loader import list_presets, load_preset
+
+        for preset in list_presets():
+            scene = load_preset(preset["file"])
+            window = _window(LBM2D(128, 128), scene)
+            window._ensure_engine_matches_scene()
+            self._assert_matches(window.sim, scene)
+
+    def test_every_scene_has_a_usable_grid(self):
+        """A zero or negative dimension would make the rebuild itself fail."""
+        from presets.loader import list_presets, load_preset
+
+        for preset in list_presets():
+            scene = load_preset(preset["file"])
+            assert scene.width > 0 and scene.height > 0, preset["file"]
+
+    def test_the_guard_runs_before_apply(self):
+        """Ordering matters: rebuilding after apply would seed the discarded
+        engine and then resize, losing the seed."""
+        source = (
+            Path(__file__).resolve().parents[1] / "workbench" / "app.py"
+        ).read_text()
+        body = source.split("def _apply_and_refresh(")[1].split("\n    def ")[0]
+        assert body.index("_ensure_engine_matches_scene()") < body.index(
+            "apply_to_sim(self.scene, self.sim)"
+        )
+
+    def test_grid_label_reports_the_engine_not_the_scene(self):
+        """The HUD must describe what is actually being simulated."""
+        from presets.loader import load_preset
+
+        scene = load_preset("presets/scenes/karman_street.json")
+        window = _window(LBM2D(128, 128), scene)
+        window._ensure_engine_matches_scene()
+        h, w = window.sim.grid_shape
+        assert f"{w}x{h}" == f"{scene.width}x{scene.height}"
