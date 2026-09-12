@@ -513,10 +513,13 @@ class MainWindow(QMainWindow):
         # obstacle and probe.
         self._ensure_engine_matches_scene()
         apply_to_sim(self.scene, self.sim)
-        self.step_count = 0
         self._report_probe_field_problems()
         self._rebuild_probes()
         self._sync_analysis_probes()
+        # Probes are rebuilt above, so this clears panel-side state rather than
+        # the (now fresh) probe objects: stability trace, tick phase, timeline,
+        # scrubbing, demo and recorder.
+        self._reset_runtime_state()
         self.analysis_panel.set_scene(self.scene)
         self.viewport.set_scene(self.scene)
         self.scene_panel.scene = self.scene
@@ -647,6 +650,42 @@ class MainWindow(QMainWindow):
         self.viewport.update()
         self._update_re_label()
 
+    def _reset_runtime_state(self) -> None:
+        """Clear every piece of state derived from the previous run.
+
+        Reset, scene load, file open and preset load all invalidate the same
+        derived state, and each used to clear a different subset of it. The
+        residue was visible: after a reset the stability trace still drew the
+        previous run's convergence curve, probe plots still carried old samples,
+        `_tick_counter` stayed offset so probe sampling no longer lined up with
+        the step count it is plotted against, and a reset triggered mid-drag left
+        `_scrubbing` True -- at which point `tick()` stops stepping forever.
+
+        One path, so a new piece of derived state is cleared by construction
+        rather than by remembering to add it to four call sites.
+        """
+        self.step_count = 0
+
+        # Timeline / history scrubbing.
+        self._scrubbing = False
+        self._state_history.clear()
+        self.timeline_slider.blockSignals(True)
+        self.timeline_slider.setRange(0, 0)
+        self.timeline_slider.setValue(0)
+        self.timeline_slider.blockSignals(False)
+        self.timeline_label.setText("Step 0")
+
+        # Guided demo.
+        self._demo_running = False
+
+        # Recording must not continue into a fresh run's first frame.
+        if self._recorder is not None:
+            self._stop_video_recording()
+
+        # Panel-side derived state: probe histories, stability trace, tick phase.
+        self.analysis_panel.reset_runtime()
+        self.viewport.invalidate_caches()
+
     def reset(self, silent: bool = False) -> None:
         if not silent and self.step_count > 0:
             confirm = QMessageBox.question(
@@ -664,10 +703,7 @@ class MainWindow(QMainWindow):
         # edited in the properties editor since the engine was built.
         self._ensure_engine_matches_scene()
         apply_to_sim(self.scene, self.sim)
-        self.step_count = 0
-        self._state_history.clear()
-        self.timeline_slider.setRange(0, 0)
-        self.timeline_label.setText("Step 0")
+        self._reset_runtime_state()
         self.outcome_panel.update_outcome(self.step_count, force=True)
         self._update_re_label()
         self._update_sanity_banner()

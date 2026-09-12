@@ -161,6 +161,15 @@ class Viewport(QOpenGLWidget):
         self._show_hud = show
         self.update()
 
+    def invalidate_caches(self) -> None:
+        """Force the field and overlay caches to be rebuilt on the next paint.
+
+        Reset and scene loads both change the domain underneath the viewport. The
+        GL texture objects are sized to the old grid, so without this the first
+        frame after a resize samples a stale texture.
+        """
+        self._tex_init = False
+
     def set_sim(self, sim: SimEngine) -> None:
         self.sim = sim
 

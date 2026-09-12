@@ -180,6 +180,22 @@ class AnalysisPanel(QWidget):
         self.stats_group.setLayout(sf)
         layout.addWidget(self.stats_group)
 
+    def reset_runtime(self) -> None:
+        """Drop everything derived from a previous run.
+
+        Called by the app whenever simulation state is reset, so a fresh run does
+        not inherit the previous run's measurements. Without this the stability
+        trace keeps drawing the old convergence curve beside the new one, and
+        `_tick_counter` stays offset so probe sampling no longer lines up with
+        the step count it is plotted against.
+        """
+        self._stability_data.clear()
+        self._tick_counter = 0
+        for probe in self.probes:
+            probe.clear()
+        if self.stability_curve is not None:
+            self.stability_curve.setData([], [])
+
     def set_probes(self, probes: list[Probe]) -> None:
         self.probes = probes
         self._rebuild_probe_widgets()
