@@ -323,13 +323,13 @@ trust contradiction remains in README, TRUST.md, or CHANGELOG.md.
 | [x] | 09-07 | `test(recipes): every recipe action resolves to a real preset` | `tests/test_recipes.py` | P0-3 |
 | [x] | 09-07 | `feat(ui): derive the field catalog from engine capabilities` | `workbench/app.py` | P0-6 |
 | [x] | 09-08 | `fix(ui): remove silent field fallbacks in viewport and export` | `workbench/viewport.py`, `export/image.py` | P0-6 |
-| [x] | 09-08 | `fix(lbm2d): refuse the temperature field when thermal is disabled` | `engines/lbm2d.py` | P0-6 |
+| [x] | 09-08 | `fix(lbm2d): refuse the temperature field when thermal is disabled` | `engines/lbm2d.py`, `engines/lbm3d.py` | P0-6 |
 | [x] | 09-09 | `feat(probe): record engine fields instead of a fixed whitelist` | `scene/probe.py` | P0-7 |
 | [x] | 09-09 | `fix(probes): validate probe fields at placement and preset load` | `workbench/` | P0-7 |
 | [x] | 09-10 | `test(probes): every preset probe field is recordable` | `tests/test_probe_fields.py` | P0-7 |
-| [x] | 09-11 | `fix(engine): rebuild the engine when scene dimensions change` | `workbench/app.py`, `main.py` | P0-2 |
+| [x] | 09-11 | `fix(engine): rebuild the engine when scene dimensions change` | `workbench/app.py` | P0-2 |
 | [x] | 09-11 | `test(scene): scene dimensions always match the engine grid shape` | `tests/test_scene_apply.py` | P0-2 |
-| [x] | 09-11 | `feat(lifecycle): single runtime-reset path for all derived state` | `workbench/app.py` | P0-4 |
+| [x] | 09-12 | `feat(lifecycle): single runtime-reset path for all derived state` | `workbench/app.py` | P0-4 |
 
 Exit criteria: preset/template load always yields matching scene and engine dimensions;
 reset, load, undo, and redo leave all panels and runtime state synchronized; every supported
