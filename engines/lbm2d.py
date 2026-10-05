@@ -452,9 +452,9 @@ class LBM2D(SimEngine, SmokeMixin, ThermalMixin):
         """Lattice pressure p = ρ / 3 (c_s² = 1/3)."""
         return self.rho / 3.0
 
-    def get_pressure_gauge(self) -> np.ndarray:
-        """Gauge pressure p − 1/3 (relative to ρ₀ = 1)."""
-        return self.rho / 3.0 - (1.0 / 3.0)
+    # get_pressure_gauge() is deliberately not defined here. It lives on SimEngine
+    # (PLAN.md C35) so that every backend shares one definition; a local copy is
+    # exactly how LBM3D and the GPU engines ended up rendering `rho - 1` instead.
 
     def get_field_names(self) -> list[str]:
         names = ["smoke", "speed", "vorticity", "pressure", "density"]

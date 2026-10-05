@@ -17,6 +17,20 @@ class SimEngine(ABC):
     is ever referenced directly from ui/.
     """
 
+    # --- Pressure reference ---
+
+    #: Reference (at-rest) density in lattice units. Standard LBM normalises to 1.
+    REFERENCE_DENSITY: float = 1.0
+
+    #: Lattice sound speed squared. D2Q9 and D3Q19 both use c_s^2 = 1/3, so the
+    #: isothermal pressure is p = c_s^2 * rho for *every* engine on the lattice.
+    SOUND_SPEED_SQUARED: float = 1.0 / 3.0
+
+    @classmethod
+    def reference_pressure(cls) -> float:
+        """Pressure of the reference state, p0 = c_s^2 * rho0 = 1/3."""
+        return cls.SOUND_SPEED_SQUARED * cls.REFERENCE_DENSITY
+
     # --- Dimensionality ---
 
     @property
@@ -168,8 +182,33 @@ class SimEngine(ABC):
 
     @abstractmethod
     def get_pressure(self) -> np.ndarray:
-        """Return lattice pressure p = ρ / 3 (c_s² = 1/3)."""
+        """Absolute lattice pressure p = c_s^2 * rho (c_s^2 = 1/3).
+
+        Absolute, not gauge: this is the thermodynamic quantity the isothermal
+        equation of state gives, and it is what boundary conditions that prescribe
+        an outlet pressure (`rho = 3p`) are stated in. It carries the 1/3 offset of
+        the reference state, so it is the wrong thing to *display* — see
+        `get_pressure_gauge`, which is the canonical display and analysis quantity.
+        """
         ...
+
+    def get_pressure_gauge(self) -> np.ndarray:
+        """Gauge pressure p' = p - p0 = c_s^2 * (rho - rho0), in lattice units.
+
+        **This is the canonical pressure quantity.** Every display, contour, probe
+        reading, statistic, metric and report reads this and not `get_pressure`.
+
+        It is defined once, here, rather than per engine. It used to exist only on
+        `LBM2D`, so an analysis routine reaching for it on any other backend raised
+        `AttributeError`, and each engine compensated by inventing its own display
+        normalization: `LBM2D` used the gauge, `LBM3D` and the GPU backends used
+        `rho - 1`. Those differ by exactly a factor of 3 — `(rho - 1)/3` versus
+        `rho - 1` — so the same physical field read differently depending on which
+        backend produced it. Subclasses must not override this; if a backend has a
+        genuinely different equation of state it should change
+        `SOUND_SPEED_SQUARED` and `REFERENCE_DENSITY`, which propagates here.
+        """
+        return self.get_pressure() - self.reference_pressure()
 
     # --- Emitters ---
 
@@ -286,21 +325,27 @@ class SimEngine(ABC):
         colorbar: bool = True,
         ax: object | None = None,
     ) -> object:
-        """Plot the pressure field (rho - 1).
+        """Plot the gauge pressure field, p' = c_s^2 (rho - rho0).
+
+        Symmetric about zero, since gauge pressure is: the reference state plots
+        as mid-colour and a symmetric axis makes the high/low lobes comparable.
+        The docstring used to claim `rho - 1` while the body plotted `rho / 3`,
+        which is a different quantity by a factor of 3 plus an offset — harmless
+        in shape, but it is what made the definition ambiguous everywhere else.
 
         Returns:
             matplotlib Axes object.
         """
         import matplotlib.pyplot as plt
 
-        p = self.get_pressure()
+        p = self.get_pressure_gauge()
         if ax is None:
             _, ax = plt.subplots(1, 1, figsize=figsize)
-        lim = max(float(np.percentile(np.abs(p), 98)), 0.001)
+        lim = max(float(np.percentile(np.abs(p), 98)), 1e-6)
         im = ax.imshow(p, cmap="RdBu_r", origin="lower", vmin=-lim, vmax=lim)
         if colorbar:
-            plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04, label="Pressure")
-        ax.set_title("Pressure")
+            plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04, label="p' (lattice)")
+        ax.set_title("Gauge pressure  p' = (rho - 1)/3")
         ax.set_xlabel("x")
         ax.set_ylabel("y")
         return ax

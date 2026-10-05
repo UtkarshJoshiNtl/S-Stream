@@ -107,12 +107,24 @@ MODE_TO_CMAP: dict[str, str] = {
 
 @dataclass(frozen=True)
 class FieldInfo:
-    """Metadata for a simulation field."""
+    """Metadata for a simulation field.
+
+    `quantity` names what is actually measured, and `unit` its dimension. Both exist
+    because the alternative was a tooltip that could drift from the code: the pressure
+    tooltip read "Pressure field (rho - 1)" while the viewport rendered an
+    EMA-normalized gauge pressure and three of the engines rendered `rho - 1`. A
+    field whose *definition* is part of its metadata is one a consumer cannot
+    quietly reinterpret.
+    """
 
     label: str
     colormap: str
     tooltip: str
     symmetric: bool = False
+    #: The formula that produces the underlying values, e.g. "c_s^2 * (rho - rho0)".
+    quantity: str = ""
+    #: Dimensional label for a colorbar or axis. Empty for dimensionless fields.
+    unit: str = ""
 
 
 FIELD_REGISTRY: dict[str, FieldInfo] = {
@@ -121,12 +133,16 @@ FIELD_REGISTRY: dict[str, FieldInfo] = {
         colormap="viridis",
         tooltip="Passive scalar concentration advected by the flow. "
         "Useful for visualizing mixing and transport.",
+        quantity="advected scalar s, rendered as s / max(s)",
+        unit="",
     ),
     "speed": FieldInfo(
         label="Speed",
         colormap="plasma",
         tooltip="Velocity magnitude |u| = sqrt(u^2 + v^2). "
         "Normalized by 1.5x the inflow speed.",
+        quantity="|u| = sqrt(u^2 + v^2), rendered as |u| / (1.5 * max inflow)",
+        unit="lattice/step",
     ),
     "vorticity": FieldInfo(
         label="Vorticity",
@@ -134,25 +150,35 @@ FIELD_REGISTRY: dict[str, FieldInfo] = {
         tooltip="Curl of velocity (dv/dx - du/dy). "
         "Shows rotation in the flow. Blue = clockwise, red = counter-clockwise.",
         symmetric=True,
+        quantity="omega_z = dv/dx - du/dy",
+        unit="1/step",
     ),
     "pressure": FieldInfo(
         label="Pressure",
         colormap="coolwarm",
-        tooltip="Pressure field (rho - 1). "
-        "Blue = low pressure, red = high pressure.",
+        tooltip="Gauge pressure p' = (rho - 1)/3 in lattice units, "
+        "symmetric about zero. Blue = low pressure, red = high pressure. "
+        "Absolute pressure is rho/3; the gauge form is used everywhere because only "
+        "differences are physically meaningful.",
         symmetric=True,
+        quantity="p' = p - p0 = c_s^2 * (rho - rho0), c_s^2 = 1/3",
+        unit="lattice",
     ),
     "density": FieldInfo(
         label="Density",
         colormap="inferno",
         tooltip="Fluid density. Uniform = 1.0 in standard LBM. "
         "Varies in multiphase (Shan-Chen) simulations.",
+        quantity="rho",
+        unit="lattice",
     ),
     "phase": FieldInfo(
         label="Phase",
         colormap="blues",
         tooltip="Liquid/vapor phase indicator (Shan-Chen model only). "
         "Sigmoid transform of density: sharp interface between phases.",
+        quantity="sigmoid(rho)",
+        unit="",
     ),
     "temperature": FieldInfo(
         label="Temperature",
@@ -160,18 +186,24 @@ FIELD_REGISTRY: dict[str, FieldInfo] = {
         tooltip="Temperature field (thermal LBM only). "
         "Coupled to flow via Boussinesq buoyancy approximation.",
         symmetric=True,
+        quantity="T",
+        unit="K",
     ),
     "component1": FieldInfo(
         label="Component 1",
         colormap="blues",
         tooltip="Density of fluid component 1 (multi-component model only). "
         "Shows where component 1 (e.g. oil) is present.",
+        quantity="rho_1",
+        unit="lattice",
     ),
     "component2": FieldInfo(
         label="Component 2",
         colormap="reds",
         tooltip="Density of fluid component 2 (multi-component model only). "
         "Shows where component 2 (e.g. water) is present.",
+        quantity="rho_2",
+        unit="lattice",
     ),
     "color": FieldInfo(
         label="Color",
@@ -179,7 +211,21 @@ FIELD_REGISTRY: dict[str, FieldInfo] = {
         tooltip="Color field C = (rho1 - rho2) / (rho1 + rho2) for multi-component. "
         "Blue = component 2 dominant, red = component 1 dominant.",
         symmetric=True,
+        quantity="C = (rho_1 - rho_2) / (rho_1 + rho_2)",
+        unit="",
     ),
 }
 
 CORE_FIELDS = ["smoke", "speed", "vorticity", "pressure", "density"]
+
+
+def field_unit(name: str) -> str:
+    """The unit label for *name*, or "" if the field is unknown or dimensionless."""
+    info = FIELD_REGISTRY.get(name)
+    return info.unit if info else ""
+
+
+def field_quantity(name: str) -> str:
+    """The defining formula for *name*, or "" if the field is unknown."""
+    info = FIELD_REGISTRY.get(name)
+    return info.quantity if info else ""
