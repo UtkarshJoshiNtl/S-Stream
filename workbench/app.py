@@ -86,6 +86,8 @@ class MainWindow(QMainWindow):
         self._state_history: list[tuple[int, object]] = []
         self._history_disabled_reason: str | None = None
         self._max_history_steps = 300
+        self._max_history_mb = 100  # Memory budget in MB
+        self._history_memory_mb = 0.0  # Current memory usage in MB
         self._scrubbing = False
         # Serialized form of the document as it was last saved, loaded or created.
         # Dirty state is *computed* against this rather than flagged by mutation
@@ -107,7 +109,9 @@ class MainWindow(QMainWindow):
         self.viewport.set_sim(sim)
         self.viewport.set_scene(self.scene)
         self.viewport.obstacle_created.connect(self._on_viewport_obstacle)
+        self.viewport.obstacle_deleted.connect(self._on_viewport_obstacle_deleted)
         self.viewport.probe_placed.connect(self._on_viewport_probe)
+        self.viewport.probe_deleted.connect(self._on_viewport_probe_deleted)
 
         # Build Main QSplitter (Left Sidebar + Right Viewport Area)
         self.main_splitter = QSplitter(Qt.Orientation.Horizontal, self)
@@ -376,6 +380,38 @@ class MainWindow(QMainWindow):
         self.status.addPermanentWidget(self.grid_label)
         self.setStatusBar(self.status)
 
+    # Unified shortcut registry for status-bar help generation
+    _SHORTCUTS = {
+        "Space": "Pause/Resume simulation",
+        "R": "Reset simulation",
+        "Ctrl+Q": "Quit",
+        ".": "Step once",
+        "K": "Pause (viewport)",
+        "J": "Decrease speed",
+        "L": "Increase speed",
+        "V": "Cycle field",
+        "S": "Toggle streamlines",
+        "1": "Select tool",
+        "2": "Circle tool",
+        "3": "Rectangle tool",
+        "4": "Polygon tool",
+        "5": "Probe tool",
+        "Ctrl+E": "Export",
+        "Ctrl+W": "Start wizard",
+        "Ctrl+Shift+S": "Parameter sweep",
+        "Ctrl+O": "Open scene",
+        "Ctrl+S": "Save scene",
+        "Escape": "Cancel drawing",
+        "Delete/Backspace": "Delete selected",
+    }
+
+    def _get_shortcut_help(self) -> str:
+        """Generate shortcut help text from the registry."""
+        lines = ["Shortcuts: "]
+        for key, desc in sorted(self._SHORTCUTS.items()):
+            lines.append(f"{key}: {desc}")
+        return " | ".join(lines)
+
     def _setup_shortcuts(self) -> None:
         pause_shortcut = QAction(self)
         pause_shortcut.setShortcut(QKeySequence(Qt.Key.Key_Space))
@@ -414,6 +450,9 @@ class MainWindow(QMainWindow):
             sc = QShortcut(QKeySequence(key), vp)
             sc.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
             sc.activated.connect(handler)
+
+        # Show shortcut help in status bar
+        self.status.showMessage(self._get_shortcut_help(), 10000)
 
     def _shift_speed(self, delta: int) -> None:
         combo = self.transport_bar.speed_combo
@@ -728,6 +767,16 @@ class MainWindow(QMainWindow):
         """
         return bool(getattr(self.sim, "supports_state_history", False))
 
+    def _estimate_state_memory_mb(self, state: object) -> float:
+        """Estimate memory usage of an EngineState in megabytes."""
+        if not hasattr(state, "arrays"):
+            return 0.0
+        total_bytes = 0
+        for arr in state.arrays.values():
+            if hasattr(arr, "nbytes"):
+                total_bytes += arr.nbytes
+        return total_bytes / (1024 * 1024)
+
     def _record_state_history(self) -> None:
         if self._scrubbing or not self._state_history_supported():
             return
@@ -741,9 +790,16 @@ class MainWindow(QMainWindow):
             logger.warning("State history disabled: %s", exc)
             self._history_disabled_reason = str(exc)
             return
+        state_mb = self._estimate_state_memory_mb(state)
         self._state_history.append((self.step_count, state))
-        if len(self._state_history) > self._max_history_steps:
-            self._state_history.pop(0)
+        self._history_memory_mb += state_mb
+        # Evict oldest frames to stay within both frame and memory budgets
+        while (len(self._state_history) > self._max_history_steps or
+               self._history_memory_mb > self._max_history_mb):
+            if not self._state_history:
+                break
+            _, old_state = self._state_history.pop(0)
+            self._history_memory_mb -= self._estimate_state_memory_mb(old_state)
         self.timeline_slider.blockSignals(True)
         self.timeline_slider.setRange(0, len(self._state_history) - 1)
         self.timeline_slider.setValue(len(self._state_history) - 1)
@@ -795,6 +851,7 @@ class MainWindow(QMainWindow):
         # Timeline / history scrubbing.
         self._scrubbing = False
         self._state_history.clear()
+        self._history_memory_mb = 0.0
         self.timeline_slider.blockSignals(True)
         self.timeline_slider.setRange(0, 0)
         self.timeline_slider.setValue(0)
@@ -1048,11 +1105,16 @@ class MainWindow(QMainWindow):
     def _on_viewport_obstacle(self, obs) -> None:
         self.scene_panel.add_obstacle_from_viewport(obs)
 
+    def _on_viewport_obstacle_deleted(self, idx: int) -> None:
+        self.scene_panel.delete_obstacle_from_viewport(idx)
+
     def _on_viewport_probe(self, spec: ProbeSpec) -> None:
         # The panel owns the snapshot, so a probe placed on the canvas is undoable
         # like every other scene edit.
         self.scene_panel.add_probe_from_viewport(spec)
-        self._update_title()
+
+    def _on_viewport_probe_deleted(self, idx: int) -> None:
+        self.scene_panel.delete_probe_from_viewport(idx)
 
     def _on_scene_changed(self) -> None:
         # The scene panel restores undo history by replacing its own reference, so
@@ -1419,6 +1481,7 @@ class MainWindow(QMainWindow):
             viscosity=self.scene.viscosity,
         )
         self._adopt_engine(sim)
+        self.scene_panel.rebuild_engine_specific_controls()
         self._apply_and_refresh()
         self._auto_detect_view()
         self.status.showMessage(f"Physics mode: {label} (engine recreated)", 6000)
@@ -1454,12 +1517,13 @@ class MainWindow(QMainWindow):
         if current == target_engine.__name__:
             return
 
-        # Recreate engine
-        sim: SimEngine = target_engine(width=w, height=h, viscosity=nu)
+        # Create new engine
+        sim = target_engine(width=w, height=h, viscosity=nu)
         self._adopt_engine(sim)
+        self.scene_panel.rebuild_engine_specific_controls()
         self._apply_and_refresh()
         self._auto_detect_view()
-        self.status.showMessage(f"Engine: {label} (recreated)", 6000)
+        self.status.showMessage(f"GPU mode: {label} (engine recreated)", 6000)
 
     def _open_recipes_dialog(self) -> None:
         dialog = StartDialog(self, tab=2)

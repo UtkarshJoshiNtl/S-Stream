@@ -339,6 +339,38 @@ class ScenePanel(QWidget):
             self._build_thermal_params(layout)
             self._build_non_newtonian_params(layout)
 
+    def rebuild_engine_specific_controls(self) -> None:
+        """Rebuild engine-specific parameter groups after engine switch."""
+        # Find and remove existing engine-specific groups
+        if hasattr(self, '_thermal_group') and self._thermal_group:
+            self._thermal_group.setParent(None)
+            self._thermal_group.deleteLater()
+            self._thermal_group = None
+        if hasattr(self, '_non_newtonian_group') and self._non_newtonian_group:
+            self._non_newtonian_group.setParent(None)
+            self._non_newtonian_group.deleteLater()
+            self._non_newtonian_group = None
+        if hasattr(self, '_liquid_group') and self._liquid_group:
+            self._liquid_group.setParent(None)
+            self._liquid_group.deleteLater()
+            self._liquid_group = None
+        if hasattr(self, '_multicomponent_group') and self._multicomponent_group:
+            self._multicomponent_group.setParent(None)
+            self._multicomponent_group.deleteLater()
+            self._multicomponent_group = None
+        if hasattr(self, '_particle_group') and self._particle_group:
+            self._particle_group.setParent(None)
+            self._particle_group.deleteLater()
+            self._particle_group = None
+
+        # Rebuild for the new engine
+        # self.scroll is a QScrollArea, get its widget's layout
+        scroll_widget = self.scroll.widget()
+        if scroll_widget:
+            layout = scroll_widget.layout()
+            if layout:
+                self._build_engine_specific_group(layout)
+
     def _build_liquid_params(self, layout: QVBoxLayout) -> None:
         group = QGroupBox("Liquid Parameters (Shan-Chen)")
         form = QFormLayout()
@@ -1161,6 +1193,15 @@ class ScenePanel(QWidget):
         self._rebuild_tree()
         self.scene_changed.emit()
 
+    def delete_obstacle_from_viewport(self, idx: int) -> None:
+        """Delete an obstacle selected on the canvas."""
+        if 0 <= idx < len(self.scene.obstacles):
+            self._save_state()
+            self.scene.obstacles.pop(idx)
+            self._reapply()
+            self._rebuild_tree()
+            self.scene_changed.emit()
+
     def add_probe_from_viewport(self, spec: ProbeSpec) -> None:
         """Record a probe placed on the canvas.
 
@@ -1171,6 +1212,14 @@ class ScenePanel(QWidget):
         self.scene.probes.append(spec)
         self._rebuild_tree()
         self.scene_changed.emit()
+
+    def delete_probe_from_viewport(self, idx: int) -> None:
+        """Delete a probe selected on the canvas."""
+        if 0 <= idx < len(self.scene.probes):
+            self._save_state()
+            self.scene.probes.pop(idx)
+            self._rebuild_tree()
+            self.scene_changed.emit()
 
     def _reapply(self) -> None:
         apply_to_sim(self.scene, self.sim)

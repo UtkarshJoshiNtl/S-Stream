@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 
-**S-Stream is an interactive fluid dynamics tool that lets you see how fluids behave in real time.** Watch vortices shed behind a cylinder, see pressure drop across a nozzle, or understand how Reynolds number changes flow patterns—all in seconds, not hours.
+**S-Stream is an interactive 2D fluid dynamics educational tool that lets you see how fluids behave in real time.** Watch vortices shed behind a cylinder, see pressure drop across a channel, or understand how Reynolds number changes flow patterns—all in seconds, not hours.
 
 ## Who This Is For
 
@@ -61,11 +61,13 @@ Advanced flags (`--liquid`, `--multicomponent`, `--gpu`, `--serve`) are availabl
 - **Live 2D simulation** — Watch fluids flow in real time with D2Q9 Lattice Boltzmann Method
 - **Guided scenarios** — 10 built-in presets (vortex shedding, channel flow, lid-driven cavity, etc.) with explanations
 - **Interactive geometry** — Draw circles, rectangles, polygons, and obstacles directly on the viewport
+- **Select and delete** — Click to select obstacles and probes, press Delete to remove them
 - **Physics readouts** — Real-time Reynolds number, drag coefficient, Strouhal number with tooltips explaining what they mean
 - **Confidence badges** — Visual indicator showing whether the flow has converged or is still developing
 - **Export for reports** — PNG figures, Markdown summaries, and CSV data for lab reports
 - **Probes** — Place measurement points to track velocity, pressure, and vorticity over time
-- **Beginner/Expert modes** — Simple interface for learning, advanced controls for exploration
+- **Timeline scrubbing** — Memory-budgeted history for reviewing past simulation states
+- **Keyboard shortcuts** — Unified shortcut registry with status-bar help
 
 ## Experimental Features
 

@@ -122,6 +122,8 @@ void main() {
 
 class Viewport(QOpenGLWidget):
     obstacle_created = Signal(ObstacleSpec)
+    obstacle_deleted = Signal(int)  # index of obstacle to delete
+    probe_deleted = Signal(int)  # index of probe to delete
     probe_placed = Signal(ProbeSpec)
 
     def __init__(self, parent=None):
@@ -147,6 +149,8 @@ class Viewport(QOpenGLWidget):
         self._drag_end: tuple[float, float] | None = None
         self._poly_points: list[tuple[float, float]] = []
         self._cursor_pos: tuple[float, float] | None = None
+        self._selected_obstacle: ObstacleSpec | None = None
+        self._selected_probe: Probe | None = None
         self._overlay_frame = 0
         self._streamline_cache: list | None = None
         self._contour_cache: tuple[list, int] | None = None
@@ -279,10 +283,47 @@ class Viewport(QOpenGLWidget):
         self._drag_start = None
         self._drag_end = None
         self._poly_points = []
-        self._cursor_pos = None
-        cursor = Qt.CursorShape.CrossCursor if mode else Qt.CursorShape.ArrowCursor
-        self.setCursor(cursor)
-        self.update()
+        self._selected_obstacle = None
+        self._selected_probe = None
+
+    def _hit_test_obstacle(self, gx: float, gy: float) -> ObstacleSpec | None:
+        """Find obstacle at grid coordinates (gx, gy)."""
+        if not self.scene:
+            return None
+        ix, iy = int(round(gx)), int(round(gy))
+        for obs in self.scene.obstacles:
+            if isinstance(obs, CircleObstacle):
+                dist = math.sqrt((ix - obs.x) ** 2 + (iy - obs.y) ** 2)
+                if dist <= obs.radius:
+                    return obs
+            elif isinstance(obs, RectObstacle):
+                if obs.x <= ix < obs.x + obs.w and obs.y <= iy < obs.y + obs.h:
+                    return obs
+            elif isinstance(obs, PolygonObstacle):
+                # Simple bounding box check first
+                xs = [p[0] for p in obs.points]
+                ys = [p[1] for p in obs.points]
+                if min(xs) <= ix <= max(xs) and min(ys) <= iy <= max(ys):
+                    # Point-in-polygon test (ray casting)
+                    inside = False
+                    n = len(obs.points)
+                    for i in range(n):
+                        j = (i + 1) % n
+                        xi, yi = obs.points[i]
+                        xj, yj = obs.points[j]
+                        if ((yi > iy) != (yj > iy)) and (ix < (xj - xi) * (iy - yi) / (yj - yi + 1e-10) + xi):
+                            inside = not inside
+                    if inside:
+                        return obs
+        return None
+
+    def _hit_test_probe(self, gx: float, gy: float) -> Probe | None:
+        """Find probe at grid coordinates (gx, gy)."""
+        ix, iy = int(round(gx)), int(round(gy))
+        for i, probe in enumerate(self.probes):
+            if probe.x == ix and probe.y == iy:
+                return probe
+        return None
 
     # --- coordinate helpers ---
 
@@ -469,10 +510,16 @@ class Viewport(QOpenGLWidget):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
         if self.scene:
-            pen = QPen(QColor(255, 90, 90, 200), 2)
-            painter.setPen(pen)
-            painter.setBrush(QColor(255, 90, 90, 35))
             for shape in self.scene.obstacles:
+                # Highlight selected obstacle
+                if shape == self._selected_obstacle:
+                    pen = QPen(QColor(255, 200, 50, 255), 3)
+                    painter.setPen(pen)
+                    painter.setBrush(QColor(255, 200, 50, 60))
+                else:
+                    pen = QPen(QColor(255, 90, 90, 200), 2)
+                    painter.setPen(pen)
+                    painter.setBrush(QColor(255, 90, 90, 35))
                 self._draw_obstacle_shape(painter, shape)
 
         if self.scene:
@@ -527,7 +574,11 @@ class Viewport(QOpenGLWidget):
         for p in self.probes:
             wx, wy = self._grid_to_widget(p.spec.x, p.spec.y)
             ix, iy = int(wx), int(wy)
-            pen = QPen(QColor(0, 255, 100, 220), 2)
+            # Highlight selected probe
+            if p == self._selected_probe:
+                pen = QPen(QColor(255, 100, 100, 255), 3)
+            else:
+                pen = QPen(QColor(0, 255, 100, 220), 2)
             painter.setPen(pen)
             painter.drawLine(ix - 6, iy, ix + 6, iy)
             painter.drawLine(ix, iy - 6, ix, iy + 6)
@@ -1261,10 +1312,21 @@ class Viewport(QOpenGLWidget):
     # --- mouse events ---
 
     def mousePressEvent(self, event) -> None:
-        if self.draw_mode is None or self.scene is None:
+        if self.scene is None:
             super().mousePressEvent(event)
             return
         gx, gy = self._widget_to_grid(event.position().x(), event.position().y())
+
+        # Select mode: hit-test obstacles and probes
+        if self.draw_mode == "select":
+            self._selected_obstacle = self._hit_test_obstacle(gx, gy)
+            self._selected_probe = self._hit_test_probe(gx, gy)
+            self.update()
+            return
+
+        if self.draw_mode is None:
+            super().mousePressEvent(event)
+            return
 
         if self.draw_mode == "probe":
             ix, iy = int(round(gx)), int(round(gy))
@@ -1301,9 +1363,26 @@ class Viewport(QOpenGLWidget):
             self._drag_end = None
             self._poly_points = []
             self._cursor_pos = None
+            self._selected_obstacle = None
+            self._selected_probe = None
             self.update()
             event.accept()
             return
+        if event.key() == Qt.Key_Delete or event.key() == Qt.Key_Backspace:
+            if self._selected_obstacle is not None and self.scene:
+                idx = self.scene.obstacles.index(self._selected_obstacle)
+                self.obstacle_deleted.emit(idx)
+                self._selected_obstacle = None
+                self.update()
+                event.accept()
+                return
+            if self._selected_probe is not None:
+                idx = self.probes.index(self._selected_probe)
+                self.probe_deleted.emit(idx)
+                self._selected_probe = None
+                self.update()
+                event.accept()
+                return
         if event.key() in (Qt.Key_Return, Qt.Key_Enter):
             if self.draw_mode == "polygon" and len(self._poly_points) >= 3:
                 pts = [(int(round(x)), int(round(y))) for x, y in self._poly_points]
