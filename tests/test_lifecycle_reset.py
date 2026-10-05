@@ -37,6 +37,7 @@ class _StubTimeline:
         self.range = (5, 5)
         self.value = 5
         self.blocked = False
+        self.enabled = True
 
     def blockSignals(self, flag: bool) -> None:  # noqa: N802 - Qt naming
         self.blocked = flag
@@ -46,6 +47,9 @@ class _StubTimeline:
 
     def setValue(self, value: int) -> None:  # noqa: N802 - Qt naming
         self.value = value
+
+    def setEnabled(self, flag: bool) -> None:  # noqa: N802 - Qt naming
+        self.enabled = flag
 
 
 class _StubLabel:
@@ -115,7 +119,7 @@ def _window():
     window.timeline_label = _StubLabel()
     window.record_btn = _StubButton()
     window.step_count = 137
-    window._state_history = [(1, "f", "rho")] * 9
+    window._state_history = [(1, "state")] * 9
     window._scrubbing = True
     window._demo_running = True
     window._demo_target = 500

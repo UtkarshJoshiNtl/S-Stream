@@ -1,13 +1,42 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
 if TYPE_CHECKING:
     from engines.particle_tracer import ParticleTracer
     from scene.scene import Scene
+
+
+@dataclass
+class EngineState:
+    """An opaque, engine-owned snapshot of simulation state.
+
+    The arrays are **host-side NumPy copies** even when the engine computes on a
+    GPU. That is the point of the type: a snapshot is a portable artefact, not a
+    device buffer, so it can be handed to a UI thread, written to disk, or compared
+    without asking what device the engine is on. A device-backed engine copies off
+    the device once, in `snapshot()`, and writes back once, in `restore()`; neither
+    call is on a per-cell hot path.
+
+    Consumers must not interpret `arrays`. The keys are engine-private and will
+    differ between backends -- an engine is free to store a single packed buffer, or
+    twenty named fields. Ask the engine, never the dictionary.
+    """
+
+    arrays: dict[str, np.ndarray] = field(default_factory=dict)
+    scalars: dict[str, Any] = field(default_factory=dict)
+    grid_shape: tuple[int, ...] = ()
+
+    def __repr__(self) -> str:
+        names = ", ".join(sorted(self.arrays))
+        return (
+            f"{type(self).__name__}(grid={self.grid_shape}, "
+            f"{len(self.arrays)} arrays: {names})"
+        )
 
 
 class SimEngine(ABC):
@@ -89,6 +118,53 @@ class SimEngine(ABC):
     u_inflow: float
     smoke_diffusion: float
     smoke_decay: float
+
+    # --- State history (snapshot / restore contract) ---
+
+    #: Whether this backend implements :meth:`snapshot` and :meth:`restore`.
+    #: A UI that offers state history must check this and say so when it is False,
+    #: rather than offering a control that silently does nothing.
+    supports_state_history: bool = False
+
+    def snapshot(self) -> EngineState:
+        """Capture everything needed to continue this run identically.
+
+        The contract, which a backend either satisfies or does not claim:
+
+        1. **Total.** With the same parameters and the same scene, `step()` after
+           `restore(snapshot())` must produce the same result as an uninterrupted
+           run. Anything `step()` reads or writes belongs in the snapshot.
+        2. **Complete.** Also anything that changes what `get_*` returns, including
+           passive scalars and render-scaling state. A snapshot that restores the
+           physics but not the scalar field renders a different picture than the
+           moment it was taken, which reads as corruption.
+        3. **Isolated.** Mutating the engine after taking a snapshot must not
+           change the snapshot, and mutating a snapshot must not change the engine.
+        4. **Host-side.** Arrays are NumPy, whatever the engine computes on.
+        5. **Explicit about scratch.** Double buffers and other work areas that are
+           fully rewritten before being read are excluded, and that exclusion is
+           stated in the implementation rather than left to be discovered.
+
+        Raises NotImplementedError on a backend that does not implement this. The
+        failure is loud on purpose: the alternative -- silently recording a field
+        the engine never reads -- is what this contract replaces.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not implement snapshot(); "
+            "supports_state_history is False"
+        )
+
+    def restore(self, state: EngineState) -> None:
+        """Return the engine to a state previously produced by :meth:`snapshot`.
+
+        Raises ValueError if the snapshot's grid does not match this engine's --
+        restoring a 64x64 snapshot into a 128x128 engine has no meaningful partial
+        behaviour, so it is refused rather than partially applied.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not implement restore(); "
+            "supports_state_history is False"
+        )
 
     # --- Observables (the UI reads these each frame) ---
 

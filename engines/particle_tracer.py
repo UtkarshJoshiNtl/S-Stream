@@ -62,6 +62,38 @@ class ParticleTracer:
             return None
         return self._trail_buf.copy()
 
+    def snapshot_state(self) -> tuple[np.ndarray, np.ndarray | None]:
+        """Positions and trails, as copies, for an engine state snapshot.
+
+        The tracer owns this state, so it also owns capturing it: an engine reaching
+        into `_trail_buf` to save it is the same boundary violation this whole
+        contract exists to remove, one level down.
+        """
+        return self.positions.copy(), self.get_trails()
+
+    def restore_state(
+        self, positions: np.ndarray, trails: np.ndarray | None = None
+    ) -> None:
+        """Return to a state from :meth:`snapshot_state`, reallocating as needed.
+
+        The buffers are reallocated rather than written into because their length is
+        the particle count, and a snapshot taken when there were particles must
+        restore to that count -- `clear()` leaves a zero-length buffer, into which a
+        `copyto` of the saved positions cannot fit.
+        """
+        ndim = 3 if self.is_3d else 2
+        self.positions = np.array(positions, dtype=np.float32, copy=True)
+        if self._trail_buf is None:
+            return
+        n = len(self.positions)
+        self._trail_buf = np.empty((self.trail_length, n, ndim), dtype=np.float32)
+        if trails is None or n == 0:
+            return
+        keep = min(len(trails), self.trail_length)
+        self._trail_buf[:keep, : min(n, len(trails[0]) if len(trails) else 0)] = (
+            np.asarray(trails)[:keep, :n, :]
+        )
+
     def add_particles(self, x: float, y: float, count: int = 10, z: float = 0.0) -> int:
         """Add particles near (x, y) with small random jitter.
 

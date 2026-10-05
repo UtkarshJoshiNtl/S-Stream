@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 from numba import njit, prange
 
-from engines.base import SimEngine
+from engines.base import EngineState, SimEngine
 from engines.boundary_conditions import (
     apply_moving_wall_bottom,
     apply_moving_wall_top,
@@ -286,6 +286,90 @@ class LBM2D(SimEngine, SmokeMixin, ThermalMixin):
     @property
     def omega(self) -> float:
         return self.lattice.omega_from_viscosity(self.viscosity)
+
+    # --- State history (SimEngine contract) ---
+
+    supports_state_history = True
+
+    #: Arrays whose contents carry the run. `_f_swap`, `_lap_buffer`, `_x_coords`,
+    #: `_y_coords` and `_vel_buf` are deliberately absent: each is fully written
+    #: before it is read within a single `step()`, so a snapshot taken between steps
+    #: cannot observe them and copying them would cost memory for nothing.
+    _STATE_ARRAYS = (
+        "f",
+        "rho",
+        "u",
+        "v",
+        "smoke",
+        "obstacles",
+    )
+
+    #: Rendering normalizers. Not physics, but `get_field` divides by them, so
+    #: restoring the fields without these makes a scrubbed frame render differently
+    #: from the moment it was taken -- which the user reads as a broken restore
+    #: rather than as a rescaled colour map.
+    _STATE_SCALARS = (
+        "_ema_smoke_max",
+        "_ema_speed_max",
+        "_ema_vort_max",
+        "_ema_pres_max",
+        "_ema_alpha",
+    )
+
+    def snapshot(self) -> EngineState:
+        arrays: dict[str, np.ndarray] = {
+            name: np.array(getattr(self, name), copy=True)
+            for name in self._STATE_ARRAYS
+        }
+        if self.thermal_enabled and hasattr(self, "temperature"):
+            arrays["temperature"] = np.array(self.temperature, copy=True)
+        tracer = getattr(self, "_particle_tracer", None)
+        if tracer is not None:
+            # Positions and trails only. The tracer's capacity is configuration, not
+            # state, and is reallocated by `clear()` below.
+            arrays["particles"] = np.array(tracer.positions, copy=True)
+            trails = tracer.get_trails()
+            if trails is not None:
+                arrays["particle_trails"] = np.array(trails, copy=True)
+
+        scalars = {name: getattr(self, name) for name in self._STATE_SCALARS}
+        scalars["emitters"] = list(self.emitters)
+        scalars["thermal_enabled"] = self.thermal_enabled
+        if "particle_trails" in arrays:
+            scalars["trail_length"] = tracer.trail_length
+        return EngineState(arrays=arrays, scalars=scalars, grid_shape=self.grid_shape)
+
+    def restore(self, state: EngineState) -> None:
+        shape = self.grid_shape
+        if state.grid_shape and tuple(state.grid_shape) != tuple(shape):
+            raise ValueError(
+                f"Cannot restore a {tuple(state.grid_shape)} snapshot into a "
+                f"{tuple(shape)} engine"
+            )
+        missing = [n for n in self._STATE_ARRAYS if n not in state.arrays]
+        if missing:
+            raise ValueError(
+                f"Snapshot is missing {', '.join(missing)}; it was not produced by "
+                f"{type(self).__name__}.snapshot()"
+            )
+        for name in self._STATE_ARRAYS:
+            # copyto, not assignment: these arrays are pre-allocated and the
+            # collision kernel holds references to them.
+            np.copyto(getattr(self, name), state.arrays[name])
+
+        if "temperature" in state.arrays and self.thermal_enabled:
+            np.copyto(self.temperature, state.arrays["temperature"])
+
+        tracer = getattr(self, "_particle_tracer", None)
+        if tracer is not None and "particles" in state.arrays:
+            tracer.restore_state(
+                state.arrays["particles"], state.arrays.get("particle_trails")
+            )
+
+        for name in self._STATE_SCALARS:
+            if name in state.scalars:
+                setattr(self, name, state.scalars[name])
+        self.emitters = list(state.scalars.get("emitters", self.emitters))
 
     def initialize(
         self, rho: float = 1.0, u: float = 0.0, v: float = 0.0, w: float = 0.0

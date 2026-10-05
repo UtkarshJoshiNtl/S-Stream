@@ -5,7 +5,6 @@ import logging
 import time
 from pathlib import Path
 
-import numpy as np
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
@@ -82,7 +81,10 @@ class MainWindow(QMainWindow):
         self._expert_mode = False
         self._frame_start = 0.0
         self._speed_factor = 1.0
-        self._state_history: list[tuple[int, np.ndarray, np.ndarray]] = []
+        # (step_count, EngineState). The snapshot type is the engine's business;
+        # this list only knows it is opaque and ordered.
+        self._state_history: list[tuple[int, object]] = []
+        self._history_disabled_reason: str | None = None
         self._max_history_steps = 300
         self._scrubbing = False
         # Serialized form of the document as it was last saved, loaded or created.
@@ -716,12 +718,30 @@ class MainWindow(QMainWindow):
         active = self._demo_running and not self.paused
         self.demo_btn.setText("Running..." if active else "Run Demo")
 
+    def _state_history_supported(self) -> bool:
+        """Whether this engine can be snapshotted at all.
+
+        Checked rather than assumed: `getattr(sim, "f", ...)` used to fall back to
+        `get_velocity_view()` for an engine with no `f`, which recorded *something*
+        for every backend and restored *nothing* for the ones with no `f`/`rho` of
+        that name -- a timeline slider that moved and changed nothing.
+        """
+        return bool(getattr(self.sim, "supports_state_history", False))
+
     def _record_state_history(self) -> None:
-        if self._scrubbing:
+        if self._scrubbing or not self._state_history_supported():
             return
-        f_copy = np.copy(getattr(self.sim, "f", self.sim.get_velocity_view()))
-        rho_copy = np.copy(getattr(self.sim, "rho", self.sim.get_pressure()))
-        self._state_history.append((self.step_count, f_copy, rho_copy))
+        try:
+            state = self.sim.snapshot()
+        except Exception as exc:  # pragma: no cover - defensive
+            # A snapshot must never take the run down with it. Logged rather than
+            # swallowed: an engine that claims support and then fails is a bug, and
+            # silence here would hide it exactly where it costs the most -- a
+            # timeline that quietly stops recording.
+            logger.warning("State history disabled: %s", exc)
+            self._history_disabled_reason = str(exc)
+            return
+        self._state_history.append((self.step_count, state))
         if len(self._state_history) > self._max_history_steps:
             self._state_history.pop(0)
         self.timeline_slider.blockSignals(True)
@@ -738,11 +758,8 @@ class MainWindow(QMainWindow):
 
     def _on_timeline_moved(self, index: int) -> None:
         if 0 <= index < len(self._state_history):
-            step, f_snap, rho_snap = self._state_history[index]
-            if hasattr(self.sim, "f"):
-                np.copyto(self.sim.f, f_snap)
-            if hasattr(self.sim, "rho"):
-                np.copyto(self.sim.rho, rho_snap)
+            step, state = self._state_history[index]
+            self.sim.restore(state)
             self.timeline_label.setText(f"Step {step} (History)")
             self.viewport.update()
 
@@ -783,6 +800,27 @@ class MainWindow(QMainWindow):
         self.timeline_slider.setValue(0)
         self.timeline_slider.blockSignals(False)
         self.timeline_label.setText("Step 0")
+        self._sync_timeline_availability()
+
+    def _sync_timeline_availability(self) -> None:
+        """Say so when the timeline cannot work on the current engine.
+
+        The control used to stay enabled on every backend and simply do nothing on
+        the ones with no `f`/`rho` of that name. A disabled slider with the reason
+        beside it is the difference between "this build lacks it" and "it is broken".
+        """
+        slider = getattr(self, "timeline_slider", None)
+        label = getattr(self, "timeline_label", None)
+        if slider is None or label is None:
+            # `_adopt_engine` runs during construction, before the transport bar
+            # exists, and a partially built window is a legitimate caller.
+            return
+        supported = self._state_history_supported()
+        slider.setEnabled(supported)
+        if not supported:
+            label.setText("No history: engine has no snapshot support")
+        elif getattr(self, "step_count", 0) == 0:
+            label.setText("Step 0")
 
         # Guided demo.
         self._demo_running = False
@@ -1314,6 +1352,8 @@ class MainWindow(QMainWindow):
         self.scene_panel.sim = sim
         self.analysis_panel.sim = sim
         self.outcome_panel.sim = sim
+        # Capability depends on the engine, and the engine just changed.
+        self._sync_timeline_availability()
 
     def _engine_factories(self) -> dict[str, type[SimEngine]]:
         from engines import LBM2D, LBM2DLiquid, LBM2DMultiComponent
