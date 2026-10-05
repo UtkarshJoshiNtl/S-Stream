@@ -107,12 +107,34 @@ class OutcomePanel(QWidget):
         self.demo_target = max(0, target)
         self.progress.setVisible(self.demo_target > 0)
         self.progress.setMaximum(max(1, self.demo_target))
+        # Without an explicit minimum the bar's value reads back as -1, which Qt
+        # draws as the *indeterminate* busy indicator -- so the demo bar spent its
+        # whole run as a spinner rather than a progress bar (PLAN.md C45). The format
+        # shows real steps rather than a bare percentage, because the quantity is a
+        # step count and a user deciding whether to keep waiting needs the number.
+        self.progress.setMinimum(0)
+        self.progress.setFormat("%v / %m steps")
+        self._update_progress(self.step_count)
+
+    def _update_progress(self, step_count: int) -> None:
+        """Drive the demo bar from the real step count.
+
+        Clamped to the target: a user who keeps stepping past it manually should see
+        a full bar, not a number the demo never asked for.
+        """
+        if self.demo_target <= 0:
+            return
+        self.progress.setValue(min(max(0, step_count), self.demo_target))
 
     def update_outcome(
         self, step_count: int | None = None, force: bool = False
     ) -> None:
         if step_count is not None:
             self.step_count = step_count
+        # Before the cadence gate, so the bar tracks every frame instead of jumping
+        # in 15-step increments. It is one setValue call and it is the only widget in
+        # the panel that is expected to look continuous.
+        self._update_progress(self.step_count)
         if not force and self.step_count % 15 != 0:
             return
 

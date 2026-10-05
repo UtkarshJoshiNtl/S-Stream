@@ -644,6 +644,22 @@ class MainWindow(QMainWindow):
     def toggle_pause(self) -> None:
         self.paused = not self.paused
         self.transport_bar.set_play_state(not self.paused)
+        self._sync_demo_button()
+
+    def _sync_demo_button(self) -> None:
+        """One source of truth for the demo button's label.
+
+        The label used to be set at three scattered points and nowhere on pause, so a
+        paused demo still read "Running..." in the toolbar -- and the toolbar label is
+        the only place a guided run's state is visible. Pausing also happens implicitly
+        when the timeline is grabbed, so it cannot be handled by whoever pauses.
+        Derived rather than assigned, so every path that changes the state updates the
+        label (PLAN.md C45).
+        """
+        if not hasattr(self, "demo_btn"):
+            return
+        active = self._demo_running and not self.paused
+        self.demo_btn.setText("Running..." if active else "Run Demo")
 
     def _record_state_history(self) -> None:
         if self._scrubbing:
@@ -663,6 +679,7 @@ class MainWindow(QMainWindow):
         self._scrubbing = True
         self.paused = True
         self.transport_bar.set_play_state(False)
+        self._sync_demo_button()
 
     def _on_timeline_moved(self, index: int) -> None:
         if 0 <= index < len(self._state_history):
@@ -714,6 +731,7 @@ class MainWindow(QMainWindow):
 
         # Guided demo.
         self._demo_running = False
+        self._sync_demo_button()
 
         # Recording must not continue into a fresh run's first frame.
         if self._recorder is not None:
@@ -756,7 +774,7 @@ class MainWindow(QMainWindow):
                     self._demo_running = False
                     self.paused = True
                     self.transport_bar.set_play_state(False)
-                    self.demo_btn.setText("Run Demo")
+                    self._sync_demo_button()
         self.outcome_panel.update_outcome(self.step_count)
         self._refresh_sanity_banner_if_due()
         self.viewport.update()
@@ -1055,8 +1073,8 @@ class MainWindow(QMainWindow):
         self._demo_running = True
         self.paused = False
         self.transport_bar.set_play_state(True)
-        self.demo_btn.setText("Running...")
         self.outcome_panel.set_demo_target(target)
+        self._sync_demo_button()
         self._set_colormap(self.scene.product.recommended_colormap or "vorticity")
         self._focus_outcome()
 
