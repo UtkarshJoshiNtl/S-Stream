@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import fields
 from pathlib import Path
 
 from scene.scene import (
@@ -202,6 +203,26 @@ def dict_to_scene(d: dict) -> Scene:
         sweeps=d.get("sweeps", []),
         product=_product_from_dict(d),
     )
+
+
+def update_scene_in_place(scene: Scene, d: dict) -> Scene:
+    """Restore `d` into an existing Scene object and return it.
+
+    Undo has to restore a snapshot into the object every other part of the app
+    already holds a reference to. Building a replacement and rebinding the owner
+    left the viewport, probes, analysis panel, outcome panel, save path and export
+    path reading the object being discarded, so a single undo silently split the
+    session in two. Every field is assigned, so a snapshot that predates a field
+    addition resets that field to its default rather than leaving it stale.
+
+    The container lists are replaced rather than mutated in place, which is safe
+    here because nothing holds a long-lived reference to an individual list: every
+    consumer re-reads `scene.obstacles` (and friends) when it rebuilds.
+    """
+    fresh = dict_to_scene(d)
+    for f in fields(Scene):
+        setattr(scene, f.name, getattr(fresh, f.name))
+    return scene
 
 
 def save(scene: Scene, path: str | Path) -> None:

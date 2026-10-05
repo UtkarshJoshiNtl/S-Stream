@@ -59,6 +59,7 @@ _OBSTACLE_DEFAULTS: dict[str, ObstacleSpec] = {
 
 
 class _PropEditor(QWidget):
+    about_to_change = Signal()
     changed = Signal()
 
     def __init__(self, obj: object, parent=None):
@@ -103,6 +104,10 @@ class _PropEditor(QWidget):
             self._widgets[f.name] = w
 
     def _set(self, name: str, value) -> None:
+        # Emitted before the assignment, not after. The undo snapshot has to record
+        # the pre-edit scene, and the only place that knows a mutation is one
+        # keystroke away is here.
+        self.about_to_change.emit()
         setattr(self._obj, name, value)
         self.changed.emit()
 
@@ -121,6 +126,9 @@ class ScenePanel(QWidget):
         self._undo_stack: list[str] = []
         self._redo_stack: list[str] = []
         self._max_history = 20
+        # True while the parameter spinners are being written from the scene, so a
+        # programmatic sync is not recorded as a user edit.
+        self._syncing_params = False
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
@@ -713,26 +721,40 @@ class ScenePanel(QWidget):
         self._param_u_inflow.setStyleSheet(inflow_style)
 
     def _on_param_visc(self, val: float) -> None:
+        self._snapshot_scene_param()
         self.scene.viscosity = val
         self.sim.viscosity = val
         self._update_parameter_safety_styles()
         self.parameters_changed.emit()
 
     def _on_param_u_inflow(self, val: float) -> None:
+        self._snapshot_scene_param()
         self.scene.u_inflow = val
         self.sim.u_inflow = val
         self._update_parameter_safety_styles()
         self.parameters_changed.emit()
 
     def _on_param_diff(self, val: float) -> None:
+        self._snapshot_scene_param()
         self.scene.smoke_diffusion = val
         self.sim.smoke_diffusion = val
         self.parameters_changed.emit()
 
     def _on_param_decay(self, val: float) -> None:
+        self._snapshot_scene_param()
         self.scene.smoke_decay = val
         self.sim.smoke_decay = val
         self.parameters_changed.emit()
+
+    def _snapshot_scene_param(self) -> None:
+        """Undo entry for a simulation-parameter edit.
+
+        These four write to `Scene` as well as to the engine, so without a snapshot
+        they were the only scene edits in the panel that undo could not reach.
+        """
+        if self._syncing_params:
+            return
+        self._save_state()
 
     def _on_collision_changed(self, index: int) -> None:
         """Handle collision operator selection change."""
@@ -896,11 +918,21 @@ class ScenePanel(QWidget):
         self.sim.collision_op = non_newtonian_collision
 
     def sync_params_from_scene(self) -> None:
-        """Update spinner values to match the current scene (after load)."""
-        self._param_visc.setValue(self.scene.viscosity)
-        self._param_u_inflow.setValue(self.scene.u_inflow)
-        self._param_diff.setValue(self.scene.smoke_diffusion)
-        self._param_decay.setValue(self.scene.smoke_decay)
+        """Update spinner values to match the current scene (after load).
+
+        Guarded, because these are the same widgets the user edits: `setValue`
+        emits `valueChanged`, and after an undo the values genuinely differ, so an
+        unguarded sync would push an undo entry for a change nobody made and
+        immediately push the history the undo just restored off the stack.
+        """
+        self._syncing_params = True
+        try:
+            self._param_visc.setValue(self.scene.viscosity)
+            self._param_u_inflow.setValue(self.scene.u_inflow)
+            self._param_diff.setValue(self.scene.smoke_diffusion)
+            self._param_decay.setValue(self.scene.smoke_decay)
+        finally:
+            self._syncing_params = False
 
     def _on_trail_length(self, val: int) -> None:
         tracer = self.sim.get_particle_tracer()
@@ -997,6 +1029,7 @@ class ScenePanel(QWidget):
         obj = getattr(self.scene, cat_name)[item_idx]
         self._current_item = current
         self._current_editor = _PropEditor(obj, self)
+        self._current_editor.about_to_change.connect(self._save_state)
         self._current_editor.changed.connect(self._on_prop_changed)
         self.props_layout.insertWidget(0, self._current_editor)
         self._props_placeholder.hide()
@@ -1010,7 +1043,6 @@ class ScenePanel(QWidget):
         self._props_placeholder.show()
 
     def _on_prop_changed(self) -> None:
-        self._save_state()
         self._refresh_current_label()
         self._reapply()
         self.scene_changed.emit()
@@ -1129,6 +1161,17 @@ class ScenePanel(QWidget):
         self._rebuild_tree()
         self.scene_changed.emit()
 
+    def add_probe_from_viewport(self, spec: ProbeSpec) -> None:
+        """Record a probe placed on the canvas.
+
+        Routed through the panel rather than appended by the window, so that clicking
+        the canvas is undoable exactly like adding a probe from the panel menu.
+        """
+        self._save_state()
+        self.scene.probes.append(spec)
+        self._rebuild_tree()
+        self.scene_changed.emit()
+
     def _reapply(self) -> None:
         apply_to_sim(self.scene, self.sim)
 
@@ -1152,6 +1195,12 @@ class ScenePanel(QWidget):
         self._reapply()
 
     def _save_state(self) -> None:
+        """Snapshot the scene *before* the mutation it is meant to undo.
+
+        Ordering is the whole contract. A snapshot taken after the change records
+        the new value, so undoing it is a no-op and the first edit a user makes is
+        unreachable.
+        """
         import json
 
         from scene.serializer import scene_to_dict
@@ -1164,34 +1213,42 @@ class ScenePanel(QWidget):
         self.undo_btn.setEnabled(True)
         self.redo_btn.setEnabled(False)
 
+    def _restore(self, snap: str) -> None:
+        """Restore a snapshot into the scene this panel already owns.
+
+        The Scene object identity is preserved. Rebinding it here is what split the
+        session in two: the window kept the object it had, and the viewport, probes,
+        save and export went on reading the scene being discarded.
+        """
+        import json
+
+        from scene.serializer import update_scene_in_place
+
+        update_scene_in_place(self.scene, json.loads(snap))
+        self._clear_props()
+        self.refresh()
+        self.scene_changed.emit()
+
     def _undo(self) -> None:
         if not self._undo_stack:
             return
         import json
 
-        from scene.serializer import dict_to_scene, scene_to_dict
+        from scene.serializer import scene_to_dict
 
-        current_snap = json.dumps(scene_to_dict(self.scene))
-        self._redo_stack.append(current_snap)
-        prev_snap = self._undo_stack.pop()
-        self.scene = dict_to_scene(json.loads(prev_snap))
+        self._redo_stack.append(json.dumps(scene_to_dict(self.scene)))
+        self._restore(self._undo_stack.pop())
         self.undo_btn.setEnabled(len(self._undo_stack) > 0)
         self.redo_btn.setEnabled(True)
-        self.refresh()
-        self.scene_changed.emit()
 
     def _redo(self) -> None:
         if not self._redo_stack:
             return
         import json
 
-        from scene.serializer import dict_to_scene, scene_to_dict
+        from scene.serializer import scene_to_dict
 
-        current_snap = json.dumps(scene_to_dict(self.scene))
-        self._undo_stack.append(current_snap)
-        next_snap = self._redo_stack.pop()
-        self.scene = dict_to_scene(json.loads(next_snap))
+        self._undo_stack.append(json.dumps(scene_to_dict(self.scene)))
+        self._restore(self._redo_stack.pop())
         self.undo_btn.setEnabled(True)
         self.redo_btn.setEnabled(len(self._redo_stack) > 0)
-        self.refresh()
-        self.scene_changed.emit()

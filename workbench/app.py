@@ -802,10 +802,9 @@ class MainWindow(QMainWindow):
         self.scene_panel.add_obstacle_from_viewport(obs)
 
     def _on_viewport_probe(self, spec: ProbeSpec) -> None:
-        self.scene.probes.append(spec)
-        self._rebuild_probes()
-        self._sync_analysis_probes()
-        self.scene_panel.refresh()
+        # The panel owns the snapshot, so a probe placed on the canvas is undoable
+        # like every other scene edit.
+        self.scene_panel.add_probe_from_viewport(spec)
         self._update_title()
 
     def _on_scene_changed(self) -> None:
