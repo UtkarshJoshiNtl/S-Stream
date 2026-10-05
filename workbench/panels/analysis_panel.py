@@ -188,6 +188,15 @@ class AnalysisPanel(QWidget):
         trace keeps drawing the old convergence curve beside the new one, and
         `_tick_counter` stays offset so probe sampling no longer lines up with
         the step count it is plotted against.
+
+        The readouts are part of the residue, not decoration. They are refreshed
+        only every fifth tick, so a reset that zeroed `_tick_counter` without
+        blanking them left Re, Cd, St and the field statistics describing a run
+        that had just been discarded -- and, on a paused window, nothing would ever
+        tick to correct it. Probe y-ranges are cleared for the same reason:
+        `_ProbePlot` deliberately never shrinks its range, which is right within a
+        run and wrong across one, since a new run whose signal lives in a narrower
+        band would be drawn as a flat line along the bottom of the old axis.
         """
         self._stability_data.clear()
         self._tick_counter = 0
@@ -195,6 +204,17 @@ class AnalysisPanel(QWidget):
             probe.clear()
         if self.stability_curve is not None:
             self.stability_curve.setData([], [])
+        for label in (
+            self.re_label,
+            self.cd_label,
+            self.st_label,
+            self.min_label,
+            self.max_label,
+            self.mean_label,
+        ):
+            label.setText("—")
+        for pw in self._probe_widgets:
+            pw._y_range = None
 
     def set_probes(self, probes: list[Probe]) -> None:
         self.probes = probes

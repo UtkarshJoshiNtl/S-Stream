@@ -231,6 +231,14 @@ class TestBothPathsShareOneReset:
             )
 
 
+class _StubLabel:
+    def __init__(self) -> None:
+        self.text = "stale"
+
+    def setText(self, text: str) -> None:  # noqa: N802 - Qt naming
+        self.text = text
+
+
 class TestAnalysisPanelReset:
     def _panel(self):
         from workbench.panels.analysis_panel import AnalysisPanel
@@ -242,6 +250,19 @@ class TestAnalysisPanelReset:
         panel._tick_counter = 42
         panel.probes = [Probe(ProbeSpec(name="p", x=1, y=1, fields=["u"]))]
         panel.stability_curve = None
+        # C33: reset_runtime also blanks the on-screen readouts and the probe
+        # y-ranges. This stub has to register them, and registering them by hand is
+        # precisely the weakness C33's tests exist to remove -- a stub cannot
+        # expose a field nobody remembered, which is how the residue survived C26.
+        # See tests/test_state_reset.py for the same behaviour asserted against the
+        # real widgets.
+        panel.re_label = _StubLabel()
+        panel.cd_label = _StubLabel()
+        panel.st_label = _StubLabel()
+        panel.min_label = _StubLabel()
+        panel.max_label = _StubLabel()
+        panel.mean_label = _StubLabel()
+        panel._probe_widgets = []
         return panel
 
     def test_stability_trace_is_cleared(self):
@@ -262,6 +283,21 @@ class TestAnalysisPanelReset:
         panel.reset_runtime()
         assert len(panel.probes[0].history["u"]) == 0
 
+    def test_readouts_are_blanked(self):
+        panel = self._panel()
+        panel.reset_runtime()
+        for name in ("re_label", "cd_label", "st_label", "min_label", "max_label"):
+            assert getattr(panel, name).text == "—"
+
+    def test_probe_plot_ranges_are_cleared(self):
+        class _PW:
+            _y_range = (0.0, 1.0)
+
+        panel = self._panel()
+        panel._probe_widgets = [_PW()]
+        panel.reset_runtime()
+        assert panel._probe_widgets[0]._y_range is None
+
     def test_tolerates_a_missing_curve(self):
         panel = self._panel()
         panel.stability_curve = None
@@ -277,6 +313,7 @@ class TestAnalysisPanelReset:
         panel.reset_runtime()
         panel.reset_runtime()
         assert panel._tick_counter == 0
+        assert panel.min_label.text == "—"
 
 
 class TestViewportInvalidate:

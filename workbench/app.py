@@ -558,6 +558,10 @@ class MainWindow(QMainWindow):
         self._set_colormap(cmap)
         self._demo_target = self.scene.product.autorun_steps
         self.outcome_panel.set_demo_target(self._demo_target)
+        # `force`: update_outcome refreshes every fifteenth step, so without it the
+        # regime card kept describing the scene that was just discarded for up to
+        # fifteen steps after the load -- and a paused window never ticks at all.
+        self.outcome_panel.update_outcome(self.step_count, force=True)
         self._update_title()
         self._update_sanity_banner()
         self._update_re_label()
