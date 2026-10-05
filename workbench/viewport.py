@@ -162,20 +162,47 @@ class Viewport(QOpenGLWidget):
         self.update()
 
     def invalidate_caches(self) -> None:
-        """Force the field and overlay caches to be rebuilt on the next paint.
+        """Force every cache derived from the old domain to be rebuilt.
 
-        Reset and scene loads both change the domain underneath the viewport. The
-        GL texture objects are sized to the old grid, so without this the first
-        frame after a resize samples a stale texture.
+        Reset and scene loads change the domain underneath the viewport. The GL
+        texture objects are sized to the old grid, so without this the first frame
+        after a resize samples a stale texture. The overlay caches go too: they bake
+        in both the grid shape and the canvas rectangle, so a rebuild of the engine
+        or a resize of the window leaves them describing a domain that no longer
+        exists.
         """
         self._tex_init = False
+        self._invalidate_overlay_caches()
+
+    def _invalidate_overlay_caches(self) -> None:
+        """Drop the geometry-derived overlay and colorbar caches.
+
+        Streamlines, pressure contours, particle trails and the colorbar all store
+        pixel coordinates computed from `_canvas_rect()` and the grid shape, and are
+        only recomputed on every 6th/4th frame. Anything that moves the canvas or
+        the grid has to clear them, or the overlay is drawn at its old position for
+        five frames out of six.
+        """
+        self._streamline_cache = None
+        self._contour_cache = None
+        self._particle_cache = None
+        self._colorbar_pixmap = None
+        self._colorbar_cmap = None
+
+    def resizeEvent(self, event) -> None:
+        # Invalidated before super(), so the paint this schedules rebuilds the
+        # overlays at the new rectangle. Afterwards would also work, but on a
+        # platform that paints synchronously it would throw away a cache the paint
+        # had just built correctly.
+        self._invalidate_overlay_caches()
+        super().resizeEvent(event)
 
     def set_sim(self, sim: SimEngine) -> None:
         self.sim = sim
 
     def set_scene(self, scene: Scene) -> None:
         self.scene = scene
-        self._tex_init = False
+        self.invalidate_caches()
 
     def set_probes(self, probes: list[Probe]) -> None:
         self.probes = probes
