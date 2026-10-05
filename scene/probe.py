@@ -82,6 +82,18 @@ class Probe:
         self.history: dict[str, deque[float]] = {
             f: deque(maxlen=MAX_HISTORY) for f in spec.fields
         }
+        # The simulation step each sample was taken at, parallel to `history`.
+        #
+        # A probe does not sample every step: the analysis panel records on every
+        # second tick, so consecutive samples are two simulation steps apart. The
+        # plots labelled their x-axis "step" while plotting the *sample index*, and
+        # `strouhal_number` was told dt=1.0, so every sample was treated as one step
+        # apart. Both read a cadence of 1 where the truth is 2, which puts every
+        # displayed time axis and every reported frequency a factor of two out.
+        #
+        # Keeping the step index beside the data is what lets a consumer recover the
+        # real spacing instead of assuming it. Recording it is the only way to know.
+        self.steps: deque[int] = deque(maxlen=MAX_HISTORY)
         self._step = 0
         self._unavailable: set[str] = set()
 
@@ -93,7 +105,10 @@ class Probe:
         return float(np.hypot(u_val, v_val))
 
     def record(
-        self, sim: SimEngine, cache: dict[str, np.ndarray] | None = None
+        self,
+        sim: SimEngine,
+        cache: dict[str, np.ndarray] | None = None,
+        step: int | None = None,
     ) -> None:
         """Append one sample per requested field.
 
@@ -102,6 +117,10 @@ class Probe:
         would each recompute it -- and get_field normalises against a running
         max, so recomputing is not merely wasteful, it perturbs the value the
         next probe sees.
+
+        `step` is the simulation step this sample belongs to. Pass it whenever the
+        caller knows it; the fallback keeps the sample counter, which is only
+        right when the probe happens to sample every step.
         """
         y, x = self.spec.y, self.spec.x
         h, w = sim.grid_shape
@@ -109,6 +128,7 @@ class Probe:
         x = int(np.clip(x, 0, w - 1))
 
         u_val, v_val = sim.get_velocity_at(x, y)
+        recorded = False
 
         for f in self.spec.fields:
             if f in LOCAL_FIELDS:
@@ -138,11 +158,34 @@ class Probe:
                     continue
                 val = float(field[y, x])
             self.history[f].append(val)
+            recorded = True
+
+        if recorded:
+            self.steps.append(self._step if step is None else int(step))
         self._step += 1
 
     @property
     def step(self) -> int:
         return self._step
+
+    def sample_interval(self) -> int | None:
+        """Simulation steps between consecutive samples, or None if unknowable.
+
+        The median of the observed gaps, because a probe that missed a few samples
+        (a paused window, a slow frame) would otherwise report an average cadence
+        that matches no actual interval.
+        """
+        if len(self.steps) < 2:
+            return None
+        gaps = np.diff(np.asarray(self.steps, dtype=float))
+        interval = float(np.median(gaps))
+        if interval <= 0:
+            return None
+        return int(interval)
+
+    def times(self) -> list[float]:
+        """Recorded step indices, for consumers that need the sample cadence."""
+        return list(self.steps)
 
     @property
     def unavailable_fields(self) -> set[str]:
@@ -152,5 +195,6 @@ class Probe:
     def clear(self) -> None:
         for f in self.spec.fields:
             self.history[f].clear()
+        self.steps.clear()
         self._step = 0
         self._unavailable.clear()

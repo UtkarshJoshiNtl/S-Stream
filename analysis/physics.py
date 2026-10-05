@@ -95,9 +95,28 @@ def strouhal_number(
     dt: float = 1.0,
     diameter: float = 1.0,
     velocity: float = 1.0,
+    times: list[float] | None = None,
 ) -> float | None:
+    """Strouhal number of a transverse-velocity trace, St = f * D / U.
+
+    `dt` is the number of simulation steps *between consecutive samples*, and it is
+    not a free parameter. A probe in the analysis panel samples on every second
+    tick, so consecutive samples are two steps apart; passing dt=1 there declares a
+    signal that oscillates twice as fast as it does and reports St exactly twice as
+    high. `times` is the recorded step index per sample (see `Probe.times`), which
+    removes the assumption entirely -- the cadence is then measured rather than
+    declared.
+
+    The FFT assumes uniform sampling, which the median gap approximates: a probe
+    that missed samples would report the typical interval, not every one.
+    """
     if len(v_history) < 32:
         return None
+    if times is not None and len(times) == len(v_history) and len(times) >= 2:
+        gaps = np.diff(np.asarray(times, dtype=float))
+        measured = float(np.median(gaps))
+        if measured > 0:
+            dt = measured
     recent = list(v_history)[-256:]
     arr = np.array(recent)
     arr = arr - np.mean(arr)

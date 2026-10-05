@@ -26,14 +26,9 @@ class FlowRegime:
 
 
 def _max_vorticity(sim: SimEngine) -> float:
-    vel = sim.get_velocity()
-    u = vel[:, :, 0]
-    v = vel[:, :, 1]
-    dvdx = np.zeros_like(u)
-    dudy = np.zeros_like(u)
-    dvdx[:, 1:-1] = (v[:, 2:] - v[:, :-2]) * 0.5
-    dudy[1:-1, :] = (u[2:, :] - u[:-2, :]) * 0.5
-    return float(np.abs(dvdx - dudy).max())
+    # The one definition of the curl, on the engine (PLAN.md C38). This file
+    # carried a seventh hand-written copy of `dv/dx - du/dy`.
+    return float(np.abs(sim.vorticity()).max())
 
 
 def _probe_oscillation(probes: list[Probe]) -> tuple[float, float | None]:
@@ -44,7 +39,9 @@ def _probe_oscillation(probes: list[Probe]) -> tuple[float, float | None]:
         return 0.0, None
     recent = np.asarray(list(v_history)[-256:], dtype=float)
     amplitude = float(np.std(recent))
-    return amplitude, strouhal_number(v_history, dt=1.0)
+    # The recorded step cadence, not a declared dt=1.0: the panel samples every
+    # second tick, so dt=1.0 reported a frequency twice too high (PLAN.md C39).
+    return amplitude, strouhal_number(v_history, dt=1.0, times=probes[0].times())
 
 
 def detect_flow_regime(

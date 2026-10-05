@@ -676,7 +676,7 @@ class MainWindow(QMainWindow):
         self.sim.step()
         self.step_count += 1
         self._record_state_history()
-        self.analysis_panel.tick(1.0)
+        self.analysis_panel.tick(1.0, step=self.step_count)
         self.outcome_panel.update_outcome(self.step_count)
         self.viewport.update()
         self._update_re_label()
@@ -744,7 +744,7 @@ class MainWindow(QMainWindow):
             self.sim.step()
             self.step_count += 1
             self._record_state_history()
-            self.analysis_panel.tick(1.0)
+            self.analysis_panel.tick(1.0, step=self.step_count)
             if self._demo_running and self._demo_target > 0:
                 if self.step_count >= self._demo_target:
                     self._demo_running = False

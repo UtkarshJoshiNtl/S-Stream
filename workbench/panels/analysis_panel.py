@@ -69,7 +69,13 @@ class _ProbePlot(QWidget):
         data = self.probe.history.get(field, [])
         if len(data) < 2:
             return
-        self.curve.setData(data)
+        # The axis is labelled "step", so it must carry steps. This used to plot the
+        # sample index under that label, which read as a time axis running at half
+        # speed (PLAN.md C39). Fall back to the index only for a probe that never
+        # recorded a step.
+        steps = self.probe.times()
+        x = steps if len(steps) == len(data) else list(range(len(data)))
+        self.curve.setData(x, data)
         self.plot.setLabel("left", field, units="")
 
         # Stabilize y-axis range to prevent wild jumps
@@ -239,7 +245,14 @@ class AnalysisPanel(QWidget):
         if has_probes:
             self.probes_layout.addStretch()
 
-    def tick(self, dt: float = 1.0) -> None:
+    def tick(self, dt: float = 1.0, step: int | None = None) -> None:
+        """Advance the panel one frame.
+
+        `step` is the simulation step just taken, used to stamp probe samples.
+        Without it a probe falls back to counting its own samples, which is wrong
+        here by construction: this method samples on every second tick, so the
+        sample count and the step count are two different clocks (PLAN.md C39).
+        """
         self._tick_counter += 1
 
         self._record_stability()
@@ -249,7 +262,7 @@ class AnalysisPanel(QWidget):
             # so without it every probe would recompute each field it watches.
             cache: dict[str, np.ndarray] = {}
             for probe in self.probes:
-                probe.record(self.sim, cache)
+                probe.record(self.sim, cache, step=step)
 
         if self._tick_counter % 5 == 0:
             self._update_physics(dt)
@@ -295,8 +308,18 @@ class AnalysisPanel(QWidget):
 
         St = None
         if self.probes and self.sim.u_inflow > 0:
-            v_data = self.probes[0].history.get("v", [])
-            St = strouhal_number(v_data, dt, diameter=diam, velocity=self.sim.u_inflow)
+            probe = self.probes[0]
+            v_data = probe.history.get("v", [])
+            # `times` rather than a declared dt: this panel samples every second
+            # tick, so the samples are two simulation steps apart and dt=1 would
+            # report every frequency twice as high (PLAN.md C39).
+            St = strouhal_number(
+                v_data,
+                dt,
+                diameter=diam,
+                velocity=self.sim.u_inflow,
+                times=probe.times(),
+            )
         self.st_label.setText(f"{St:.3f}" if St is not None else "—")
 
     def set_colormap(self, cmap: str) -> None:
