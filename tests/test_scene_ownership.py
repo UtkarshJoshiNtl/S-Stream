@@ -28,6 +28,7 @@ import pytest
 
 from engines.lbm2d import LBM2D
 from scene.scene import CircleObstacle, Scene
+from tests.conftest import dispose_window
 
 pytest.importorskip("PySide6")
 
@@ -52,7 +53,7 @@ def window(app, monkeypatch):
     # The wizard path shows a modal prediction prompt; nothing here is testing it.
     monkeypatch.setattr(win, "_prompt_poe_prediction", lambda *a, **kw: None)
     yield win
-    win.close()
+    dispose_window(win)
 
 
 def _holders(win):

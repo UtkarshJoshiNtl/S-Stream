@@ -44,6 +44,7 @@ import pytest
 from engines.lbm2d import LBM2D
 from scene.scene import SceneProductMeta
 from scene.serializer import load
+from tests.conftest import dispose_window
 
 pytest.importorskip("PySide6")
 
@@ -67,7 +68,7 @@ def window(app):
     win._adopt_scene(load(CYLINDER))
     win._apply_and_refresh()
     yield win
-    win.close()
+    dispose_window(win)
 
 
 @pytest.fixture
@@ -190,7 +191,7 @@ class TestTheGuidedDemoEndToEnd:
             assert win.outcome_panel.demo_target == 0
             assert win.outcome_panel.progress.isHidden()
         finally:
-            win.close()
+            dispose_window(win)
 
     def test_the_target_comes_from_the_preset(self, window, panel):
         assert panel.demo_target == window.scene.product.autorun_steps
@@ -273,7 +274,7 @@ class TestTheBarAndThePanelAgree:
                 win.tick()
             assert win.outcome_panel.progress.value() == 30
         finally:
-            win.close()
+            dispose_window(win)
 
 
 def _demo_btn_writers() -> set[str]:

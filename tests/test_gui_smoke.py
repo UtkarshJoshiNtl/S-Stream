@@ -15,6 +15,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import pytest
 
 from engines.lbm2d import LBM2D
+from tests.conftest import dispose_window
 
 pytest.importorskip("PySide6")
 
@@ -37,7 +38,7 @@ def window(app):
     win.show()
     app.processEvents()
     yield win
-    win.close()
+    dispose_window(win)
 
 
 def test_mainwindow_constructs_and_shows(window):

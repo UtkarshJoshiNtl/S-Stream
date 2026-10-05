@@ -50,6 +50,7 @@ from analysis.sanity import (
 )
 from engines.lbm2d import LBM2D
 from scene.scene import CircleObstacle, ProbeSpec, Scene
+from tests.conftest import dispose_window
 
 pytest.importorskip("PySide6")
 
@@ -223,7 +224,7 @@ class TestTheBannerRefreshesDuringARun:
         win._adopt_scene(_scene())
         win._apply_and_refresh()
         yield win, SANITY_REFRESH_STEPS
-        win.close()
+        dispose_window(win)
 
     def test_the_cadence_matches_the_outcome_panel(self, window):
         """Two displays of one warning set must not describe different steps."""

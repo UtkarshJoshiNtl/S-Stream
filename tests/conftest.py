@@ -29,3 +29,15 @@ def sim_2d_32() -> LBM2D:
 def sim_3d() -> LBM3D:
     """A fresh 16x16x16 3D engine."""
     return LBM3D(width=16, height=16, depth=16)
+
+
+def dispose_window(win) -> None:
+    """Tear a MainWindow down without going through the interactive close path.
+
+    Since C47 a document with unsaved edits raises a modal prompt on close, so a
+    fixture that calls `win.close()` after a test left the document dirty blocks on a
+    dialog nobody is there to dismiss -- it hangs the whole run rather than failing it,
+    which is why this is shared rather than repeated per module.
+    """
+    win.timer.stop()
+    win.deleteLater()

@@ -27,6 +27,7 @@ import pytest
 
 from engines.lbm2d import LBM2D
 from scene.scene import CircleObstacle, ProbeSpec, Scene
+from tests.conftest import dispose_window
 
 pytest.importorskip("PySide6")
 
@@ -56,7 +57,7 @@ def window(app, monkeypatch):
     win._apply_and_refresh()
     monkeypatch.setattr(win, "_prompt_poe_prediction", lambda *a, **kw: None)
     yield win
-    win.close()
+    dispose_window(win)
 
 
 def _run(window, steps: int = 12) -> None:

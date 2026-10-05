@@ -89,6 +89,9 @@ class MainWindow(QMainWindow):
         # Dirty state is *computed* against this rather than flagged by mutation
         # sites, so it cannot drift -- see `_scene_fingerprint`.
         self._saved_fingerprint = ""
+        # The sweep dialog this window opened, if any. Held only so `closeEvent` can
+        # see a running worker; cleared as soon as the dialog returns.
+        self._sweep_dialog = None
 
         self.setWindowTitle("S-Stream - Fluid Workbench")
         self.resize(1320, 840)
@@ -793,6 +796,107 @@ class MainWindow(QMainWindow):
         self.analysis_panel.reset_runtime()
         self.viewport.invalidate_caches()
 
+    # --- Closing ---------------------------------------------------------------
+    def _save_prompt(self) -> tuple[QMessageBox, dict]:
+        """Build the unsaved-changes prompt.
+
+        Returns the box and a button -> answer map, so the *choice* can be tested by
+        clicking a real button instead of reimplementing the dialog. The roles are
+        deliberate -- Save accepts, Discard is destructive, Cancel rejects -- which is
+        the platform's own convention for a three-way document prompt.
+        """
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle("Unsaved Changes")
+        name = self._file_path.stem if self._file_path else self.scene.name
+        box.setText(f"'{name}' has unsaved changes.")
+        box.setInformativeText("Save them before closing?")
+        roles = {
+            "Save": QMessageBox.ButtonRole.AcceptRole,
+            "Discard": QMessageBox.ButtonRole.DestructiveRole,
+            "Cancel": QMessageBox.ButtonRole.RejectRole,
+        }
+        answers = {"Save": "save", "Discard": "discard", "Cancel": "cancel"}
+        buttons = {}
+        save_button = None
+        for label, answer in answers.items():
+            widget = box.addButton(label, roles[label])
+            buttons[widget] = answer
+            if answer == "save":
+                save_button = widget
+        # `QMessageBox.button()` only resolves standard buttons, so the widget
+        # returned by `addButton` is the only handle to these.
+        box.setDefaultButton(save_button)
+        return box, buttons
+
+    def _ask_to_save_changes(self) -> str:
+        """Ask about unsaved work. Returns "save", "discard" or "cancel"."""
+        box, buttons = self._save_prompt()
+        box.exec()
+        # An unrecognized button -- the window's own X, or Escape -- is a cancel and
+        # not a discard: dismissing a warning must never be the destructive choice.
+        return buttons.get(box.clickedButton(), "cancel")
+
+    def _confirm_close(self) -> bool:
+        """Whether the window may close.
+
+        Unsaved work is C46's dirty state, and the order matters: a running job is
+        checked *first*, because a job cannot be finalized once the window is gone.
+        """
+        if self._sweep_in_progress():
+            QMessageBox.information(
+                self,
+                "Sweep In Progress",
+                "A parameter sweep is still running. Cancel it or wait for it to "
+                "finish before closing.",
+            )
+            return False
+        if self._recorder is not None and self._recorder.recording:
+            # Routed through the same stop path as the toolbar button. `close()` is
+            # what writes the container trailer -- the app's own failure message calls
+            # it "finalize" -- and a window closed mid-recording used to drop the
+            # writer without ever calling it. Whether the resulting file is playable
+            # depends on the backend (the MP4 plugin is not installed here, and the GIF
+            # path produced byte-identical files either way), so this is a correctness
+            # fix by construction rather than a measured corruption claim.
+            self._stop_video_recording()
+        if not self.is_dirty:
+            return True
+        answer = self._ask_to_save_changes()
+        if answer == "cancel":
+            return False
+        if answer == "save":
+            self._file_save()
+            # Save may have opened Save As and been cancelled, in which case the
+            # document is still unsaved and closing would still lose it.
+            return not self.is_dirty
+        return True
+
+    def _sweep_in_progress(self) -> bool:
+        """Whether the sweep dialog opened by this window still has a live worker.
+
+        The window never held a reference to its own dialog, so it could not even ask
+        the question; and the dialog is modal, which runs a nested event loop rather
+        than blocking -- the main window stays closable while a sweep runs behind it.
+        """
+        dialog = getattr(self, "_sweep_dialog", None)
+        if dialog is None:
+            return False
+        worker = getattr(dialog, "_worker", None)
+        return worker is not None and worker.isRunning()
+
+    def closeEvent(self, event) -> None:
+        """There was no `closeEvent` at all, so closing always discarded silently."""
+        self.timer.stop()
+        if not self._confirm_close():
+            # A cancelled close must not leave the run stopped: the user asked to keep
+            # working, so the timer goes back to what it was.
+            if not self.paused:
+                self.timer.start(33)
+            event.ignore()
+            return
+        event.accept()
+
     def reset(self, silent: bool = False) -> None:
         if not silent and self.step_count > 0:
             confirm = QMessageBox.question(
@@ -1374,7 +1478,9 @@ class MainWindow(QMainWindow):
 
     def _open_sweep_dialog(self) -> None:
         dialog = SweepDialog(self.scene, self)
+        self._sweep_dialog = dialog
         dialog.exec()
+        self._sweep_dialog = None
         if dialog.result is not None:
             sweep_dict = dialog.result.to_dict()
             self.scene.sweeps.append(sweep_dict)
