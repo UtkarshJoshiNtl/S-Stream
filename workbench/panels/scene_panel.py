@@ -1132,6 +1132,21 @@ class ScenePanel(QWidget):
     def _reapply(self) -> None:
         apply_to_sim(self.scene, self.sim)
 
+    def set_scene(self, scene: Scene) -> None:
+        """Adopt a Scene owned by someone else.
+
+        The panel never creates a Scene. `MainWindow` is the sole owner, and every
+        holder is re-pointed from one place there, so the panel cannot end up
+        editing an object the rest of the app cannot see.
+
+        The property editor is cleared rather than repainted: it holds a direct
+        reference to the dataclass instance it edits, so leaving it alive across an
+        adoption would let the next keystroke write into a discarded object.
+        """
+        self.scene = scene
+        self._clear_props()
+        self._rebuild_tree()
+
     def refresh(self) -> None:
         self._rebuild_tree()
         self._reapply()

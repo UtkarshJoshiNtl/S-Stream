@@ -191,7 +191,9 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.main_splitter)
 
         self._sync_analysis_probes()
-        self.analysis_panel.set_scene(self.scene)
+        # All four holders exist by now, so the initial sharing goes through the
+        # same call as every later adoption rather than repeating the list.
+        self._share_scene()
         self._setup_menus()
         self._setup_toolbar()
         self._setup_statusbar()
@@ -464,7 +466,7 @@ class MainWindow(QMainWindow):
         tools_menu.addAction(self.sweep_action)
 
     def _file_new(self) -> None:
-        self.scene = default_scene()
+        self._adopt_scene(default_scene())
         self._file_path = None
         self._apply_and_refresh()
 
@@ -475,7 +477,7 @@ class MainWindow(QMainWindow):
         if not path:
             return
         try:
-            self.scene = scene_load(path)
+            self._adopt_scene(scene_load(path))
             self._file_path = Path(path)
             self._apply_and_refresh()
         except Exception as e:
@@ -501,6 +503,31 @@ class MainWindow(QMainWindow):
         self.runtime_probes = [Probe(spec) for spec in self.scene.probes]
         self.viewport.set_probes(self.runtime_probes)
 
+    def _adopt_scene(self, scene: Scene) -> None:
+        """Take ownership of a Scene.
+
+        The window is the single owner of scene identity. Four other objects hold a
+        reference -- the viewport, the scene panel, the analysis panel and the
+        outcome panel -- and a load that updated only `self.scene` left them reading
+        the document that was just discarded. This is the one place a new Scene
+        enters the app; `_share_scene()` re-points the holders.
+        """
+        self.scene = scene
+        self._share_scene()
+
+    def _share_scene(self) -> None:
+        """Re-point every holder at `self.scene`.
+
+        Called by `_adopt_scene` and by `_on_scene_changed` whenever a holder turns
+        out to be looking at a different object. The scene panel restores undo
+        history by replacing its own reference, so without this the panel would keep
+        editing a scene the viewport, probes, save and export cannot see.
+        """
+        self.viewport.set_scene(self.scene)
+        self.scene_panel.set_scene(self.scene)
+        self.analysis_panel.set_scene(self.scene)
+        self.outcome_panel.set_scene(self.scene)
+
     def _sync_analysis_probes(self) -> None:
         self.analysis_panel.set_probes(self.runtime_probes)
         if hasattr(self, "outcome_panel"):
@@ -520,15 +547,11 @@ class MainWindow(QMainWindow):
         # the (now fresh) probe objects: stability trace, tick phase, timeline,
         # scrubbing, demo and recorder.
         self._reset_runtime_state()
-        self.analysis_panel.set_scene(self.scene)
-        self.viewport.set_scene(self.scene)
-        self.scene_panel.scene = self.scene
-        self.scene_panel.refresh()
+        self._share_scene()
         self.scene_panel.sync_params_from_scene()
         self.grid_label.setText(self._grid_label_text())
         cmap = self.scene.product.recommended_colormap
         self._set_colormap(cmap)
-        self.outcome_panel.set_scene(self.scene)
         self._demo_target = self.scene.product.autorun_steps
         self.outcome_panel.set_demo_target(self._demo_target)
         self._update_title()
@@ -786,11 +809,26 @@ class MainWindow(QMainWindow):
         self._update_title()
 
     def _on_scene_changed(self) -> None:
+        # The scene panel restores undo history by replacing its own reference, so
+        # this is where a divergent object is re-adopted rather than left for the
+        # viewport, probes, save and export to disagree about. MainWindow stays the
+        # sole owner: if a holder ever points elsewhere, it is corrected here
+        # instead of becoming a second source of truth.
+        if self.scene_panel.scene is not self.scene:
+            logger.debug(
+                "Adopting scene re-pointed by %s: %r -> %r",
+                type(self.scene_panel).__name__,
+                id(self.scene),
+                id(self.scene_panel.scene),
+            )
+            self.scene = self.scene_panel.scene
+        self.viewport.set_scene(self.scene)
+        self.analysis_panel.set_scene(self.scene)
+        self.outcome_panel.set_scene(self.scene)
         self._rebuild_probes()
         self._sync_analysis_probes()
         self.scene_panel.sync_params_from_scene()
         self.grid_label.setText(self._grid_label_text())
-        self.outcome_panel.set_scene(self.scene)
         self._update_title()
 
     def _on_params_changed(self) -> None:
@@ -949,7 +987,7 @@ class MainWindow(QMainWindow):
         poe_msg.exec()
 
     def _on_wizard_template(self, template: WizardTemplate) -> None:
-        self.scene = template.scene
+        self._adopt_scene(template.scene)
         self._file_path = None
         self._apply_and_refresh()
         self._prompt_poe_prediction(template.name)
@@ -967,7 +1005,7 @@ class MainWindow(QMainWindow):
 
     def _load_preset_file(self, path: str) -> None:
         try:
-            self.scene = load_preset(path)
+            self._adopt_scene(load_preset(path))
             self._file_path = None
             self._apply_and_refresh()
             self._prompt_poe_prediction(self.scene.name)
