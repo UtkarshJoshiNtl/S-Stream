@@ -326,6 +326,14 @@ class LBM2DLiquid(SimEngine, SmokeMixin):
     def get_field_names(self) -> list[str]:
         return ["smoke", "speed", "vorticity", "pressure", "density", "phase"]
 
+    def get_field_raw(self, name: str) -> np.ndarray:
+        """Adds `phase` to the base's physical fields (PLAN.md C38)."""
+        if name == "phase":
+            # Un-normalized: the sigmoid of density in lattice units, not the clipped
+            # [0, 1] render.
+            return 1.0 / (1.0 + np.exp(-15.0 * (self.rho - 0.5)))
+        return super().get_field_raw(name)
+
     def get_field(self, name: str) -> np.ndarray:
         a = self._ema_alpha
         if name == "smoke":

@@ -462,6 +462,23 @@ class LBM2D(SimEngine, SmokeMixin, ThermalMixin):
             names.append("temperature")
         return names
 
+    def get_field_raw(self, name: str) -> np.ndarray:
+        """Adds `temperature` to the base's physical fields (PLAN.md C38).
+
+        The disabled-thermal case raises rather than returning a flat field, for the
+        same reason `get_field` does (C19/C20): a plausible-looking number for a
+        quantity the simulation never computed is worse than no number.
+        """
+        if name == "temperature":
+            if not getattr(self, "thermal_enabled", False):
+                raise KeyError(
+                    "Field 'temperature' requires thermal_enabled; "
+                    f"{type(self).__name__} currently provides "
+                    f"{', '.join(self.get_field_names())}"
+                )
+            return self.temperature.copy()
+        return super().get_field_raw(name)
+
     def get_field(self, name: str) -> np.ndarray:
         a = self._ema_alpha
         if name == "smoke":

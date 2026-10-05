@@ -147,6 +147,79 @@ class SimEngine(ABC):
         """
         ...
 
+    # --- Physical (un-normalized) fields ---
+
+    def speed_magnitude(self) -> np.ndarray:
+        """|u| from the velocity field, in lattice units per step.
+
+        Only the horizontal components are summed, matching the `speed` render: the
+        last axis is x and the one before it is y, so a 3D velocity contributes its
+        last two components and its vertical one is not counted as horizontal speed.
+        """
+        vel = np.asarray(self.get_velocity())
+        n_comp = vel.shape[-1]
+        if n_comp < 2:
+            raise ValueError(
+                f"Expected a velocity with at least 2 components, got shape {vel.shape}"
+            )
+        return np.sqrt(
+            sum(
+                np.square(vel[..., i].astype(np.float64))
+                for i in range(n_comp - 2, n_comp)
+            )
+        )
+
+    def vorticity(self) -> np.ndarray:
+        """omega_z = dv/dx - du/dy, the single definition of the curl.
+
+        Axis order is the same for 2D and 3D: x is always the last axis and y the one
+        before it, because both engines store velocity as (..., y, x). Central
+        differences, zero-padded at the boundaries.
+
+        This used to be written out six times inside the per-engine `get_field`
+        methods. Six copies of a derivative is six chances to disagree about which
+        axis is x, and the rendered images would then differ between backends for a
+        reason nobody could see.
+        """
+        vel = np.asarray(self.get_velocity())
+        u, v = vel[..., -2].astype(np.float64), vel[..., -1].astype(np.float64)
+
+        dvdx = np.zeros_like(u)
+        dudy = np.zeros_like(u)
+        dvdx[..., 1:-1] = (v[..., 2:] - v[..., :-2]) * 0.5
+        dudy[..., 1:-1, :] = (u[..., 2:, :] - u[..., :-2, :]) * 0.5
+        return dvdx - dudy
+
+    def get_field_raw(self, name: str) -> np.ndarray:
+        """The *physical* field, un-normalized, with its own magnitude intact.
+
+        `get_field` exists to be drawn: it returns a `[0, 1]` render whose scale has
+        been divided out against an EMA-smoothed running extreme. Statistics,
+        thresholds and exports all need the opposite — the value in lattice units —
+        and asking `get_field` for it means reading a normalized number and either
+        mislabelling it or reverse-engineering a scale that is not there.
+
+        Raises KeyError for a field this engine cannot physically produce, naming
+        the engine and the field. Consumers must handle that: the alternative, which
+        this method exists to replace, is falling back to *some other* field and
+        reporting it under the selected field's name.
+        """
+        if name == "smoke":
+            return np.asarray(self.get_smoke())
+        if name == "density":
+            return np.asarray(self.get_density())
+        if name == "pressure":
+            # Gauge, the canonical display quantity (PLAN.md C35/C36).
+            return self.get_pressure_gauge()
+        if name == "speed":
+            return self.speed_magnitude()
+        if name == "vorticity":
+            return self.vorticity()
+        raise KeyError(
+            f"{type(self).__name__} has no physical field {name!r}; "
+            f"it provides {', '.join(self.get_field_names())}"
+        )
+
     # --- Obstacles ---
 
     @abstractmethod

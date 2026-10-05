@@ -303,15 +303,46 @@ class AnalysisPanel(QWidget):
         self._colormap = cmap
 
     def _update_field_stats(self) -> None:
-        cmap = getattr(self, "_colormap", "smoke")
-        if cmap == "smoke":
-            field = self.sim.get_smoke()
-        elif cmap in ("density", "phase", "pressure"):
-            rho = self.sim.get_density()
-            field = rho if cmap == "density" else rho - 1.0
-        else:
-            vel = self.sim.get_velocity()
-            field = np.sqrt(vel[:, :, 0] ** 2 + vel[:, :, 1] ** 2)
-        self.min_label.setText(f"{field.min():.4f}")
-        self.max_label.setText(f"{field.max():.4f}")
-        self.mean_label.setText(f"{field.mean():.4f}")
+        """Report the statistics of the field the user actually selected.
+
+        This used to be a three-branch if/elif whose `else` returned the speed
+        magnitude, so selecting vorticity, temperature, component1 or color printed
+        *speed* statistics under the vorticity field's name — and the `phase` and
+        `pressure` branches shared one expression, `rho - 1`, so those two fields
+        reported identical numbers (and three times the gauge pressure, per C35/C36).
+        The group title said only "Field Statistics", so there was nothing on screen
+        to contradict it.
+
+        Statistics are now taken from `SimEngine.get_field_raw`, the canonical
+        un-normalized field, so the numbers are in lattice units rather than in the
+        `[0, 1]` render's arbitrary scale. A field the engine cannot physically
+        produce reports *why* instead of borrowing another one.
+        """
+        from resources.colormaps import FIELD_REGISTRY, field_unit
+
+        name = getattr(self, "_colormap", "smoke")
+        info = FIELD_REGISTRY.get(name)
+        label = info.label if info else name.capitalize()
+        unit = field_unit(name)
+        title = f"{label} ({unit})" if unit else label
+        self.stats_group.setTitle(f"Field Statistics — {title}")
+
+        try:
+            field = np.asarray(self.sim.get_field_raw(name), dtype=np.float64)
+        except (KeyError, ValueError) as exc:
+            # A field this engine cannot produce is not a reason to show a different
+            # field's numbers. Say so and name the engine.
+            reason = str(exc).split(": ", 1)[-1]
+            self.min_label.setText("—")
+            self.max_label.setText("—")
+            self.mean_label.setText("—")
+            self.stats_group.setTitle(f"Field Statistics — {title} (unavailable)")
+            self.stats_group.setToolTip(
+                f"{type(self.sim).__name__} cannot produce this field: {reason}"
+            )
+            return
+
+        self.stats_group.setToolTip("")
+        self.min_label.setText(f"{field.min():.4g}")
+        self.max_label.setText(f"{field.max():.4g}")
+        self.mean_label.setText(f"{field.mean():.4g}")
