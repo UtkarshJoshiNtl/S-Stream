@@ -806,12 +806,19 @@ class Viewport(QOpenGLWidget):
                 painter.drawLine(x1, y1, x2, y2)
             return
 
-        p = self.sim.get_pressure()
+        # Gauge pressure, the canonical display quantity (PLAN.md C37). Reading the
+        # absolute field here was not a cosmetic offset: the level range is
+        # symmetric about zero and spans +-p95, and p95 of an absolute field is
+        # dominated by the reference state's constant 1/3. Measured on a 64x64
+        # driven channel at step 200, that left 8 of the 11 levels above the field
+        # maximum -- 58 active marching-squares cells in total, against 490 for the
+        # gauge. The overlay was drawing a handful of fragments rather than a field.
+        p = self.sim.get_pressure_gauge()
         h, w = p.shape
         cr = self._canvas_rect()
         sw = cr.width() / w
         sh = cr.height() / h
-        mx = max(float(np.percentile(np.abs(p), 95)), 0.001)
+        mx = max(float(np.percentile(np.abs(p), 95)), 1e-6)
         levels = np.linspace(-mx, mx, 11)
         all_lines = []
         for level in levels:
@@ -1208,7 +1215,7 @@ class Viewport(QOpenGLWidget):
     def _draw_colorbar(self, painter: QPainter) -> None:
         from PySide6.QtGui import QPixmap
 
-        from resources.colormaps import FIELD_REGISTRY
+        from resources.colormaps import FIELD_REGISTRY, field_unit
 
         cr = self._canvas_rect()
         bar_w = 18
@@ -1240,7 +1247,16 @@ class Viewport(QOpenGLWidget):
         painter.setPen(QColor(180, 190, 210))
         info = FIELD_REGISTRY.get(self._colormap)
         label = info.label if info else self._colormap.capitalize()
+        unit = field_unit(self._colormap)
         painter.drawText(bx - 4, by - 6, label)
+        # The bar maps the engine's *rendered* field, which is normalized to [0, 1]
+        # against an EMA-smoothed running extreme. Those numbers are not the field's
+        # values, so the unit alone would be a claim the bar cannot back up. Say the
+        # range is normalized, and give the unit from the field metadata (C35) so a
+        # reader knows what is being normalized.
+        note = f"{unit} (normalized)" if unit else "normalized"
+        painter.setPen(QColor(140, 150, 170))
+        painter.drawText(bx - 4, by + bar_h + 14, note)
 
     # --- mouse events ---
 
