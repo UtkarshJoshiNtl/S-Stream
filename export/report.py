@@ -60,7 +60,12 @@ def export_markdown_report(
                 "",
                 "## Design Scorecard",
                 "",
-                f"- Wake strength: {scorecard.wake_strength:.4f}",
+                "- Wake strength (velocity deficit): "
+                + (
+                    "not measurable for this configuration"
+                    if scorecard.wake_strength is None
+                    else f"{scorecard.wake_strength:.4f}"
+                ),
                 "- Pressure drop proxy: "
                 + (
                     "not measurable for this configuration"

@@ -72,6 +72,167 @@ class PressureDrop:
         return abs(self.value) > (self.inlet_scatter + self.outlet_scatter)
 
 
+@dataclass(frozen=True)
+class WakeStrength:
+    """A normalized velocity deficit across the wake, and what it was measured over.
+
+    `value` is `1 - mean(speed in the wake region) / mean(speed upstream of the
+    body)`, clamped at zero: the fraction of the incoming speed the wake takes
+    out. Being a ratio, it is dimensionless and comparable between runs at
+    different inlet velocities, which an absolute speed spread is not.
+    """
+
+    value: float
+    upstream_mean: float
+    wake_mean: float
+    wake_cells: int
+    upstream_cells: int
+    body_span: int
+
+    @property
+    def resolved(self) -> bool:
+        """Whether the deficit is large enough to be more than boundary scatter."""
+        return abs(self.value) > 0.01
+
+
+def wake_strength(sim: SimEngine, scene: Scene | None = None) -> WakeStrength | None:
+    """Velocity deficit in the body's wake, relative to undisturbed flow upstream.
+
+    The scorecard used `np.std(speed)` over the whole domain. Three things were
+    wrong with that, in the order they matter:
+
+    1. **It is not dimensionless.** An absolute speed spread grows with the inlet
+       velocity, so the number ranks a fast run above a slow one even when the two
+       wakes are identical. Measured on a 96x48 channel with the same body at two
+       inlets: 0.0167 at u=0.05 and 0.0332 at u=0.10 -- a factor of two, from
+       nothing but the inlet. As a *ranking* of wake strength that is close to
+       meaningless.
+
+    2. **It is a whole-domain statistic.** The inflow region and the body's own
+       neighbourhood set the spread; the wake behind it is one part of a number
+       dominated by the rest of the domain. It also never subtracts a baseline, so
+       it cannot distinguish "strong wake" from "flow is fast here".
+
+    3. **It was broken in 3D.** `vel[:, :, 0]` on a `(depth, height, width, 3)`
+       velocity is the z=0 plane, and adding `vel[:, :, 1] ** 2` adds a second
+       *component* axis: the expression produced a `(depth, width, 3)` array and
+       reported 0.0667 on a flow whose actual speed spread is 0.0.
+
+    The regions are read from the obstacle mask rather than from the scene
+    geometry, so a polygon body gets the same treatment as a circle, and both
+    windows use the same lateral extent so the comparison is like for like. Returns
+    None when there is no body, no room downstream, or no upstream flow to divide
+    by -- rather than a number with no referent.
+
+    This is the "region-defined wake strength with an upstream baseline" of
+    §6.2. It measures *how much of the flow the body takes out of the wake*, which
+    is the quantity a design comparison needs; it does not attempt to measure the
+    wake's width or its oscillatory content (which is what `strouhal_number` and
+    the scorecard's shedding confidence are for).
+
+    **Scope, because the number is easy to over-read.** It is an indicator for
+    comparing bodies *within one configuration* — same domain, same inlet, same
+    settling time. It is dimensionless, so it does not drift with the inlet the way
+    an absolute spread does, but it is not inlet-invariant either: the baseline is
+    the *bulk* upstream speed, and the bulk speed depends on the body (a body
+    blocking 42% of the channel height makes the domain run at 0.027 against a
+    prescribed inlet of 0.05). Measured on one 96x48 channel, the same r=10 body
+    reads 0.00 at u=0.05 and 0.26 at u=0.10 — Re=100 where the wake is steady
+    against Re=200 where it has begun to shed. A lid-driven cavity is measurable
+    too, but there the "wake" is a recirculation region and the "upstream" band is
+    reverse flow; that is a different comparison from a channel's and should not be
+    mixed with one.
+    """
+    mask = _obstacle_mask(sim)
+    if mask is None or not mask.any():
+        return None
+
+    try:
+        speed = np.asarray(sim.speed_magnitude(), dtype=np.float64)
+    except (KeyError, ValueError):
+        return None
+
+    if speed.ndim != mask.ndim or speed.shape != mask.shape:
+        return None
+
+    # Fold any leading axes into one, so the two window slices below mean the same
+    # thing in 2D and 3D. They do not otherwise: for a 2D array `a[..., s0, s1]`
+    # binds the slices to axes (0, 1), while for a 3D array it binds them to
+    # (1, 2) and the ellipsis absorbs the depth axis. Identical text, different
+    # axes -- which silently put the column window on the row axis for every 2D
+    # run and produced an empty slice.
+    solid = mask.reshape(-1, mask.shape[-2], mask.shape[-1])
+    speed = speed.reshape(-1, speed.shape[-2], speed.shape[-1])
+    height = solid.shape[-2]
+    width = solid.shape[-1]
+    # Project away the leading axes as well as the in-plane one, so this reads the
+    # same columns whatever the rank. `any(axis=-2)[0]` would return indices into the
+    # leading axis instead, which is length 1 after the reshape above.
+    cols = np.flatnonzero(solid.any(axis=-2).reshape(-1, width).any(axis=0))
+    rows = np.flatnonzero(solid.any(axis=-1).reshape(-1, height).any(axis=0))
+    if cols.size == 0 or rows.size == 0:
+        return None
+
+    lead, trail = int(cols[0]), int(cols[-1])
+    span = max(trail - lead + 1, 1)
+    # The body's *own* lateral extent, not a wider band: a window widened past the
+    # body fills with the accelerated shear layers, whose mean exceeds the upstream
+    # flow, and the deficit collapses to zero for a small body. Measured on a 96x48
+    # channel with a radius-6 body, a band of +/-1 diameter gave upstream 0.0359 and
+    # "wake" 0.0368 -- a negative deficit from averaging in the acceleration.
+    row_lo = max(int(rows[0]), 0)
+    row_hi = min(int(rows[-1]) + 1, height)
+    row_hi = max(row_hi, row_lo + 1)
+
+    def window(col_lo: int, col_hi: int) -> np.ndarray | None:
+        col_lo = max(col_lo, 0)
+        col_hi = min(col_hi, width)
+        if col_hi - col_lo < 1:
+            return None
+        # Row slice second-to-last, column slice last: numpy binds explicit slices
+        # from the right, so `[..., col, row]` would put the column window on the
+        # row axis and silently read an empty or wrong block.
+        return speed[..., row_lo:row_hi, col_lo:col_hi]
+
+    # Upstream: immediately ahead of the body, same lateral extent. The band is
+    # narrowed to whatever room exists ahead of the body rather than refused, so a
+    # body that fills a third of the domain is still measurable; its width is
+    # reported in `upstream_cells` rather than assumed.
+    band = max(1, min(span, lead))
+    wake_from = trail + max(span // 2, 1)
+    wake = window(wake_from, wake_from + 2 * span)
+    upstream = window(lead - band, lead)
+    if wake is None or upstream is None or wake.size == 0 or upstream.size == 0:
+        return None
+
+    wake_mean = float(wake.mean())
+    upstream_mean = float(upstream.mean())
+    # The reference has to be a real flow, not a field that has not started yet. A
+    # lid-driven cavity 200 steps in is still spinning up and reads 5.3e-4 against
+    # a prescribed 0.05 -- 1% of the drive -- which makes the ratio a comparison of
+    # two rounding errors. Measured, not guessed: that case returned a confident
+    # deficit of 0.0.
+    if upstream_mean < 0.05 * drive_velocity(sim):
+        return None
+
+    value = 1.0 - wake_mean / upstream_mean
+    return WakeStrength(
+        value=float(max(value, 0.0)),
+        upstream_mean=upstream_mean,
+        wake_mean=wake_mean,
+        wake_cells=int(wake.size),
+        upstream_cells=int(upstream.size),
+        body_span=span,
+    )
+
+
+def _obstacle_mask(sim: SimEngine) -> np.ndarray | None:
+    try:
+        return np.asarray(sim.get_obstacles())
+    except (AttributeError, ValueError):
+        return None
+
+
 def pressure_drop(sim: SimEngine, scene: Scene | None = None) -> PressureDrop | None:
     """Gauge-pressure difference across the domain, or None when it is not defined.
 
