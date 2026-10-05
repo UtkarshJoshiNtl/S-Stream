@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import time
 from pathlib import Path
@@ -38,6 +39,7 @@ from scene.probe import Probe, validate_scene_probes
 from scene.scene import ProbeSpec, Scene, apply_to_sim, default_scene
 from scene.serializer import load as scene_load
 from scene.serializer import save as scene_save
+from scene.serializer import scene_to_dict
 from workbench.dialogs.export_dialog import ExportDialog
 from workbench.dialogs.sweep_dialog import SweepDialog
 from workbench.dialogs.wizard_dialog import StartDialog, WizardTemplate
@@ -83,6 +85,10 @@ class MainWindow(QMainWindow):
         self._state_history: list[tuple[int, np.ndarray, np.ndarray]] = []
         self._max_history_steps = 300
         self._scrubbing = False
+        # Serialized form of the document as it was last saved, loaded or created.
+        # Dirty state is *computed* against this rather than flagged by mutation
+        # sites, so it cannot drift -- see `_scene_fingerprint`.
+        self._saved_fingerprint = ""
 
         self.setWindowTitle("S-Stream - Fluid Workbench")
         self.resize(1320, 840)
@@ -90,6 +96,7 @@ class MainWindow(QMainWindow):
 
         self._configure_domain_for_scene()
         apply_to_sim(self.scene, self.sim)
+        self._saved_fingerprint = self._scene_fingerprint()
 
         self.viewport = Viewport()
         self.viewport.set_sim(sim)
@@ -474,6 +481,7 @@ class MainWindow(QMainWindow):
         self._adopt_scene(default_scene())
         self._file_path = None
         self._apply_and_refresh()
+        self._mark_document_clean()
 
     def _file_open(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
@@ -485,12 +493,18 @@ class MainWindow(QMainWindow):
             self._adopt_scene(scene_load(path))
             self._file_path = Path(path)
             self._apply_and_refresh()
+            self._mark_document_clean()
         except Exception as e:
             QMessageBox.warning(self, "Open Failed", str(e))
 
     def _file_save(self) -> None:
         if self._file_path:
             scene_save(self.scene, self._file_path)
+            # Not cosmetic: `Save` is the action that makes the document match what is
+            # on disk, so it is the point at which the `*` must come off. Save-as went
+            # through `_mark_document_clean` and this path silently did not, which left
+            # the title claiming unsaved work immediately after saving it.
+            self._mark_document_clean()
         else:
             self._file_save_as()
 
@@ -502,7 +516,7 @@ class MainWindow(QMainWindow):
             return
         self._file_path = Path(path)
         scene_save(self.scene, self._file_path)
-        self._update_title()
+        self._mark_document_clean()
 
     def _rebuild_probes(self) -> None:
         self.runtime_probes = [Probe(spec) for spec in self.scene.probes]
@@ -607,9 +621,47 @@ class MainWindow(QMainWindow):
         gs = self.sim.grid_shape
         return f"{gs[1]}x{gs[0]}  |  nu {self.sim.viscosity:.4f}"
 
+    def _scene_fingerprint(self) -> str:
+        """A deterministic string for the document's current state.
+
+        `scene_to_dict` covers exactly what a save writes, and nothing that a run
+        touches, so this compares documents rather than processes: stepping the
+        simulation does not make the document dirty, and an undo back to the saved
+        state makes it clean again.
+        """
+        return json.dumps(scene_to_dict(self.scene), sort_keys=True, default=str)
+
+    @property
+    def is_dirty(self) -> bool:
+        """Whether the document differs from what was last saved or loaded.
+
+        Computed, not flagged. Every mutation funnel in this window -- the scene
+        panel, the viewport's drawing, undo/redo, probe placement, the engine
+        sliders -- would otherwise have to remember to set a flag, and the ones that
+        forget do so silently: the title keeps claiming the work is saved while it is
+        not. Measured coverage of the alternative is exactly the set of call sites,
+        which is why this is derived. Being content-based also makes spurious signals
+        harmless (the panel emits `scene_changed` while syncing), and makes "undo back
+        to the saved state" report clean, which is what a user expects.
+        """
+        return self._scene_fingerprint() != self._saved_fingerprint
+
+    def _mark_document_clean(self) -> None:
+        """Record the current document as the saved state.
+
+        Called from the paths where a document genuinely has a durable origin or has
+        just been written -- new, open, preset load, wizard template, save. *Not*
+        called from `_on_scene_changed`, which is where undo/redo lands: restoring an
+        earlier state does not make the document match what is on disk, and marking it
+        clean there would silently reclassify unsaved work as saved.
+        """
+        self._saved_fingerprint = self._scene_fingerprint()
+        self._update_title()
+
     def _update_title(self) -> None:
         name = self._file_path.stem if self._file_path else self.scene.name
-        self.setWindowTitle(f"S-Stream - {name}")
+        marker = "*" if self.is_dirty else ""
+        self.setWindowTitle(f"S-Stream - {name}{marker}")
 
     def _update_re_label(self) -> None:
         from analysis.physics import characteristic_length, reynolds_number
@@ -1042,6 +1094,7 @@ class MainWindow(QMainWindow):
         self._adopt_scene(template.scene)
         self._file_path = None
         self._apply_and_refresh()
+        self._mark_document_clean()
         self._prompt_poe_prediction(template.name)
         if self.scene.product.autorun_steps:
             self._run_guided_demo()
@@ -1060,6 +1113,7 @@ class MainWindow(QMainWindow):
             self._adopt_scene(load_preset(path))
             self._file_path = None
             self._apply_and_refresh()
+            self._mark_document_clean()
             self._prompt_poe_prediction(self.scene.name)
             if self.scene.product.autorun_steps:
                 self._run_guided_demo()
@@ -1324,7 +1378,14 @@ class MainWindow(QMainWindow):
         if dialog.result is not None:
             sweep_dict = dialog.result.to_dict()
             self.scene.sweeps.append(sweep_dict)
-            scene_save(self.scene, self._file_path) if self._file_path else None
+            if self._file_path:
+                # This path has always auto-saved, so the document now matches disk and
+                # the baseline moves with it. With no file there is nothing to match,
+                # and the added sweep leaves the document genuinely unsaved.
+                scene_save(self.scene, self._file_path)
+                self._mark_document_clean()
+            else:
+                self._update_title()
 
     def _open_export_dialog(self) -> None:
         dialog = ExportDialog(self)
