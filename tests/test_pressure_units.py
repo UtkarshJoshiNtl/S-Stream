@@ -180,10 +180,10 @@ class TestTheAnalysisPanelAgreesWithTheEngine:
 class TestTheApiAgrees:
     def test_the_endpoint_serves_gauge_pressure(self, driven):
         pytest.importorskip("fastapi")
-        from engines.api import build_app
+        from engines.api import create_app
 
         client = __import__("fastapi.testclient", fromlist=["TestClient"]).TestClient(
-            build_app()
+            create_app(driven)
         )
         response = client.get("/pressure")
         assert response.status_code == 200

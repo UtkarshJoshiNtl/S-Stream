@@ -64,9 +64,15 @@ def _require_fastapi() -> None:
         raise ImportError(_MISSING_FASTAPI_MESSAGE) from _IMPORT_ERROR
 
 
-def create_app(sim: SimEngine) -> Any:
-    """Create a FastAPI app wrapping the given simulation engine."""
-    _require_fastapi()
+# The request models are module-level, not local to ``create_app``. ``from __future__
+# import annotations`` turns every endpoint annotation into a string, and FastAPI
+# resolves those strings against the *module* globals. A model defined inside
+# ``create_app`` is unreachable that way, so FastAPI could not see it as a body and
+# silently reclassified the parameter as a required query string: every POST with a
+# JSON body answered 422 "Field required: query.req" while GET routes worked fine.
+# They stay behind ``HAS_FASTAPI`` so that a plain ``pip install s-stream`` still
+# imports this module (C04) — the guard keeps the name ``BaseModel`` unbound-safe.
+if HAS_FASTAPI:
 
     class RunRequest(BaseModel):
         steps: int = 100
@@ -80,6 +86,11 @@ def create_app(sim: SimEngine) -> Any:
         x: int = 2
         y: int = 32
         strength: float = 0.05
+
+
+def create_app(sim: SimEngine) -> Any:
+    """Create a FastAPI app wrapping the given simulation engine."""
+    _require_fastapi()
 
     app = FastAPI(
         title="S-Stream API",
@@ -194,7 +205,14 @@ def create_app(sim: SimEngine) -> Any:
         # state's 1/3 offset, so a client plotting it or differencing it against
         # another run has to know about a convention that nothing in the response
         # states. `quantity` and `unit` say which of the two it is (PLAN.md C35).
-        p = sim.get_pressure_gauge()
+        #
+        # The array is part of the response, not just the summary: the reason this
+        # endpoint exists is that a client must be able to difference two runs, and
+        # `GET /field` cannot serve that because `get_field("pressure")` is the
+        # display-normalised 0..1 render (it carries the EMA max, so two runs of the
+        # same physics do not subtract to the same thing). The raw gauge values are
+        # the one payload a client can check the definition against.
+        p = np.asarray(sim.get_pressure_gauge())
         return {
             "shape": list(p.shape),
             "mean": float(p.mean()),
@@ -203,6 +221,7 @@ def create_app(sim: SimEngine) -> Any:
             "quantity": "p' = c_s^2 * (rho - rho0)",
             "unit": "lattice",
             "reference_pressure": sim.reference_pressure(),
+            "field": p.tolist(),
         }
 
     @app.get("/obstacles")
