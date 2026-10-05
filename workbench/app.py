@@ -50,6 +50,11 @@ from workbench.widgets.tool_strip import ToolStrip
 from workbench.widgets.transport_bar import TransportBar
 
 logger = logging.getLogger(__name__)
+# Steps between banner refreshes during a run. Matches the outcome panel's own
+# `step_count % 15` gate so the two displays of `check_sanity`'s warnings are
+# never describing different steps (see `_refresh_sanity_banner_if_due`).
+SANITY_REFRESH_STEPS = 15
+
 
 # Field names are not listed here on purpose. Every engine declares its own via
 # `SimEngine.get_field_names()`, and the UI reads that list, so a field cannot be
@@ -678,6 +683,7 @@ class MainWindow(QMainWindow):
         self._record_state_history()
         self.analysis_panel.tick(1.0, step=self.step_count)
         self.outcome_panel.update_outcome(self.step_count)
+        self._refresh_sanity_banner_if_due()
         self.viewport.update()
         self._update_re_label()
 
@@ -752,6 +758,7 @@ class MainWindow(QMainWindow):
                     self.transport_bar.set_play_state(False)
                     self.demo_btn.setText("Run Demo")
         self.outcome_panel.update_outcome(self.step_count)
+        self._refresh_sanity_banner_if_due()
         self.viewport.update()
         if self._recorder is not None and self._recorder.recording:
             if not self._recorder.add_frame(self.viewport.grab().toImage()):
@@ -768,6 +775,26 @@ class MainWindow(QMainWindow):
 
     def _on_speed_changed(self, factor: float) -> None:
         self._speed_factor = factor
+
+    def _refresh_sanity_banner_if_due(self) -> None:
+        """Refresh the banner during a run, on the *same* step as the outcome panel.
+
+        The banner used to be rebuilt only on apply/reset/load, so for the whole of a
+        run it described the state of the scene at step 0 while the simulation ran on
+        underneath it. Since C44 `check_sanity` also judges the field state, that gap
+        stopped being cosmetic: a run that had already filled the lattice with NaN
+        still showed "Setup looks stable".
+
+        The cadence matches `OutcomePanel.update_outcome`'s own `step_count % 15`
+        test, not merely because 15 is fast enough but so that the two displays
+        cannot disagree about which step they describe -- both call `check_sanity`,
+        and a banner reading "settled" beside a panel reading "still developing"
+        would be the same class of bug this whole item is about. The apply, reset and
+        load paths call `_update_sanity_banner()` directly, so a scene edit is still
+        reflected immediately rather than up to fifteen steps later.
+        """
+        if self.step_count % SANITY_REFRESH_STEPS == 0:
+            self._update_sanity_banner()
 
     def _update_sanity_banner(self) -> None:
         if not hasattr(self, "sanity_banner"):
