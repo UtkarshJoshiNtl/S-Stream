@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QMessageBox,
     QProgressBar,
     QPushButton,
     QSpinBox,
@@ -28,9 +29,17 @@ _SWEEP_PARAMS = [
 ]
 
 
+# Only used to seed the estimate before any step has run; after the first value the
+# label uses measured throughput. Calibrated at 128x128 (measured 13.1s for 8 values
+# of 5000 steps => ~3.3e-4 s/step) and rounded up, because an optimistic first guess
+# is what makes a user commit to a job they then have to cancel.
+_SEED_SECONDS_PER_STEP = 3.5e-4
+
+
 class _SweepWorker(QThread):
     progress = Signal(int, int)
     finished = Signal(object)
+    failed = Signal(str)
 
     def __init__(self, scene, parameter, values, measurements, steps):
         super().__init__()
@@ -40,15 +49,28 @@ class _SweepWorker(QThread):
         self.measurements = measurements
         self.steps = steps
 
+    def _should_continue(self) -> bool:
+        return not self.isInterruptionRequested()
+
     def run(self) -> None:
-        result = run_sweep(
-            self.scene,
-            self.parameter,
-            self.values,
-            self.measurements,
-            self.steps,
-            progress_callback=lambda c, t: self.progress.emit(c, t),
-        )
+        try:
+            result = run_sweep(
+                self.scene,
+                self.parameter,
+                self.values,
+                self.measurements,
+                self.steps,
+                progress_callback=lambda c, t: self.progress.emit(c, t),
+                should_continue=self._should_continue,
+            )
+        except Exception as exc:
+            # Without this the exception unwinds out of run(), PySide6 prints it to
+            # stderr and returns -- the one output a GUI user never sees -- leaving
+            # `finished` unemitted and the dialog's Run button disabled for good. The
+            # failure is not silent, but it is *invisible*, which is worse: the user
+            # sees a frozen dialog and no reason for it.
+            self.failed.emit(f"{type(exc).__name__}: {exc}")
+            return
         self.finished.emit(result)
 
 
@@ -59,6 +81,13 @@ class SweepDialog(QDialog):
         self.setMinimumSize(700, 500)
         self._scene = scene
         self._result: SweepResult | None = None
+        self._error: str | None = None
+        # Live throughput, for the estimate label. Reset per run so a second sweep is
+        # not timed against the first one's rate.
+        self._values_done = 0
+        self._elapsed = 0.0
+        self._requested = 0
+        self._worker = None
 
         layout = QVBoxLayout(self)
 
@@ -118,6 +147,11 @@ class SweepDialog(QDialog):
         self._run_btn.clicked.connect(self._run_sweep)
         status_row.addWidget(self._run_btn)
 
+        self._cancel_btn = QPushButton("Cancel")
+        self._cancel_btn.clicked.connect(self._cancel_sweep)
+        self._cancel_btn.setEnabled(False)
+        status_row.addWidget(self._cancel_btn)
+
         self._est_label = QLabel("")
         status_row.addWidget(self._est_label)
         status_row.addStretch()
@@ -144,6 +178,7 @@ class SweepDialog(QDialog):
         close_btn = buttons.addButton("Close", QDialogButtonBox.ButtonRole.RejectRole)
         close_btn.clicked.connect(self.reject)
         layout.addWidget(buttons)
+        self._close_btn = close_btn
 
         self.setStyleSheet(
             "QDialog { background: #11111b; } "
@@ -171,33 +206,77 @@ class SweepDialog(QDialog):
         return [min_v + (max_v - min_v) * i / (n - 1) for i in range(n)]
 
     def _update_estimate(self) -> None:
+        """Estimate the remaining time, preferring a measured rate.
+
+        The original constant (`n * steps * 1e-5`) claimed 0.4s for a job that took
+        13.1s on the default 128x128 scene -- 33x optimistic, and it does not scale
+        with resolution at all. A hardcoded constant can only be wrong somewhere, so
+        the label is now driven by measured throughput once there is any, and the
+        constant is kept only to seed the first value before a single step has run.
+        """
         n = self._num_steps.value()
         steps = self._sim_steps.value()
-        est = n * steps * 0.00001
-        self._est_label.setText(f"~{est:.1f}s estimated")
+        done = self._values_done
+        if done > 0 and self._elapsed > 0.0:
+            per_value = self._elapsed / done
+            est = per_value * (n - done)
+            self._est_label.setText(f"~{est:.0f}s remaining ({done}/{n} done)")
+        else:
+            est = n * steps * _SEED_SECONDS_PER_STEP
+            self._est_label.setText(f"~{est:.0f}s estimated")
 
     def _run_sweep(self) -> None:
+        if self._worker is not None and self._worker.isRunning():
+            return
+        self._error = None
         self._run_btn.setEnabled(False)
+        self._cancel_btn.setEnabled(True)
+        self._close_btn.setEnabled(False)
         self._progress.setVisible(True)
         self._progress.setValue(0)
+        self._values_done = 0
+        self._elapsed = 0.0
 
         param = self._param_combo.currentText()
         values = self._get_values()
         meas = [self._measure_combo.currentText()]
         steps = self._sim_steps.value()
+        self._requested = len(values)
 
         self._worker = _SweepWorker(self._scene, param, values, meas, steps)
         self._worker.progress.connect(self._on_progress)
         self._worker.finished.connect(self._on_result)
+        self._worker.failed.connect(self._on_failure)
         self._worker.start()
+
+    def _cancel_sweep(self) -> None:
+        """Ask the worker to stop. `run_sweep` notices at its next check."""
+        if self._worker is None:
+            return
+        self._worker.requestInterruption()
+        self._cancel_btn.setEnabled(False)
+        self._est_label.setText("Cancelling...")
+
+    def _set_running(self, running: bool) -> None:
+        self._run_btn.setEnabled(not running)
+        self._cancel_btn.setEnabled(running)
+        # A QThread destroyed while running aborts the process, so the dialog must
+        # not be dismissable while one is live. Cancel is the way out instead.
+        self._close_btn.setEnabled(not running)
 
     def _on_progress(self, current: int, total: int) -> None:
         self._progress.setMaximum(total)
         self._progress.setValue(current)
+        self._values_done = current
 
     def _on_result(self, result: SweepResult) -> None:
         self._result = result
-        self._run_btn.setEnabled(True)
+        self._elapsed = result.elapsed
+        # The result is the authority on how many values finished, not the progress
+        # counter: a sweep whose progress ticks were all coalesced away still knows
+        # what it produced, and the estimate is computed from this.
+        self._values_done = len(result.values)
+        self._set_running(False)
 
         if result.data:
             for m in result.measurements:
@@ -208,6 +287,29 @@ class SweepDialog(QDialog):
                 self._plot.setLabel("bottom", result.parameter)
 
         self._progress.setVisible(False)
+        if result.cancelled:
+            # Partial data is kept, but never presented as a finished sweep. The
+            # denominator is what was *requested*, not `len(result.values)`: run_sweep
+            # truncates that list to what completed, so using it here would report
+            # "2 of 2 done" for a sweep cancelled after two of eight.
+            done = len(result.values)
+            self._est_label.setText(f"Cancelled after {done}/{self._requested} values")
+            QMessageBox.information(
+                self,
+                "Sweep Cancelled",
+                f"Stopped after {done} of {self._requested} value(s). "
+                "The values that finished are shown.",
+            )
+        else:
+            self._update_estimate()
+
+    def _on_failure(self, message: str) -> None:
+        """Surface what PySide6 would have printed to a stderr nobody reads."""
+        self._error = message
+        self._set_running(False)
+        self._progress.setVisible(False)
+        self._est_label.setText("Sweep failed")
+        QMessageBox.warning(self, "Sweep Failed", message)
 
     @property
     def result(self) -> SweepResult | None:
