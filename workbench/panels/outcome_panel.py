@@ -79,7 +79,7 @@ class OutcomePanel(QWidget):
         score_layout.addRow("Re", self.re_value)
         score_layout.addRow("Cd", self.cd_value)
         score_layout.addRow("St", self.st_value)
-        score_layout.addRow("Δp", self.pdrop_value)
+        score_layout.addRow("Δp (proxy)", self.pdrop_value)
         layout.addWidget(score_frame)
 
         # --- Zone C: Sanity warnings ---
@@ -150,7 +150,13 @@ class OutcomePanel(QWidget):
         self.re_value.setText(self._range_text(re, "Re", expected))
         self.cd_value.setText(self._range_text(cd, "Cd", expected))
         self.st_value.setText(st_text if regime.strouhal is not None else "—")
-        self.pdrop_value.setText(f"{score.pressure_drop:.4f}")
+        # The outlet is a copy rather than a pressure boundary, so this is a
+        # relative indicator for one geometry, not a loss coefficient (C41).
+        self.pdrop_value.setText(
+            "not measurable"
+            if score.pressure_drop is None
+            else f"{score.pressure_drop:.4f}"
+        )
 
         # --- Zone C: sanity warnings as colored pills ---
         self._clear_warnings()

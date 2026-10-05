@@ -4,7 +4,12 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from analysis.physics import characteristic_length, drag_coefficient, reynolds_number
+from analysis.physics import (
+    characteristic_length,
+    drag_coefficient,
+    pressure_drop,
+    reynolds_number,
+)
 from analysis.regimes import detect_flow_regime
 from engines.base import SimEngine
 from scene.probe import Probe
@@ -16,7 +21,7 @@ class DesignScorecard:
     drag_coefficient: float
     reynolds_number: float
     wake_strength: float
-    pressure_drop: float
+    pressure_drop: float | None
     shedding_confidence: float
     summary: str
     range_checks: dict[str, dict] = field(default_factory=dict)
@@ -42,8 +47,10 @@ def compute_scorecard(
     probes = probes or []
     vel = sim.get_velocity()
     speed = np.sqrt(vel[:, :, 0] ** 2 + vel[:, :, 1] ** 2)
-    p = sim.get_pressure()
-    pressure_drop = float(abs(np.mean(p[:, 0]) - np.mean(p[:, -1])))
+    # `None` when the quantity is undefined (no driven through-flow, or an obstacle
+    # in a boundary column). The panel and the report render that as "not
+    # measurable" rather than printing a number with no physical referent.
+    drop = pressure_drop(sim, scene)
     wake_strength = float(np.std(speed))
     regime = detect_flow_regime(sim, scene, probes, step_count)
     cd = drag_coefficient(sim)
@@ -86,7 +93,7 @@ def compute_scorecard(
         drag_coefficient=float(cd),
         reynolds_number=float(re),
         wake_strength=wake_strength,
-        pressure_drop=pressure_drop,
+        pressure_drop=None if drop is None else float(drop.value),
         shedding_confidence=(
             regime.confidence if "shedding" in regime.label.lower() else 0.0
         ),

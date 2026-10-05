@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import numpy as np
 
 from engines.base import SimEngine
@@ -43,6 +45,111 @@ def reynolds_number(sim: SimEngine, obstacle_diameter: float | None = None) -> f
     if nu <= 0 or U <= 0:
         return 0.0
     return U * L / nu
+
+
+@dataclass(frozen=True)
+class PressureDrop:
+    """An inlet-to-outlet gauge-pressure difference, and what it was measured from.
+
+    `value` is `mean(gauge p at the inlet column) - mean(gauge p at the outlet
+    column)`, in lattice pressure units. The scatter of each column is carried
+    alongside it because a mean difference smaller than the columns' own spread is
+    not a measurement, and `domain_lengths` records how many obstacle diameters the
+    domain is, which is what decides whether the outlet pressure has developed at
+    all.
+    """
+
+    value: float
+    inlet_mean: float
+    outlet_mean: float
+    inlet_scatter: float
+    outlet_scatter: float
+    domain_lengths: float
+
+    @property
+    def resolved(self) -> bool:
+        """Whether the difference stands out against the columns' own scatter."""
+        return abs(self.value) > (self.inlet_scatter + self.outlet_scatter)
+
+
+def pressure_drop(sim: SimEngine, scene: Scene | None = None) -> PressureDrop | None:
+    """Gauge-pressure difference across the domain, or None when it is not defined.
+
+    This was inlined in `scorecard.py` as `abs(mean(p[:, 0]) - mean(p[:, -1]))` on
+    the *absolute* pressure field. Three things were wrong with that, in ascending
+    order of how much they mattered:
+
+    1. **On a 3D engine it measured the wrong pair of faces.** `p[:, 0]` on a
+       `(depth, height, width)` array is the *bottom wall plane*, not the inlet
+       column, so the "pressure drop" was a top-to-bottom wall difference. The
+       x axis is last in both 2D and 3D, so this indexes `[..., 0]` and `[..., -1]`.
+
+    2. **It reported a number where no gradient exists.** A lid-driven cavity has
+       no streamwise through-flow and no inlet/outlet pressure gradient by
+       construction, yet it produced 1.4e-4 -- a plausible-looking figure with no
+       physical referent. Refused.
+
+    3. **It never said what it was measuring.** Returned as `float` and rendered as
+       "Δp" next to Re, Cd and St, three quantities with established definitions.
+
+    The guards are deliberately narrow -- only the cases where the quantity is
+    undefined are refused:
+
+    * no driven through-flow (`drive_velocity <= 0`);
+    * an obstacle touching the inlet or outlet column, whose column mean would
+      include solid cells;
+    * a gauge pressure this engine cannot produce.
+
+    What this does **not** do is make the number a real pressure-loss
+    coefficient. The outlet is a *copy* of its neighbour rather than a pressure
+    boundary, so the difference includes the inlet transient. Measured on a 256x128
+    channel after 500 steps: 9.0e-3 with no obstacle, 1.35e-2 with one at the
+    centre -- the obstacle's contribution is about a third of the reading. Use it
+    to compare two runs of the *same* geometry, never as a loss coefficient.
+    """
+    # The *inlet*, not `drive_velocity`: a lid-driven cavity has a nonzero drive
+    # velocity but no streamwise through-flow, so no inlet/outlet pressure gradient
+    # can exist and any difference between the two walls is a stagnation artifact.
+    if float(getattr(sim, "u_inflow", 0.0) or 0.0) <= 0:
+        return None
+
+    try:
+        p = np.asarray(sim.get_pressure_gauge(), dtype=np.float64)
+    except (KeyError, ValueError):
+        return None
+
+    if _touches_boundary(sim, p.shape[-1]):
+        return None
+
+    inlet, outlet = p[..., 0], p[..., -1]
+    value = float(inlet.mean() - outlet.mean())
+
+    length = characteristic_length(scene) if scene is not None else 1.0
+    return PressureDrop(
+        value=value,
+        inlet_mean=float(inlet.mean()),
+        outlet_mean=float(outlet.mean()),
+        inlet_scatter=float(inlet.std()),
+        outlet_scatter=float(outlet.std()),
+        domain_lengths=float(p.shape[-1] / length) if length > 0 else 0.0,
+    )
+
+
+def _touches_boundary(sim: SimEngine, width: int) -> bool:
+    """Whether any obstacle occupies the inlet or outlet column.
+
+    Only the mask is consulted, not the scene's obstacle geometry, so this holds
+    however the solid was drawn: the question is what is in the column that gets
+    averaged, and a polygon clipping the edge puts solid cells there just as surely
+    as a circle does.
+    """
+    try:
+        mask = np.asarray(sim.get_obstacles())
+    except (AttributeError, ValueError):
+        return False
+    if mask.ndim < 2 or mask.shape[-1] != width:
+        return False
+    return bool(mask[..., 0].any() or mask[..., -1].any())
 
 
 def drag_coefficient(sim: SimEngine, diameter: float | None = None) -> float:

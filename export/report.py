@@ -61,7 +61,12 @@ def export_markdown_report(
                 "## Design Scorecard",
                 "",
                 f"- Wake strength: {scorecard.wake_strength:.4f}",
-                f"- Pressure drop proxy: {scorecard.pressure_drop:.4f}",
+                "- Pressure drop proxy: "
+                + (
+                    "not measurable for this configuration"
+                    if scorecard.pressure_drop is None
+                    else f"{scorecard.pressure_drop:.4f}"
+                ),
                 f"- Shedding confidence: {scorecard.shedding_confidence:.0%}",
                 f"- Summary: {scorecard.summary}",
             ]
