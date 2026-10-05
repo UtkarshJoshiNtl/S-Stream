@@ -14,12 +14,20 @@ MAX_HISTORY = 512
 
 # Quantities a probe computes locally rather than reading from the engine.
 #
-# `speed` is deliberately here even though the engine exposes a "speed" field.
-# get_field("speed") returns a display value normalised to 0..1 against a running
-# max, whereas the probe series is the physical magnitude. They are different
-# quantities, so swapping one for the other would silently rescale every
-# existing speed trace in every saved scene. Anything else the engine declares is
-# recorded straight from the field.
+# `speed` is deliberately here even though the engine exposes a "speed" field. Every
+# other field is read through `get_field_raw` for the same reason: `get_field`
+# returns a display value normalised to 0..1 against a running max, whereas a probe
+# series is a measurement. They are different quantities, so reading one and calling
+# it the other produces a trace that cannot be compared with anything else in the
+# application. Measured on a driven channel after 400 steps, a `pressure` probe
+# recorded values in [0.500, 0.843] while the gauge pressure at that cell was
+# 0.0203, and a `density` probe recorded [0.000, 0.660] against a density of
+# 1.0609. The pressure trace's scale also drifts with the running EMA, so it was not
+# even reproducible between runs.
+#
+# Reading the render had a second effect nobody asked for: `get_field` *mutates* the
+# engine's EMA state, so a probe recording pressure changed how pressure was drawn
+# on the viewport. `get_field_raw` has no such coupling.
 LOCAL_FIELDS = ("u", "v", "speed")
 
 
@@ -140,10 +148,11 @@ class Probe:
                     if cache is not None and f in cache:
                         field = cache[f]
                     else:
-                        field = sim.get_field(f)
+                        # `get_field_raw`, not `get_field`: see LOCAL_FIELDS above.
+                        field = sim.get_field_raw(f)
                         if cache is not None:
                             cache[f] = field
-                except ValueError as exc:
+                except (KeyError, ValueError) as exc:
                     # Normally caught earlier, at placement or preset load. If a
                     # field disappears while running (thermal toggled off), say
                     # so once rather than every single step.

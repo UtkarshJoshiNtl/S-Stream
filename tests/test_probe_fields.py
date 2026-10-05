@@ -78,11 +78,18 @@ class TestRecordingEngineFields:
         assert np.isfinite(probe.history["density"][0])
 
     def test_value_matches_the_field_array(self):
+        """The *raw* field, not the render (PLAN.md C43).
+
+        This assertion used to compare against `get_field`, which is the `[0, 1]`
+        display value, and passed because the probe read the display value. A probe
+        is a measurement: reading it the render meant a pressure trace that was
+        really a normalized image, recentred on 0.5 and scaled by a drifting EMA.
+        """
         sim = _stepped(LBM2D(32, 32))
         probe = _probe(x=12, y=8, fields=["pressure"])
         probe.record(sim)
         assert probe.history["pressure"][0] == pytest.approx(
-            float(sim.get_field("pressure")[8, 12]), rel=1e-5
+            float(sim.get_field_raw("pressure")[8, 12]), rel=1e-5
         )
 
     def test_multiphase_preset_channels_now_record(self):
@@ -414,9 +421,16 @@ class TestPresetProbesActuallyRecord:
                         probe.history[name][0]
                     ), f"{path.name}: {spec.name} field {name!r} is not finite"
 
-    def test_recorded_samples_stay_within_normalised_range(self):
-        """Engine fields are display-normalised to 0..1, so a wildly out-of-range
-        sample means the probe is reading the wrong array."""
+    def test_recorded_samples_stay_within_the_raw_range(self):
+        """A wildly out-of-range sample means the probe read the wrong array.
+
+        The bound is the raw field's own range, not `[0, 1]`. It used to be `[0, 1]`
+        because probes recorded display-normalized renders (PLAN.md C43), and that
+        assertion is what pinned the wrong behaviour: `oil_water_separation` samples
+        its droplet at `component1 = 2.0`, which is the correct density of a
+        rho=2.0 Shan-Chen droplet and was failing this check for being *too
+        physical*.
+        """
         for path in self._preset_files():
             scene = load_preset(path)
             factory = self._engine_for(scene.probes)
@@ -429,9 +443,13 @@ class TestPresetProbesActuallyRecord:
                 for name in spec.fields:
                     value = probe.history[name][0]
                     if name not in local:
+                        raw = np.asarray(sim.get_field_raw(name))
                         assert (
-                            -1e-6 <= value <= 1.0 + 1e-6
-                        ), f"{path.name}: {name!r} sampled {value}, outside 0..1"
+                            float(raw.min()) - 1e-6 <= value <= float(raw.max()) + 1e-6
+                        ), (
+                            f"{path.name}: {name!r} sampled {value}, outside the raw "
+                            f"field range [{raw.min()}, {raw.max()}]"
+                        )
 
     def test_repeated_recording_keeps_growing(self):
         """Guards against a channel that records once and then sticks."""
