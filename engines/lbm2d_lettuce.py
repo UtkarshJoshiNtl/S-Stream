@@ -242,7 +242,11 @@ class LBM2DLettuce(SimEngine, SmokeMixin):
                 np.float32
             )
         if name == "pressure":
-            p = (self.get_density() - 1.0).astype(np.float32)
+            # Gauge pressure, from the single canonical definition on SimEngine
+            # (PLAN.md C35/C36). This used to compute `rho - 1` inline, which is
+            # three times the gauge pressure -- the same field, rendered larger,
+            # depending on the backend.
+            p = self.get_pressure_gauge().astype(np.float32)
             cur_max = max(float(np.max(np.abs(p))), 0.001)
             self._ema_pres_max = (1 - a) * self._ema_pres_max + a * cur_max
             return np.clip(p / self._ema_pres_max * 0.5 + 0.5, 0, 1).astype(np.float32)

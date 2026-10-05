@@ -190,12 +190,19 @@ def create_app(sim: SimEngine) -> Any:
 
     @app.get("/pressure")
     def get_pressure() -> dict[str, Any]:
-        p = sim.get_pressure()
+        # Gauge, not absolute: an endpoint that returns rho/3 carries the reference
+        # state's 1/3 offset, so a client plotting it or differencing it against
+        # another run has to know about a convention that nothing in the response
+        # states. `quantity` and `unit` say which of the two it is (PLAN.md C35).
+        p = sim.get_pressure_gauge()
         return {
             "shape": list(p.shape),
             "mean": float(p.mean()),
             "min": float(p.min()),
             "max": float(p.max()),
+            "quantity": "p' = c_s^2 * (rho - rho0)",
+            "unit": "lattice",
+            "reference_pressure": sim.reference_pressure(),
         }
 
     @app.get("/obstacles")

@@ -489,6 +489,8 @@ class LBM2D(SimEngine, SmokeMixin, ThermalMixin):
                 np.float32
             )
         if name == "pressure":
+            # Gauge pressure, from the single canonical definition on SimEngine
+            # (PLAN.md C35/C36). Every other backend now calls the same method.
             p = self.get_pressure_gauge().astype(np.float32)
             cur_max = max(float(np.max(np.abs(p))), 0.001)
             self._ema_pres_max = (1 - a) * self._ema_pres_max + a * cur_max
