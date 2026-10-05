@@ -295,6 +295,7 @@ class AnalysisPanel(QWidget):
         from analysis.physics import (
             characteristic_length,
             drag_coefficient,
+            drive_velocity,
             reynolds_number,
             strouhal_number,
         )
@@ -307,7 +308,11 @@ class AnalysisPanel(QWidget):
         self.cd_label.setText(f"{Cd:.3f}")
 
         St = None
-        if self.probes and self.sim.u_inflow > 0:
+        # `drive_velocity`, not `u_inflow`: a lid-driven cavity has no inlet flow
+        # and would show "—" here while the regime classifier reported a real St.
+        # Two panels must not disagree about which velocity defines the quantity.
+        velocity = drive_velocity(self.sim)
+        if self.probes and velocity > 0:
             probe = self.probes[0]
             v_data = probe.history.get("v", [])
             # `times` rather than a declared dt: this panel samples every second
@@ -317,7 +322,7 @@ class AnalysisPanel(QWidget):
                 v_data,
                 dt,
                 diameter=diam,
-                velocity=self.sim.u_inflow,
+                velocity=velocity,
                 times=probe.times(),
             )
         self.st_label.setText(f"{St:.3f}" if St is not None else "—")

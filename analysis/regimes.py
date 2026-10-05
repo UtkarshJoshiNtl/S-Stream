@@ -31,7 +31,22 @@ def _max_vorticity(sim: SimEngine) -> float:
     return float(np.abs(sim.vorticity()).max())
 
 
-def _probe_oscillation(probes: list[Probe]) -> tuple[float, float | None]:
+def _probe_oscillation(
+    probes: list[Probe], diameter: float = 1.0, velocity: float = 1.0
+) -> tuple[float, float | None]:
+    """Wake oscillation amplitude and Strouhal number, from the first probe.
+
+    `diameter` and `velocity` are the scene's characteristic length and the
+    velocity actually driving the flow. They were left at the function defaults of
+    1.0, which made the returned "Strouhal number" the raw oscillation frequency in
+    cycles per step -- a different quantity wearing the same name, and one the
+    panel (which does pass D and U) disagreed with by a factor of D/U. For the
+    cylinder preset that is 24/0.08 = 300, and `scorecard` compares the result
+    against the preset's expected St range of [0.12, 0.28], so the check could not
+    pass for any scene at any setting. Measured on that preset at step 4000:
+    regime.strouhal = 0.00977, verdict `pass=False`, while the same probe data
+    through the panel's call gives 2.93.
+    """
     if not probes:
         return 0.0, None
     v_history = probes[0].history.get("v", [])
@@ -41,7 +56,13 @@ def _probe_oscillation(probes: list[Probe]) -> tuple[float, float | None]:
     amplitude = float(np.std(recent))
     # The recorded step cadence, not a declared dt=1.0: the panel samples every
     # second tick, so dt=1.0 reported a frequency twice too high (PLAN.md C39).
-    return amplitude, strouhal_number(v_history, dt=1.0, times=probes[0].times())
+    return amplitude, strouhal_number(
+        v_history,
+        dt=1.0,
+        diameter=diameter,
+        velocity=velocity,
+        times=probes[0].times(),
+    )
 
 
 def detect_flow_regime(
@@ -65,7 +86,9 @@ def detect_flow_regime(
     length = characteristic_length(scene)
     re = reynolds_number(sim, obstacle_diameter=length)
     vort = _max_vorticity(sim)
-    oscillation, st = _probe_oscillation(probes)
+    oscillation, st = _probe_oscillation(
+        probes, diameter=length, velocity=drive_velocity(sim)
+    )
 
     if step_count < 250:
         return FlowRegime(
