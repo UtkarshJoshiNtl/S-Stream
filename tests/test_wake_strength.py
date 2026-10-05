@@ -70,13 +70,35 @@ from engines.lbm2d import LBM2D
 from engines.lbm3d import LBM3D
 from scene.scene import Scene
 
+_CHANNEL_CACHE: dict[tuple[float, int, int], object] = {}
+
 
 def _channel(U: float = 0.08, radius: int = 8, steps: int = 1200) -> LBM2D:
+    """A settled channel, cloned from a cached run.
+
+    Eight call sites want the same default-argument channel and all of them read
+    the flow without writing to it, but each was paying to build it: 9600 steps to
+    look at one field. The settled state is therefore cached and handed out through
+    the engine's own snapshot (PLAN.md C49), which costs ~2 ms against ~1.7 s for the
+    steps, and gives every caller a private engine so the tests stay
+    order-independent rather than sharing one mutable object.
+
+    `copy.deepcopy` is not an option here: `LBM2D` holds a reference that cannot be
+    deep-copied, which is worth knowing before anyone reaches for it.
+    """
+    key = (U, radius, steps)
+    cached = _CHANNEL_CACHE.get(key)
+    if cached is None:
+        settled = LBM2D(width=96, height=48)
+        settled.u_inflow = U
+        settled.add_obstacle(32, 24, radius=radius)
+        for _ in range(steps):
+            settled.step()
+        cached = settled.snapshot()
+        _CHANNEL_CACHE[key] = cached
     sim = LBM2D(width=96, height=48)
     sim.u_inflow = U
-    sim.add_obstacle(32, 24, radius=radius)
-    for _ in range(steps):
-        sim.step()
+    sim.restore(cached)
     return sim
 
 
@@ -187,6 +209,7 @@ class TestItHasABaseline:
 
 
 class TestTheOldMetricWasNotDimensionless:
+    @pytest.mark.slow  # two 1500-step channels at different inlets.
     def test_the_speed_spread_doubles_with_the_inlet(self):
         slow = _channel(U=0.05, steps=1500)
         fast = _channel(U=0.10, steps=1500)
@@ -194,11 +217,13 @@ class TestTheOldMetricWasNotDimensionless:
         fast_spread = float(np.std(fast.speed_magnitude()))
         assert fast_spread == pytest.approx(2.0 * slow_spread, rel=0.1)
 
+    @pytest.mark.slow  # two 1200-step channels at different inlets.
     def test_the_deficit_cannot_leave_the_unit_interval(self):
         for U in (0.05, 0.10):
             result = wake_strength(_channel(U=U))
             assert 0.0 <= result.value <= 1.0
 
+    @pytest.mark.slow  # two 1500-step channels, body blocking 1/3 of the channel.
     def test_the_sensitivity_that_remains_is_documented(self):
         """Not inlet-invariant, and the tests say so rather than implying it is.
 
@@ -240,6 +265,7 @@ class TestTheGuardsAndTheConsumers:
             sim.step()
         assert wake_strength(sim) is None
 
+    @pytest.mark.slow  # 6000 steps of lid-driven spin-up.
     def test_the_same_cavity_measures_once_it_has_spun_up(self):
         sim = LBM2D(width=64, height=64)
         sim.u_inflow = 0.0

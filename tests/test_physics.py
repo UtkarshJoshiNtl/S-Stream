@@ -15,6 +15,7 @@ def _fit_parabola(u: np.ndarray, H: int) -> float:
     return np.sum(u * y * (H - 1 - y)) / np.sum((y * (H - 1 - y)) ** 2)
 
 
+@pytest.mark.slow
 class TestPoiseuilleFlow:
     """2D channel flow should develop a parabolic (Poiseuille) profile."""
 
@@ -25,15 +26,21 @@ class TestPoiseuilleFlow:
     STEPS = 8000
     TOL = 0.15
 
-    @pytest.fixture
+    @pytest.fixture(scope="class")
     def sim(self) -> LBM2D:
+        """The settled channel, run once.
+
+        All four assertions below read `sim.u` and none of them write to it, so
+        one 8000-step settle answers all four. Running it per test meant 32000
+        steps to ask the same question four times.
+        """
         s = LBM2D(width=self.W, height=self.H, viscosity=self.NU)
         s.u_inflow = self.U0
         s.initialize(rho=1.0, u=self.U0, v=0.0)
+        s.run(self.STEPS)
         return s
 
     def test_profile_symmetric(self, sim: LBM2D) -> None:
-        sim.run(self.STEPS)
         _, _, H = sim.width, sim.height, self.H
         u = sim.u[:, sim.width // 2]
         for j in range(H // 2):
@@ -42,7 +49,6 @@ class TestPoiseuilleFlow:
             ), f"asymmetry at y={j}: u[{j}]={u[j]:.6f}, u[{H-1-j}]={u[H-1-j]:.6f}"
 
     def test_profile_max_at_center(self, sim: LBM2D) -> None:
-        sim.run(self.STEPS)
         H = self.H
         u = sim.u[:, sim.width // 2]
         center = H // 2
@@ -51,7 +57,6 @@ class TestPoiseuilleFlow:
         assert diff <= 1, f"profile max at y={maxima}, expected near center y={center}"
 
     def test_profile_parabolic_shape(self, sim: LBM2D) -> None:
-        sim.run(self.STEPS)
         H = self.H
         u = sim.u[:, sim.width // 2]
         a_fit = _fit_parabola(u, H)
@@ -63,7 +68,6 @@ class TestPoiseuilleFlow:
         assert r2 > 0.98, f"parabolic fit R²={r2:.4f}, expected > 0.98"
 
     def test_profile_developed_downstream(self, sim: LBM2D) -> None:
-        sim.run(self.STEPS)
         W = sim.width
         u_left = sim.u[:, W // 4]
         u_mid = sim.u[:, W // 2]
@@ -76,6 +80,7 @@ class TestPoiseuilleFlow:
         )
 
 
+@pytest.mark.slow
 class TestVortexShedding:
     """Flow past a cylinder should produce a Kármán vortex street at Re~200."""
 
@@ -86,23 +91,31 @@ class TestVortexShedding:
     SETTLE_STEPS = 12000
     OBSERVATION_STEPS = 4000
 
-    @pytest.fixture
-    def sim(self) -> LBM2D:
+    @pytest.fixture(scope="class")
+    def shedding(self) -> tuple[LBM2D, np.ndarray]:
+        """One trajectory, settle then observe, shared by both assertions.
+
+        The oscillation test needs the `v` series recorded *during* the
+        observation window and the wake test needs the field at the end of it;
+        both describe the same run. Running them separately meant settling to the
+        same 12000-step state twice (32000 steps) to learn two things about one
+        simulation.
+        """
         s = LBM2D(width=self.W, height=self.H, viscosity=self.NU)
         s.u_inflow = self.U0
         s.initialize(rho=1.0, u=self.U0, v=0.0)
         s.add_obstacle(x=self.W // 4, y=self.H // 2, radius=5)
-        return s
-
-    def test_v_velocity_oscillates(self, sim: LBM2D) -> None:
-        sim.run(self.SETTLE_STEPS)
-        probe_x = sim.width // 2 + sim.width // 4
-        probe_y = sim.height // 2 + sim.height // 4
+        s.run(self.SETTLE_STEPS)
+        probe_x = s.width // 2 + s.width // 4
+        probe_y = s.height // 2 + s.height // 4
         v_samples = []
         for _ in range(self.OBSERVATION_STEPS):
-            sim.step()
-            v_samples.append(sim.v[probe_y, probe_x])
-        v_arr = np.array(v_samples)
+            s.step()
+            v_samples.append(s.v[probe_y, probe_x])
+        return s, np.array(v_samples)
+
+    def test_v_velocity_oscillates(self, shedding) -> None:
+        _, v_arr = shedding
         std_v = np.std(v_arr)
         assert (
             std_v > 1e-4
@@ -113,8 +126,8 @@ class TestVortexShedding:
             "no clear spectral peak in v-velocity — " "no periodic shedding detected"
         )
 
-    def test_wake_velocity_deficit(self, sim: LBM2D) -> None:
-        sim.run(self.SETTLE_STEPS + self.OBSERVATION_STEPS)
+    def test_wake_velocity_deficit(self, shedding) -> None:
+        sim, _ = shedding
         obstacle_x = sim.width // 4
         u_wake = sim.u[:, obstacle_x + 10]
         u_far = sim.u[:, sim.width - 10]

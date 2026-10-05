@@ -48,13 +48,32 @@ from engines.lbm3d import LBM3D
 from scene.scene import Scene, apply_to_sim
 from scene.serializer import load
 
+_CHANNEL_CACHE: dict[tuple, tuple] = {}
+
 
 def _channel(steps: int = 500, **kwargs) -> tuple[LBM2D, Scene]:
-    scene = load("presets/scenes/cylinder.json")
+    """The preset cylinder, settled once and cloned per caller.
+
+    Five call sites want the same 500-step channel and read it without writing to
+    it, so each was rebuilding it (500 steps of a 256x128 domain, five times over).
+    The settled engine is cached and cloned through `sim.snapshot()` (~2 ms against
+    ~2.7 s for the steps); the `Scene` is immutable here and shared as-is. Handing
+    out a clone rather than the cached object keeps the tests order-independent.
+    """
+    key = (steps, tuple(sorted(kwargs.items())))
+    cached = _CHANNEL_CACHE.get(key)
+    if cached is None:
+        scene = load("presets/scenes/cylinder.json")
+        settled = LBM2D(width=scene.width, height=scene.height, **kwargs)
+        apply_to_sim(scene, settled)
+        for _ in range(steps):
+            settled.step()
+        cached = (settled.snapshot(), scene)
+        _CHANNEL_CACHE[key] = cached
+    state, scene = cached
     sim = LBM2D(width=scene.width, height=scene.height, **kwargs)
     apply_to_sim(scene, sim)
-    for _ in range(steps):
-        sim.step()
+    sim.restore(state)
     return sim, scene
 
 

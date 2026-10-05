@@ -22,6 +22,12 @@ from engines.lbm2d import (
     LBM2D,
 )
 
+# Every test here is a multi-thousand-step accuracy gate against an analytic or
+# literature value (51 s of the suite in total), not a unit test. Marked so that
+# `pytest -m "not slow"` -- the documented inner loop -- can leave them out, while
+# `pytest -m slow` still runs exactly this gate. See AGENTS.md.
+pytestmark = pytest.mark.slow
+
 
 def test_pressure_definition() -> None:
     sim = LBM2D(width=32, height=32, viscosity=0.05)
