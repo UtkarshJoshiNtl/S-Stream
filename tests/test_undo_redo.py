@@ -21,6 +21,7 @@ and push the restored history straight back off the stack.
 
 from __future__ import annotations
 
+import json
 import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -298,6 +299,128 @@ class TestButtonsReflectTheStacks:
         panel._undo()
         panel._redo()
         assert not panel.redo_btn.isEnabled()
+
+
+class TestHistoryDoesNotCrossADocumentBoundary:
+    """The stacks hold JSON snapshots of the document being replaced.
+
+    Before C32 the Undo button stayed live across a load, and pressing it replaced
+    the newly opened scene with the contents of whatever was open before — silently,
+    with nothing in the title to show the document had changed underneath.
+    """
+
+    def test_file_new_drops_the_history(self, window):
+        panel = window.scene_panel
+        panel.add_obstacle_from_viewport(CircleObstacle(name="a", x=4, y=4, radius=2))
+        assert panel._undo_stack
+
+        window._file_new()
+
+        assert panel._undo_stack == []
+        assert panel._redo_stack == []
+        assert not panel.undo_btn.isEnabled()
+        assert not panel.redo_btn.isEnabled()
+
+    def test_a_load_cannot_undo_into_the_previous_document(self, window, tmp_path):
+        panel = window.scene_panel
+        panel.add_obstacle_from_viewport(
+            CircleObstacle(name="ghost", x=4, y=4, radius=2)
+        )
+        panel.add_obstacle_from_viewport(
+            CircleObstacle(name="ghost2", x=9, y=9, radius=2)
+        )
+
+        from PySide6.QtWidgets import QFileDialog
+
+        path = tmp_path / "other.json"
+        path.write_text(json.dumps({"name": "other", "width": 32, "height": 32}))
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(
+                QFileDialog,
+                "getOpenFileName",
+                staticmethod(lambda *a, **kw: (str(path), "")),
+            )
+            window._file_open()
+
+        panel._undo()
+
+        assert window.scene.name == "other", (
+            "undo reached across a document boundary and replaced the scene that "
+            "was just opened"
+        )
+        assert window.scene.obstacles == []
+
+    def test_a_preset_load_drops_the_history(self, window):
+        from presets.loader import list_presets
+
+        panel = window.scene_panel
+        panel.add_obstacle_from_viewport(CircleObstacle(name="a", x=4, y=4, radius=2))
+
+        preset = next(p for p in list_presets() if p["id"] == "lid_driven_cavity")
+        window._load_preset_file(preset["file"])
+
+        assert panel._undo_stack == []
+        assert panel.scene is window.scene
+        assert window.scene.name == preset["name"]
+
+    def test_a_wizard_template_drops_the_history(self, window):
+        from workbench.app import WizardTemplate
+
+        panel = window.scene_panel
+        panel.add_obstacle_from_viewport(CircleObstacle(name="a", x=4, y=4, radius=2))
+
+        window._on_wizard_template(
+            WizardTemplate(
+                name="t",
+                category="c",
+                description="d",
+                icon="",
+                scene=Scene(name="wizard", width=32, height=32),
+            )
+        )
+
+        assert panel._undo_stack == []
+        assert panel.scene is window.scene
+
+    def test_a_reset_keeps_the_history(self, window):
+        """A reset re-seeds the *same* document. Clearing its history would make the
+        Reset button silently discard the user's edits, which is a different and
+        much worse bug than the one C32 fixed."""
+        panel = window.scene_panel
+        panel.add_obstacle_from_viewport(
+            CircleObstacle(name="keepme", x=4, y=4, radius=2)
+        )
+        depth = len(panel._undo_stack)
+
+        window.reset(silent=True)
+
+        assert len(panel._undo_stack) == depth
+        assert panel.undo_btn.isEnabled()
+        panel._undo()
+        assert window.scene.obstacles == []
+
+    def test_an_engine_switch_keeps_the_history(self, window):
+        """Same document, different solver: the edit history is still meaningful."""
+        panel = window.scene_panel
+        panel.add_obstacle_from_viewport(
+            CircleObstacle(name="keepme", x=4, y=4, radius=2)
+        )
+        depth = len(panel._undo_stack)
+
+        window._set_physics_mode(1)
+
+        assert len(panel._undo_stack) == depth
+
+    def test_edits_after_a_load_are_undoable_again(self, window):
+        panel = window.scene_panel
+        window._file_new()
+        panel.add_obstacle_from_viewport(
+            CircleObstacle(name="fresh", x=4, y=4, radius=2)
+        )
+
+        assert len(panel._undo_stack) == 1
+        panel._undo()
+        assert window.scene.obstacles == []
 
 
 class TestInPlaceRestoreHelper:

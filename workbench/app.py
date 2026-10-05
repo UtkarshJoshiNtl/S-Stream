@@ -513,6 +513,10 @@ class MainWindow(QMainWindow):
         enters the app; `_share_scene()` re-points the holders.
         """
         self.scene = scene
+        # The stacks hold JSON snapshots of the document being replaced, so undo
+        # after a load would reinstate the previous scene with nothing to show that
+        # it had. There is no meaningful undo across a document boundary.
+        self.scene_panel.clear_history()
         self._share_scene()
 
     def _share_scene(self) -> None:

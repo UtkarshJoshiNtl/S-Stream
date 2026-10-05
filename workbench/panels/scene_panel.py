@@ -1194,6 +1194,24 @@ class ScenePanel(QWidget):
         self._rebuild_tree()
         self._reapply()
 
+    def clear_history(self) -> None:
+        """Drop the undo and redo stacks.
+
+        Called when a different scene is adopted. The stacks hold JSON snapshots of
+        the *previous* document, so after a load the Undo button was still live and
+        pressing it replaced the newly opened scene with the contents of whatever was
+        open before — silently, with no warning and nothing in the title to say the
+        document had changed underneath. There is no meaningful "undo" that crosses a
+        document boundary, so the history starts empty.
+
+        Not called from `_reset_runtime_state()`: a reset re-seeds the same scene and
+        must leave the edit history intact.
+        """
+        self._undo_stack.clear()
+        self._redo_stack.clear()
+        self.undo_btn.setEnabled(False)
+        self.redo_btn.setEnabled(False)
+
     def _save_state(self) -> None:
         """Snapshot the scene *before* the mutation it is meant to undo.
 
