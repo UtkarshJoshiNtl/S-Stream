@@ -1,76 +1,54 @@
-cmake_minimum_required(VERSION 3.16)
-project(3d_fluid_simulation_car C)
+cmake_minimum_required(VERSION 3.20)
+project(s_stream LANGUAGES C)
 
+include(FetchContent)
 set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(BUILD_GAMES OFF CACHE BOOL "" FORCE)
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(SDL2 REQUIRED sdl2)
-pkg_check_modules(SDL2_TTF REQUIRED SDL2_ttf)
-pkg_check_modules(GL REQUIRED gl)
+FetchContent_Declare(raylib
+    GIT_REPOSITORY https://github.com/raysan5/raylib.git
+    GIT_TAG 5.5
+    GIT_SHALLOW TRUE)
+FetchContent_MakeAvailable(raylib)
 
-# Optional EGL for headless GPU rendering
-pkg_check_modules(EGL egl)
-
-# glad GL loader (replaces GLEW, works with EGL)
-set(GLAD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/lib/glad)
-set(GLAD_SOURCES ${GLAD_DIR}/src/gl.c)
-set(GLAD_INCLUDE ${GLAD_DIR}/include)
-
-if(EGL_FOUND)
-    list(APPEND GLAD_SOURCES ${GLAD_DIR}/src/egl.c)
+FetchContent_Declare(raygui
+    GIT_REPOSITORY https://github.com/raysan5/raygui.git
+    GIT_TAG 4.0
+    GIT_SHALLOW TRUE)
+FetchContent_GetProperties(raygui)
+if(NOT raygui_POPULATED)
+    FetchContent_Populate(raygui)
 endif()
 
-add_executable(3d_fluid_simulation_car
-    src/main.c
-    src/cli.c
-    src/drag_metrics.c
-    src/event_handlers.c
-    src/gl_helpers.c
-    src/model_bounds.c
-    src/view_matrix.c
-    src/vti_export.c
-    src/gl_context.c
-    src/coloring.c
-    src/fluid_cube.c
-    obj-file-loader/lib/model_loader.c
-    src/render_model.c
-    src/particle_system.c
-    src/opengl_utils.c
-    src/lbm.c
-    src/voxelize.c
-    ${GLAD_SOURCES}
-)
+FetchContent_Declare(tinyfiledialogs
+    GIT_REPOSITORY https://git.code.sf.net/p/tinyfiledialogs/code
+    GIT_TAG 1fb8c7a2b6a015bfab328e9fd6a03a3666b8cb10)
+FetchContent_GetProperties(tinyfiledialogs)
+if(NOT tinyfiledialogs_POPULATED)
+    FetchContent_Populate(tinyfiledialogs)
+endif()
 
-target_link_libraries(3d_fluid_simulation_car
-    ${SDL2_LIBRARIES}
-    ${SDL2_TTF_LIBRARIES}
-    ${GL_LIBRARIES}
-    m
-    dl
-)
-
-target_include_directories(3d_fluid_simulation_car PRIVATE
-    ${SDL2_INCLUDE_DIRS}
-    ${SDL2_TTF_INCLUDE_DIRS}
-    ${GL_INCLUDE_DIRS}
-    ${GLAD_INCLUDE}
-)
-
-target_link_directories(3d_fluid_simulation_car PRIVATE
-    ${SDL2_LIBRARY_DIRS}
-    ${SDL2_TTF_LIBRARY_DIRS}
-    ${GL_LIBRARY_DIRS}
-)
-
-if(EGL_FOUND)
-    target_compile_definitions(
-        3d_fluid_simulation_car PRIVATE HAVE_EGL)
-    target_link_libraries(
-        3d_fluid_simulation_car ${EGL_LIBRARIES})
-    target_include_directories(
-        3d_fluid_simulation_car PRIVATE
-        ${EGL_INCLUDE_DIRS})
-    message(STATUS "EGL found -- headless GPU enabled")
+add_executable(s_stream
+    src/gui_main.c
+    ${raygui_SOURCE_DIR}/src/raygui.h
+    ${tinyfiledialogs_SOURCE_DIR}/tinyfiledialogs.c)
+target_include_directories(s_stream PRIVATE
+    ${raygui_SOURCE_DIR}/src
+    ${tinyfiledialogs_SOURCE_DIR})
+target_link_libraries(s_stream PRIVATE raylib)
+if(WIN32)
+    target_link_libraries(s_stream PRIVATE comdlg32 ole32)
+endif()
+if(MSVC)
+    target_compile_options(s_stream PRIVATE /W4)
 else()
-    message(STATUS "EGL not found -- SDL fallback only")
+    target_compile_options(s_stream PRIVATE -Wall -Wextra -Wpedantic)
+    target_link_libraries(s_stream PRIVATE m)
 endif()
+add_custom_command(TARGET s_stream POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_CURRENT_SOURCE_DIR}/assets/3d-files"
+        "$<TARGET_FILE_DIR:s_stream>/assets/3d-files")

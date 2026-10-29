@@ -1,5 +1,6 @@
 # C / CMake
 build/
+build-*/
 simulation/build/
 simulation/cmake-build-*/
 CMakeFiles/

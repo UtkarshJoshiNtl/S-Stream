@@ -1,7 +1,7 @@
 .PHONY: help sim clean
 
 help:
-	@echo "make sim    Configure and build the desktop simulation"
+	@echo "make sim    Configure and build the desktop GUI"
 	@echo "make clean  Remove generated build files"
 
 sim:
