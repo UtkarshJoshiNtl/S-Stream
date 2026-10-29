@@ -19,7 +19,6 @@ int cli_parse(int argc, char *argv[], CliOptions *opts) {
             "assets/3d-files/car-model.obj",
             sizeof(opts->modelPath) - 1);
     opts->modelPath[sizeof(opts->modelPath) - 1] = '\0';
-    opts->slantAngle = 0;
     opts->reynoldsNumber = 0.0f;
     opts->scaleFromCLI = 0;
     opts->gridX = 128;
@@ -33,15 +32,6 @@ int cli_parse(int argc, char *argv[], CliOptions *opts) {
     opts->vtkOutputPath[0] = '\0';
     opts->vtkInterval = 100;
     opts->vtkStats = 0;
-    opts->useSuperRes = 0;
-    strncpy(opts->srWeightsPath,
-            "assets/sr_model.bin",
-            sizeof(opts->srWeightsPath) - 1);
-    opts->srWeightsPath[sizeof(opts->srWeightsPath) - 1] = '\0';
-    strncpy(opts->srNormPath,
-            "assets/sr_model_norm.bin",
-            sizeof(opts->srNormPath) - 1);
-    opts->srNormPath[sizeof(opts->srNormPath) - 1] = '\0';
 
     static struct option long_options[] = {
         {"wind", required_argument, 0, 'w'},
@@ -50,7 +40,6 @@ int cli_parse(int argc, char *argv[], CliOptions *opts) {
         {"duration", required_argument, 0, 'd'},
         {"output", required_argument, 0, 'o'},
         {"model", required_argument, 0, 'm'},
-        {"angle", required_argument, 0, 'a'},
         {"scale", required_argument, 0, 's'},
         {"reynolds", required_argument, 0, 'r'},
         {"grid", required_argument, 0, 'g'},
@@ -62,8 +51,6 @@ int cli_parse(int argc, char *argv[], CliOptions *opts) {
         {"vtk-output", required_argument, 0, 'V'},
         {"vtk-interval", required_argument, 0, 'I'},
         {"vtk-stats", no_argument, 0, 'T'},
-        {"superres", no_argument, 0, 'R'},
-        {"sr-weights", required_argument, 0, 'W'},
         {"help", no_argument, 0, 'h'},
         {0, 0, 0, 0}
 
@@ -71,7 +58,7 @@ int cli_parse(int argc, char *argv[], CliOptions *opts) {
 
     int opt;
     while ((opt = getopt_long(
-                argc, argv, "w:v:c:d:o:m:a:r:s:g:S:Mt:Eh", long_options, NULL)) !=
+                argc, argv, "w:v:c:d:o:m:r:s:g:S:Mt:Eh", long_options, NULL)) !=
            -1) {
         switch (opt) {
         case 'w':
@@ -107,18 +94,6 @@ int cli_parse(int argc, char *argv[], CliOptions *opts) {
         case 'm':
             strncpy(opts->modelPath, optarg, sizeof(opts->modelPath) - 1);
             opts->modelPath[sizeof(opts->modelPath) - 1] = '\0';
-            break;
-        case 'a':
-            opts->slantAngle = atoi(optarg);
-            if (opts->slantAngle == 25) {
-                strncpy(opts->modelPath,
-                        "assets/3d-files/ahmed_25deg_m.obj",
-                        sizeof(opts->modelPath) - 1);
-            } else if (opts->slantAngle == 35) {
-                strncpy(opts->modelPath,
-                        "assets/3d-files/ahmed_35deg_m.obj",
-                        sizeof(opts->modelPath) - 1);
-            }
             break;
         case 's':
             g_modelScale = atof(optarg);
@@ -177,13 +152,6 @@ int cli_parse(int argc, char *argv[], CliOptions *opts) {
         case 'T':
             opts->vtkStats = 1;
             break;
-        case 'R':
-            opts->useSuperRes = 1;
-            break;
-        case 'W':
-            strncpy(opts->srWeightsPath, optarg, sizeof(opts->srWeightsPath) - 1);
-            opts->srWeightsPath[sizeof(opts->srWeightsPath) - 1] = '\0';
-            break;
         case 'h':
         default:
             printf("Usage: %s [options]\n", argv[0]);
@@ -198,8 +166,6 @@ int cli_parse(int argc, char *argv[], CliOptions *opts) {
                    "default: 0)\n");
             printf("  -o, --output=PATH     Output directory for frames\n");
             printf("  -m, --model=PATH      Path to OBJ model file\n");
-            printf(
-                "  -a, --angle=DEGREES   Ahmed body slant angle (25 or 35)\n");
             printf(
                 "  -s, --scale=SCALE     Model scale factor (default: 0.05)\n");
             printf("  -r, --reynolds=RE     Target Reynolds number "
@@ -222,10 +188,6 @@ int cli_parse(int argc, char *argv[], CliOptions *opts) {
                    "(default: 100)\n");
             printf("  --vtk-stats           Add time-averaged velocity, "
                    "RMS and TKE to VTK output\n");
-            printf("  --superres            Enable 2x super-resolution "
-                   "upscaling\n");
-            printf("  --sr-weights=PATH     Super-resolution weights "
-                   "(default: assets/sr_model.bin)\n");
             printf("  -h, --help            Show this help\n");
             return 1;
         }

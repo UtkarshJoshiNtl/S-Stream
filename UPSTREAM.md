@@ -1,9 +1,11 @@
-# Upstream source and attribution
+# Upstream attribution
 
-The current native simulation is derived from the MIT-licensed Lattice project:
+The native simulation is based on the MIT-licensed Lattice project:
 
-- Repository: https://github.com/MarcosAsh/Lattice_Fluid_Dynamics
-- Imported commit: `cc2d93589d75dca52f23ddee904e981b2232cdb8`
-- Copyright notice retained in `LICENSE`: Marcos Ash, 2024–2026
+- Source: https://github.com/MarcosAsh/Lattice_Fluid_Dynamics
+- Imported revision: `cc2d93589d75dca52f23ddee904e981b2232cdb8`
+- Copyright and license notice: see [LICENSE](LICENSE)
 
-This project keeps the upstream native `simulation/` application, its tests and sample assets, and the relevant build and validation documentation. The browser frontend, cloud-render worker, and separate ML training pipeline are outside this desktop app's scope. The MIT license permits reuse and modification subject to retaining its copyright and permission notice; see `LICENSE` for the full terms.
+The desktop application and its required runtime assets are retained here. The
+web frontend, cloud worker, ML pipeline, benchmarks, tests, and extended
+validation reports were removed from this repository's working tree.

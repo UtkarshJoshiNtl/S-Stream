@@ -16,8 +16,6 @@
 #include "../lib/render_model.h"
 #include "../lib/opengl_utils.h"
 #include "../lib/config.h"
-#include "../lib/ml_predict.h"
-#include "../lib/superres.h"
 
 #include "../lib/cli.h"
 #include "../lib/drag_metrics.h"
@@ -92,7 +90,6 @@ int main(int argc, char *argv[]) {
     char modelPath[512];
     strncpy(modelPath, opts.modelPath, sizeof(modelPath));
     modelPath[sizeof(modelPath) - 1] = '\0';
-    int slantAngle = opts.slantAngle;
     float reynoldsNumber = opts.reynoldsNumber;
     int scaleFromCLI = opts.scaleFromCLI;
     int gridX = opts.gridX, gridY = opts.gridY, gridZ = opts.gridZ;
@@ -106,19 +103,10 @@ int main(int argc, char *argv[]) {
     vtkOutputPath[sizeof(vtkOutputPath) - 1] = '\0';
     int vtkInterval = opts.vtkInterval;
     int vtkStats = opts.vtkStats;
-    int useSuperRes = opts.useSuperRes;
-    char srWeightsPath[256];
-    strncpy(srWeightsPath, opts.srWeightsPath, sizeof(srWeightsPath));
-    srWeightsPath[sizeof(srWeightsPath) - 1] = '\0';
-    char srNormPath[256];
-    strncpy(srNormPath, opts.srNormPath, sizeof(srNormPath));
-    srNormPath[sizeof(srNormPath) - 1] = '\0';
 
     // Print config
     printf("Configuration:\n");
     printf("  Model: %s\n", modelPath);
-    if (slantAngle > 0)
-        printf("  Slant Angle: %d°\n", slantAngle);
     printf("  Wind Speed: %.1f m/s\n", windSpeed);
     printf("  Visualization: %d\n", visualizationMode);
     printf("  Collision: %d\n", collisionMode);
@@ -596,51 +584,6 @@ int main(int argc, char *argv[]) {
         useLBM = 0;
     }
 
-    // Load ML surrogate model for instant Cd prediction.
-    // Fails gracefully if weight files are missing.
-    MLPredictor *mlModel = ML_Load("model.bin", "model_norm.bin");
-    if (!mlModel)
-        mlModel = ML_Load("ml/model.bin", "ml/model_norm.bin");
-    if (!mlModel)
-        mlModel = ML_Load("../ml/model.bin", "../ml/model_norm.bin");
-    if (mlModel) {
-        // Map model path to model_id (0=car, 1=ahmed25, 2=ahmed35)
-        float modelId = 0.0f;
-        if (strstr(modelPath, "ahmed_25") || strstr(modelPath, "ahmed25"))
-            modelId = 1.0f;
-        else if (strstr(modelPath, "ahmed_35") || strstr(modelPath, "ahmed35"))
-            modelId = 2.0f;
-
-        float mlCd, mlCl;
-        ML_Predict(mlModel, windSpeed, reynoldsNumber, modelId, &mlCd, &mlCl);
-        printf("ML estimate: Cd=%.3f Cl=%.3f (instant)\n", mlCd, mlCl);
-    } else {
-        printf("ML model not loaded (no weight files), "
-               "skipping instant prediction\n");
-    }
-
-    // Super-resolution upscaler (optional)
-    SuperResUpscaler *srUpscaler = NULL;
-    if (useSuperRes) {
-        srUpscaler =
-            SR_Create(lbmSizeX, lbmSizeY, lbmSizeZ, srWeightsPath, srNormPath);
-        if (srUpscaler) {
-            int fineX, fineY, fineZ;
-            SR_GetFineSize(srUpscaler, &fineX, &fineY, &fineZ);
-            printf("Super-resolution: %dx%dx%d -> %dx%dx%d\n",
-                   lbmSizeX,
-                   lbmSizeY,
-                   lbmSizeZ,
-                   fineX,
-                   fineY,
-                   fineZ);
-        } else {
-            printf("Super-resolution: failed to initialize, "
-                   "falling back to native resolution\n");
-            useSuperRes = 0;
-        }
-    }
-
     // Get compute shader uniform locations
     glUseProgram(computeShaderProgram);
     GLint dtLoc = glGetUniformLocation(computeShaderProgram, "dt");
@@ -998,11 +941,6 @@ int main(int argc, char *argv[]) {
                 LBM_Step(lbmGrid, currentInletVel, 0.0f, 0.0f);
             }
 
-            // Super-resolution upscale after LBM step
-            if (srUpscaler) {
-                SR_Upscale(srUpscaler, LBM_GetVelocityBuffer(lbmGrid));
-            }
-
             // Accumulate turbulence statistics once the startup ramp is
             // over, so the time-averaged fields exclude the transient.
             if (vtkStatsAcc && frameCount >= rampFrames) {
@@ -1071,13 +1009,10 @@ int main(int argc, char *argv[]) {
             glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, triangleBuffer);
 
             // Bind LBM velocity and solid buffers if using LBM.
-            // When super-resolution is active, particles sample the
-            // upscaled fine velocity buffer instead.
             if (lbmGrid && useLBM) {
-                GLuint velBuf = srUpscaler
-                                    ? SR_GetFineVelocityBuffer(srUpscaler)
-                                    : LBM_GetVelocityBuffer(lbmGrid);
-                glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, velBuf);
+                glBindBufferBase(GL_SHADER_STORAGE_BUFFER,
+                                 4,
+                                 LBM_GetVelocityBuffer(lbmGrid));
                 glBindBufferBase(
                     GL_SHADER_STORAGE_BUFFER, 5, lbmGrid->solidBuffer);
             }
@@ -1106,18 +1041,11 @@ int main(int argc, char *argv[]) {
             // LBM uniforms
             if (useLBMLoc != -1)
                 glUniform1i(useLBMLoc, (useLBM && lbmGrid) ? 1 : 0);
-            if (lbmGridSizeLoc != -1 && lbmGrid) {
-                if (srUpscaler) {
-                    int fx, fy, fz;
-                    SR_GetFineSize(srUpscaler, &fx, &fy, &fz);
-                    glUniform3i(lbmGridSizeLoc, fx, fy, fz);
-                } else {
-                    glUniform3i(lbmGridSizeLoc,
-                                lbmGrid->sizeX,
-                                lbmGrid->sizeY,
-                                lbmGrid->sizeZ);
-                }
-            }
+            if (lbmGridSizeLoc != -1 && lbmGrid)
+                glUniform3i(lbmGridSizeLoc,
+                            lbmGrid->sizeX,
+                            lbmGrid->sizeY,
+                            lbmGrid->sizeZ);
 
             // Collision grid uniforms
             if (gridMinLoc != -1)
@@ -1496,10 +1424,6 @@ int main(int argc, char *argv[]) {
         VTKStats_Free(vtkStatsAcc);
     if (lbmGrid)
         LBM_Free(lbmGrid);
-    if (mlModel)
-        ML_Free(mlModel);
-    if (srUpscaler)
-        SR_Free(srUpscaler);
     glDeleteVertexArrays(1, &particleVAO);
     glDeleteBuffers(1, &particleBuffer);
     glDeleteVertexArrays(1, &trailVAO);

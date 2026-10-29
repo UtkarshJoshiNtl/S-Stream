@@ -11,8 +11,6 @@ pkg_check_modules(GL REQUIRED gl)
 # Optional EGL for headless GPU rendering
 pkg_check_modules(EGL egl)
 
-enable_testing()
-
 # glad GL loader (replaces GLEW, works with EGL)
 set(GLAD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/lib/glad)
 set(GLAD_SOURCES ${GLAD_DIR}/src/gl.c)
@@ -39,8 +37,6 @@ add_executable(3d_fluid_simulation_car
     src/particle_system.c
     src/opengl_utils.c
     src/lbm.c
-    src/ml_predict.c
-    src/superres.c
     src/voxelize.c
     ${GLAD_SOURCES}
 )
@@ -78,44 +74,3 @@ if(EGL_FOUND)
 else()
     message(STATUS "EGL not found -- SDL fallback only")
 endif()
-
-# LBM unit tests
-add_executable(test_lbm
-    test/test_lbm.c
-    src/lbm.c
-    src/opengl_utils.c
-    ${GLAD_DIR}/src/gl.c
-)
-target_include_directories(test_lbm PRIVATE
-    ${SDL2_INCLUDE_DIRS}
-    ${GL_INCLUDE_DIRS}
-    ${GLAD_INCLUDE}
-)
-target_link_libraries(test_lbm
-    ${SDL2_LIBRARIES}
-    ${GL_LIBRARIES}
-    m
-    dl
-)
-target_link_directories(test_lbm PRIVATE
-    ${SDL2_LIBRARY_DIRS}
-    ${GL_LIBRARY_DIRS}
-)
-add_test(NAME lbm_unit_tests COMMAND test_lbm)
-
-# Standalone voxelizer CLI: OBJ -> .voxbin for ML dataset pipelines
-add_executable(voxelize_obj
-    src/voxelize_main.c
-    src/voxelize.c
-    obj-file-loader/lib/model_loader.c
-)
-target_link_libraries(voxelize_obj m)
-
-# Voxelizer unit tests (no GL context needed)
-add_executable(test_voxelize
-    test/test_voxelize.c
-    src/voxelize.c
-    obj-file-loader/lib/model_loader.c
-)
-target_link_libraries(test_voxelize m)
-add_test(NAME voxelize_unit_tests COMMAND test_voxelize)

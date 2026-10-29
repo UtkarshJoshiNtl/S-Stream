@@ -8,7 +8,6 @@ typedef struct {
     int renderDuration;
     char outputPath[256];
     char modelPath[512];
-    int slantAngle;
     float reynoldsNumber;
     int scaleFromCLI;
     int gridX, gridY, gridZ;
@@ -20,9 +19,6 @@ typedef struct {
     char vtkOutputPath[256];
     int vtkInterval;
     int vtkStats;
-    int useSuperRes;
-    char srWeightsPath[256];
-    char srNormPath[256];
 } CliOptions;
 
 // Parse command-line options. Returns 0 on success, 1 if --help was
