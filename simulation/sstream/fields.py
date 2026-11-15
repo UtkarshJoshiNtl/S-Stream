@@ -77,3 +77,71 @@ def pressure_coefficient(density: np.ndarray, u_lattice: float) -> np.ndarray:
     if u_lattice <= 0.0:
         return np.zeros_like(density, dtype=np.float32)
     return (CS2 * (np.asarray(density, dtype=np.float32) - 1.0)) / (0.5 * u_lattice * u_lattice)
+
+
+_Q_SLAB_CELLS = 4_000_000  # max cells per x-slab for the S/Omega assembly
+
+
+def q_criterion(velocity: np.ndarray, dx: float | tuple[float, float, float] = 1.0) -> np.ndarray:
+    """Second invariant of the velocity gradient, ``Q``.
+
+    ``Q = 0.5 (|Omega|^2 - |S|^2)`` with ``S`` and ``Omega`` the symmetric
+    and antisymmetric parts of the velocity gradient ``A_ij = du_i/dx_j``
+    (Frobenius norms).  ``velocity`` is ``(nx, ny, nz, 3)`` and ``dx`` is a
+    cell size, either one scalar for isotropic cells or a ``(dx, dy, dz)``
+    spacing.  Positive ``Q`` marks rotation-dominated regions (vortices);
+    a pure shear has ``S`` and ``Omega`` equally strong and gives ``Q = 0``.
+
+    The six gradient arrays are built once with central differences (edge
+    cells fall back to one-sided differences, like ``numpy.gradient``), and
+    the symmetric/antisymmetric temporaries are summed in x-slabs so they
+    never exceed one slab instead of the whole domain.  The result is
+    float32.
+    """
+    u = np.ascontiguousarray(velocity, dtype=np.float32)
+    if u.ndim != 4 or u.shape[-1] != 3:
+        raise ValueError("velocity must be (nx, ny, nz, 3)")
+    spacing = (
+        (float(dx),) * 3 if np.isscalar(dx) else tuple(float(v) for v in dx)
+    )
+    if len(spacing) != 3 or min(spacing) <= 0.0:
+        raise ValueError("dx must be a positive scalar or a positive (dx, dy, dz)")
+    vx, vy, vz = (u[..., i] for i in range(3))
+    dux = np.gradient(vx, *spacing, axis=(0, 1, 2))
+    duy = np.gradient(vy, *spacing, axis=(0, 1, 2))
+    duz = np.gradient(vz, *spacing, axis=(0, 1, 2))
+
+    nx, ny, nz = u.shape[:3]
+    out = np.empty((nx, ny, nz), dtype=np.float32)
+    slab = max(1, _Q_SLAB_CELLS // (ny * nz))
+    for x0 in range(0, nx, slab):
+        x1 = min(nx, x0 + slab)
+        sx, sy, sz = (slice(x0, x1),) * 3
+
+        def g(component, axis):
+            return np.asarray(
+                (dux if component == 0 else duy if component == 1 else duz)[axis][sx, sy, sz],
+                dtype=np.float32,
+            )
+
+        dux_x, dux_y, dux_z = g(0, 0), g(0, 1), g(0, 2)
+        duy_x, duy_y, duy_z = g(1, 0), g(1, 1), g(1, 2)
+        duz_x, duz_y, duz_z = g(2, 0), g(2, 1), g(2, 2)
+
+        s_xx, s_yy, s_zz = dux_x, duy_y, duz_z
+        strace_xy = 0.5 * (dux_y + duy_x)
+        strace_xz = 0.5 * (dux_z + duz_x)
+        strace_yz = 0.5 * (duy_z + duz_y)
+        o_xy = 0.5 * (dux_y - duy_x)
+        o_xz = 0.5 * (dux_z - duz_x)
+        o_yz = 0.5 * (duy_z - duz_y)
+
+        omega2 = 2.0 * (o_xy * o_xy + o_xz * o_xz + o_yz * o_yz)
+        strain2 = (
+            s_xx * s_xx
+            + s_yy * s_yy
+            + s_zz * s_zz
+            + 2.0 * (strace_xy * strace_xy + strace_xz * strace_xz + strace_yz * strace_yz)
+        )
+        out[sx, sy, sz] = 0.5 * (omega2 - strain2)
+    return out

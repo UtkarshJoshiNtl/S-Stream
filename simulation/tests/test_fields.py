@@ -61,3 +61,44 @@ def test_force_conversion_scales_with_cell_and_time_size():
     cd, _ = fields.force_coefficients(np.array([3.0, 0.0, 0.0]), units, fluid, 1.5)
     physical = 3.0 * 2.0 * 0.5**4 / 0.25**2
     assert cd == pytest.approx(physical / (0.5 * 2.0 * 20.0**2 * 1.5))
+
+
+def _grid(n: int):
+    axis = np.arange(n, dtype=np.float64)
+    x, y, z = np.meshgrid(axis, axis, axis, indexing="ij")
+    return x, y, z
+
+
+def test_q_criterion_solid_body_rotation_is_positive():
+    from sstream.fields import q_criterion
+
+    n = 16
+    x, y, _ = _grid(n)
+    omega = 0.8
+    velocity = np.stack([-omega * y, omega * x, np.zeros_like(x)], axis=-1)
+    q = q_criterion(velocity, 1.0)
+    assert q.dtype == np.float32
+    assert q.shape == (n, n, n)
+    interior = q[3:-3, 3:-3, 3:-3]
+    assert np.all(interior > 0.0)
+    assert interior.mean() == pytest.approx(omega * omega, rel=1e-4)
+
+
+def test_q_criterion_pure_shear_is_zero():
+    from sstream.fields import q_criterion
+
+    n = 16
+    x, y, _ = _grid(n)
+    velocity = np.zeros((n, n, n, 3))
+    velocity[..., 0] = 0.5 * y
+    q = q_criterion(velocity, (0.5, 1.0, 2.0))
+    assert np.abs(q).max() < 1e-5
+
+
+def test_q_criterion_rejects_bad_input():
+    from sstream.fields import q_criterion
+
+    with pytest.raises(ValueError):
+        q_criterion(np.zeros((4, 4, 4), dtype=np.float32))
+    with pytest.raises(ValueError):
+        q_criterion(np.zeros((4, 4, 4, 3)), (1.0, -1.0, 1.0))
