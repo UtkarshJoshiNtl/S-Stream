@@ -147,7 +147,9 @@ def run_case(
     scale = fluid.density * units.dx**4 / units.dt**2 / (fluid.dynamic_pressure * area)
     drag = np.asarray(drag, dtype=np.float64)
     lift = np.asarray(lift, dtype=np.float64)
-    cd_trace = -drag * scale
+    # A body in a +x-going flow is pushed downstream: force on the body in
+    # +x is positive drag, so Cd uses +force[0] without any sign flip.
+    cd_trace = drag * scale
     cl_trace = lift * scale
     mean_force = np.array(
         [

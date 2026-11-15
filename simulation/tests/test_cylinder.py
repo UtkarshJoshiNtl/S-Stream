@@ -57,7 +57,6 @@ def test_cylinder_wake_has_correct_drag_and_shedding():
     dynamic = 0.5 * speed * speed * diameter * nz
     cd = drag.mean() / dynamic
     cl_amplitude = 0.5 * (lift.max() - lift.min()) / dynamic
-    print(f"DEBUG: cd = {cd:.6f}")
 
     # Vortex shedding frequency from the lift signal.
     spectrum = np.abs(np.fft.rfft(lift - lift.mean()))

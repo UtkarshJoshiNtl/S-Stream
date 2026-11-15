@@ -20,8 +20,11 @@ def test_solve_returns_finite_fields_with_the_mask_shape(tiny_result):
 
 
 def test_force_coefficients_are_reported_from_the_wall_force(tiny_result):
+    # The shared air fixture sits at tau ~ 0.5000007 (air at this grid), so
+    # the 640-step force window is noise near the stability edge; the sign
+    # is covered by the stable high-viscosity test below instead.
     result = tiny_result
-    assert np.isfinite(result.cd) and result.cd > 0.0
+    assert np.isfinite(result.cd)
     assert np.isfinite(result.cl)
     assert result.drag_trace.size > 10
     assert result.drag_trace.size == result.lift_trace.size
@@ -75,3 +78,43 @@ def test_cancel_stops_the_run():
     )
     with pytest.raises(SolveCancelled):
         run_case(plan, should_stop=lambda: True)
+
+
+def test_a_body_in_a_positive_x_flow_reports_positive_drag(tmp_path):
+    """Known-sign test: force on the body in +x is positive drag.
+
+    The shared air fixture sits at tau ~ 0.5000007 where this is noise, so
+    this test uses a viscous fluid (tau ~ 0.58) where the sign is physical
+    and every sampled step is positive.
+    """
+    from sstream.pipeline import SolvePlan
+    from sstream.preview import RunPreset
+    from sstream.schema import FluidSpec, TunnelSpec
+    from sstream.voxelize import VoxelResult
+
+    tunnel = TunnelSpec(cells_streamwise=48)
+    shape = tunnel.grid_shape
+    x, y, z = np.indices(shape)
+    solid = (
+        (x - shape[0] * 0.35) ** 2
+        + (y - shape[1] * 0.5) ** 2
+        + (z - shape[2] * 0.45) ** 2
+    ) < (min(shape) * 0.18) ** 2
+    mask = VoxelResult(
+        solid=solid,
+        boundary=solid,
+        origin=tunnel.grid_origin,
+        spacing=tunnel.grid_spacing,
+        dimensions=shape,
+    )
+    plan = SolvePlan(
+        mask=mask,
+        tunnel=tunnel,
+        fluid=FluidSpec(kinematic_viscosity=1.0),
+        preset=RunPreset("Test", 48, 640, "sign test"),
+        u_lattice=0.1,
+    )
+    result = run_case(plan)
+    assert result.units.tau > 0.55
+    assert result.cd > 0.0
+    assert np.mean(result.drag_trace) > 0.0
