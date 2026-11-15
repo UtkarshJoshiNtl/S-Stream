@@ -126,22 +126,36 @@ def _erode(mask: np.ndarray) -> np.ndarray:
     return out
 
 
-def _fill_streamwise(solid: np.ndarray) -> np.ndarray:
-    """Fill gaps between the first and last solid cell in each wind column.
+def _flood_outside(solid: np.ndarray) -> np.ndarray:
+    """Cells reachable from the domain boundary without crossing solid.
 
-    An open scan or a car shell often has cracks that the rasterizer sees as
-    tunnels.  A steady streamwise flow cannot pass through a real body, so
-    closing each (y, z) column makes the body behave as a solid.  Applying
-    this only to non-watertight surfaces keeps clean models untouched.
+    Iterative 6-neighbour dilation from the boundary fluid cells.  Used on
+    non-watertight surfaces: the rasterized shell already blocks cell-scale
+    tunnels, and anything the flood cannot reach is treated as the body's
+    interior instead of being silently kept as fluid.  Leaks larger than a
+    cell still let fluid through, which is the honest outcome for a shell
+    that is open at grid scale.
     """
     solid = np.asarray(solid, dtype=bool)
-    occupied = solid.any(axis=0)
-    if not occupied.any():
-        return solid.copy()
-    first = np.argmax(solid, axis=0)
-    last = solid.shape[0] - 1 - np.argmax(solid[::-1], axis=0)
-    x = np.arange(solid.shape[0])[:, None, None]
-    return solid | ((x >= first[None]) & (x <= last[None]) & occupied[None])
+    outside = np.zeros_like(solid)
+    outside[0] = ~solid[0]
+    outside[-1] = ~solid[-1]
+    outside[:, 0] = ~solid[:, 0]
+    outside[:, -1] = ~solid[:, -1]
+    outside[:, :, 0] = ~solid[:, :, 0]
+    outside[:, :, -1] = ~solid[:, :, -1]
+    while True:
+        grown = outside.copy()
+        for axis in range(3):
+            hi, lo = [slice(None)] * 3, [slice(None)] * 3
+            hi[axis] = slice(1, None)
+            lo[axis] = slice(None, -1)
+            grown[tuple(hi)] |= outside[tuple(lo)]
+            grown[tuple(lo)] |= outside[tuple(hi)]
+        grown &= ~solid
+        if np.array_equal(grown, outside):
+            return outside
+        outside = grown
 
 
 def voxelize(mesh: pv.PolyData, tunnel: TunnelSpec) -> VoxelResult:
@@ -162,15 +176,21 @@ def voxelize(mesh: pv.PolyData, tunnel: TunnelSpec) -> VoxelResult:
             warnings.append("Mesh had open edges; small holes were filled.")
         else:
             warnings.append(
-                "Mesh is not watertight; gaps along the wind direction were "
-                "filled so the body acts as a solid."
+                "Mesh is not watertight after closing small holes; "
+                "the body is treated as solid."
             )
 
     dimensions = tunnel.grid_shape
     solid = _rasterize(working, tunnel.grid_origin, tunnel.grid_spacing, dimensions)
     if not watertight:
-        solid = _fill_streamwise(solid)
-        warnings.append("Streamwise gaps filled to prevent wind tunnel artifacts")
+        outside = _flood_outside(solid)
+        interior = ~solid & ~outside
+        if interior.any():
+            solid = solid | interior
+            warnings.append(
+                "Mesh is not watertight; cells unreachable from outside were "
+                "filled so the body acts as solid."
+            )
     if not solid.any():
         warnings.append("The model did not cover any voxels. Check its scale.")
     boundary = solid & ~_erode(solid)

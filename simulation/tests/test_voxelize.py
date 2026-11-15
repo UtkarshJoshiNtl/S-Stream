@@ -73,3 +73,48 @@ def test_car_pipeline_produces_a_non_empty_mask():
     assert result.boundary.sum() > 0
     image = result.to_image()
     assert image.dimensions == result.dimensions
+
+
+def test_flood_outside_marks_a_closed_shell_interior_unreachable():
+    from sstream.voxelize import _flood_outside
+
+    mask = np.zeros((9, 9, 9), dtype=bool)
+    mask[2:7, 2, 2:7] = True
+    mask[2:7, 6, 2:7] = True
+    mask[2, 2:7, 2:7] = True
+    mask[6, 2:7, 2:7] = True
+    mask[2:7, 2:7, 2] = True
+    mask[2:7, 2:7, 6] = True
+    outside = _flood_outside(mask)
+    assert not outside[4, 4, 4]        # sealed interior stays unreached
+    assert outside[0, 4, 4]            # domain boundary is outside
+
+    mask_open = mask.copy()
+    mask_open[4, 6, 4] = False         # one-cell hole in the top face
+    outside = _flood_outside(mask_open)
+    assert outside[4, 4, 4]            # leaks in through the hole
+
+
+def test_open_box_becomes_a_solid_body():
+    import pyvista as pv
+
+    cube = pv.Cube(bounds=(1.0, 1.5, -0.25, 0.25, 0.75, 1.25)).triangulate()
+    faces = np.asarray(cube.faces).reshape(-1, 4)
+    points = np.asarray(cube.points)
+    keep = [f for f in faces if not np.all(points[f[1:], 0] > 1.49)]
+    assert keep                        # some cells removed, shell remains
+    open_box = pv.PolyData(points, np.concatenate(keep))
+
+    result = voxelize(open_box, NO_WALL)
+    assert not result.watertight
+    assert any("not watertight" in warning for warning in result.warnings)
+    assert result.solid_count > 0
+    # A non-watertight shell must behave as a solid body: the missing +x
+    # face does not leave an empty pocket inside the grid.  (Whether the
+    # interior is solidified by the raster stencil or by the unreachable
+    # fill is an implementation detail; the flood-fill leak semantics are
+    # covered by test_flood_outside_marks_a_closed_shell_interior_unreachable.)
+    origin = np.asarray(NO_WALL.grid_origin)
+    spacing = np.asarray(NO_WALL.grid_spacing)
+    centre = np.round((np.array([1.25, 0.0, 1.0]) - origin) / spacing).astype(int)
+    assert result.solid[tuple(centre)]
