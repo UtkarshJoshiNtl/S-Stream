@@ -206,9 +206,9 @@ def frame_times(timeline: Timeline, preview: bool = False) -> list[float]:
 # Smoke layer
 # ---------------------------------------------------------------------------
 
-SMOKE_MAX_PARTICLES = 2500
-SMOKE_TRAIL_LENGTH = 40
-SMOKE_EMIT_PER_FRAME = 40
+SMOKE_MAX_PARTICLES = 600  # ~1/4 of original 2500
+SMOKE_TRAIL_LENGTH = 25
+SMOKE_EMIT_PER_FRAME = 10
 SMOKE_SUBSTEPS = 4
 
 
@@ -222,15 +222,22 @@ class SmokePlume:
         self.mask = PointSampler(solid, self.spacing, self.origin)
         self.positions: list[np.ndarray] = []
         self.trails: list[list[np.ndarray]] = []
+        self.speeds: list[float] = []  # Track speed for coloring
         self.rng = np.random.default_rng(20240515)
-        # Smoke source: just upstream of the model, sized to its silhouette.
+        # Smoke source: emit from silhouette-bbox rake (like streamlines)
         mb = np.asarray(meta["placement"].get("placed_bounds", [[0, 1], [0, 1], [0, 1]]), dtype=float)
         model_len = max(mb[0, 1] - mb[0, 0], 0.2)
-        self.emit_x = max(self.bounds[0] + 0.05, mb[0, 0] - 0.5 * model_len)
-        self.emit_y = float(mb[1].mean())
-        self.emit_z = float(mb[2].mean())
-        self.emit_ry = max(0.35 * (mb[1, 1] - mb[1, 0]), 0.05)
-        self.emit_rz = max(0.35 * (mb[2, 1] - mb[2, 0]), 0.05)
+        self.emit_x = max(self.bounds[0] + 0.05, mb[0, 0] - 0.3 * model_len)
+        y_mid = float(mb[1].mean())
+        z_mid = float(mb[2].mean())
+        dy = mb[1, 1] - mb[1, 0]
+        dz = mb[2, 1] - mb[2, 0]
+        spread_y = 1.15 * max(dy, 0.25)
+        spread_z = 1.15 * max(dz, 0.25)
+        self.emit_y = y_mid
+        self.emit_z = z_mid
+        self.emit_ry = spread_y * 0.5
+        self.emit_rz = spread_z * 0.5
 
     def emit(self) -> None:
         x_emit = self.emit_x
@@ -248,6 +255,7 @@ class SmokePlume:
             )
             self.positions.append(point)
             self.trails.append([point.copy()])
+            self.speeds.append([0.0])  # Initial speed, will be updated on first advect
 
     def advect(self, sampler: GridSampler, dt: float) -> None:
         if dt > 0.0 and self.positions:
@@ -257,6 +265,9 @@ class SmokePlume:
                 k1 = sampler(pos)
                 k2 = sampler(pos + 0.5 * h * k1)
                 pos = pos + h * k2
+            # Get speeds at final positions
+            u = sampler(pos)
+            speeds = np.linalg.norm(u, axis=1)
             # Kill particles that left the domain or entered the solid.
             inside = self.mask.inside(pos)
             keep = (
@@ -267,7 +278,7 @@ class SmokePlume:
                 & (pos[:, 2] >= self.bounds[4])
                 & (pos[:, 2] <= self.bounds[5])
             )
-            new_positions, new_trails = [], []
+            new_positions, new_trails, new_speeds = [], [], []
             for i, ok in enumerate(keep):
                 if not ok:
                     continue
@@ -275,14 +286,19 @@ class SmokePlume:
                 trail.append(pos[i].copy())
                 if len(trail) > SMOKE_TRAIL_LENGTH:
                     del trail[0]
+                speed_list = self.speeds[i]
+                speed_list.append(float(speeds[i]))
+                if len(speed_list) > SMOKE_TRAIL_LENGTH:
+                    del speed_list[0]
                 new_positions.append(pos[i])
                 new_trails.append(trail)
-            self.positions, self.trails = new_positions, new_trails
+                new_speeds.append(speed_list)
+            self.positions, self.trails, self.speeds = new_positions, new_trails, new_speeds
         # Emit after the kill-rebuild so fresh particles are never dropped.
         self.emit()
 
     def polydata(self) -> pv.PolyData | None:
-        """All live trails as one PolyData with fading RGBA point colors."""
+        """All live trails as one PolyData with speed-colored RGBA point colors."""
         n_segments = sum(max(len(t) - 1, 0) for t in self.trails)
         if n_segments == 0:
             return None
@@ -290,21 +306,26 @@ class SmokePlume:
         rgba = np.empty((n_segments * 2, 4), dtype=np.float32)
         lines = np.empty((n_segments, 3), dtype=np.int64)
         cursor = 0
-        grey = 0.82
-        for trail in self.trails:
+        for trail_idx, trail in enumerate(self.trails):
+            speed_list = self.speeds[trail_idx]
             for j in range(1, len(trail)):
-                # alpha rises along the trail; oldest point fades to 0
-                a_lo = 0.55 * (j - 1) / max(len(trail) - 1, 1)
-                a_hi = 0.55 * j / max(len(trail) - 1, 1)
+                # alpha rises along the trail; peak alpha ~0.25
+                a_lo = 0.25 * (j - 1) / max(len(trail) - 1, 1)
+                a_hi = 0.25 * j / max(len(trail) - 1, 1)
                 points[cursor * 2] = trail[j - 1]
                 points[cursor * 2 + 1] = trail[j]
-                rgba[cursor * 2] = (grey, grey, grey, a_lo)
-                rgba[cursor * 2 + 1] = (grey, grey, grey, a_hi)
+                # Color by speed (normalized to 0-1 for colormap)
+                s_lo = speed_list[j - 1] if j - 1 < len(speed_list) else 0.0
+                s_hi = speed_list[j] if j < len(speed_list) else s_lo
+                # Use a simple grayscale for now - will be colored by renderer with cmap
+                rgba[cursor * 2] = (s_lo, s_lo, s_lo, a_lo)
+                rgba[cursor * 2 + 1] = (s_hi, s_hi, s_hi, a_hi)
                 lines[cursor] = (2, cursor * 2, cursor * 2 + 1)
                 cursor += 1
         lines_flat = lines.ravel()
         poly = pv.PolyData(points)
         poly.lines = lines_flat
+        poly.point_data["speed"] = rgba[:, 0]  # Store speed in first channel for colormap
         poly.point_data["rgba"] = rgba
         return poly
 
@@ -670,8 +691,8 @@ def render_frames(
             trail = smoke.polydata()
             if trail is not None:
                 plotter.add_mesh(
-                    trail, scalars="rgba", rgba=True, line_width=2,
-                    show_scalar_bar=False,
+                    trail, scalars="speed", cmap=cmap, clim=(0.5 * u_inlet, 1.5 * u_inlet),
+                    opacity=0.25, line_width=1, show_scalar_bar=False,
                 )
 
         plotter.camera_position = camera_for(
