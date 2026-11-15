@@ -1,27 +1,16 @@
-# C / CMake
+# Python / packaging
 build/
 build-*/
-simulation/build/
-simulation/cmake-build-*/
-CMakeFiles/
-CMakeCache.txt
-*.o
-*.a
-*.so
-*.dll
-*.dylib
-*.exe
+.venv/
+dist/
+*.egg-info/
+*.spec
+!simulation/packaging/sstream.spec
 *.log
 
 # Python helper caches
 __pycache__/
 *.py[cod]
-
-# Generated simulation output
-frames/
-*.mp4
-*.vti
-*.voxbin
 
 # IDE and OS
 .vscode/
