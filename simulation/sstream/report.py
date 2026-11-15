@@ -51,18 +51,12 @@ def summary(result: SolveResult, model_name: str) -> str:
         "  At this Reynolds number the boundary layer is far below the cell size;",
         "  the eddy-viscosity floor is doing real work.  Treat Cd/Cl as relative",
         "  values for comparing shapes, not as certified drag figures.",
+        "  Cd is indicative, not calibrated: it is valid for comparing shapes and",
+        "  orientations of the same model, not as a drag figure to quote against",
+        "  a physical measurement.",
         "  The model sits in a closed tunnel with a no-slip floor and walls; both",
         "  confinement and floor interference are part of these numbers.",
     ]
     if result.warnings:
         rows.extend(["", "Warnings"] + [f"  - {line}" for line in result.warnings])
-    rows.extend(
-        [
-            "",
-            "Validation",
-            "  Channel flow matches the exact Poiseuille profile within 0.4%.",
-            "  Cylinder at Re 100 reproduces the expected drag plateau and",
-            "  vortex-shedding Strouhal number (see tests/test_cylinder.py).",
-        ]
-    )
     return "\n".join(rows)

@@ -21,6 +21,11 @@ import numpy as np
 
 CS2 = 1.0 / 3.0
 
+# Single SRT relaxation floor for the whole package.  At tau == 0.5 the
+# collision operator vanishes and the scheme is unstable; the step kernel,
+# the unit conversion and the config validation all use this value.
+TAU_MIN = 0.5001
+
 # Rest, six face neighbours, twelve edge neighbours.
 DIRECTIONS = np.array(
     [
@@ -133,7 +138,7 @@ class LatticeUnits:
         dt = u_lattice * dx / speed
         nu_lattice = kinematic_viscosity * dt / (dx * dx)
         tau = 0.5 + nu_lattice / CS2
-        floor = max(0.5, float(min_tau))
+        floor = max(TAU_MIN, float(min_tau))
         clamped = tau < floor
         return cls(
             dx=dx,

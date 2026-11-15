@@ -13,6 +13,7 @@ force history.  Nothing in here decides how the result looks.
 from __future__ import annotations
 
 import time
+import warnings as py_warnings
 from dataclasses import dataclass, field
 from typing import Callable
 
@@ -20,7 +21,7 @@ import numpy as np
 
 from . import fields
 from .dye import DyeField
-from .lattice import LatticeUnits
+from .lattice import TAU_MIN, LatticeUnits
 from .lbm import LbmConfig, LbmSolver
 from .preview import RunPreset
 from .schema import FluidSpec, TunnelSpec
@@ -124,6 +125,11 @@ def run_case(
     drag, lift, lateral = [], [], []
     clock = time.perf_counter()
 
+    # Lattice Mach guard: past ~0.3 the weakly compressible model's errors
+    # dominate, so the run is flagged instead of silently reporting garbage.
+    mach_limit = 0.3
+    mach_tripped = False
+
     for step in range(1, steps + 1):
         solver.step()
         dye.step(solver.u, solver.solid)
@@ -132,6 +138,16 @@ def run_case(
             drag.append(force[0])
             lateral.append(force[1])
             lift.append(force[2])
+        if step % 64 == 0 and not mach_tripped:
+            if solver.max_speed() > mach_limit:
+                mach_tripped = True
+                py_warnings.warn(
+                    f"max lattice speed exceeded {mach_limit} (Mach guard); "
+                    "the low-Mach assumption is invalid and the force "
+                    "history is not meaningful",
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
         if step % 16 == 0:
             check()
             report(1 + int(94 * step / steps), f"Solving · step {step:,} / {steps:,}")
@@ -166,8 +182,13 @@ def run_case(
     blockage = area / (tunnel.width * tunnel.height)
     if blockage > 0.15:
         warnings.append(f"The model blocks {blockage:.0%} of the tunnel cross-section; Cd is confinement-biased.")
-    if units.tau < 0.5005:
+    if abs(units.tau - TAU_MIN) < 1e-3:
         warnings.append("The eddy-viscosity floor is active; treat Cd as a relative LES value.")
+    if mach_tripped:
+        warnings.append(
+            "max lattice speed exceeded 0.3; the low-Mach assumption is invalid, "
+            "Cd/Cl are not meaningful."
+        )
     if not plan.mask.watertight:
         warnings.append("The surface is not watertight; the solid mask is approximate.")
 

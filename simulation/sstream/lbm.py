@@ -34,7 +34,7 @@ from dataclasses import dataclass
 import numpy as np
 import warp as wp
 
-from .lattice import CS2, DIRECTIONS, OPPOSITE, WEIGHTS
+from .lattice import CS2, DIRECTIONS, OPPOSITE, TAU_MIN, WEIGHTS
 
 _INITIALISED = False
 
@@ -69,8 +69,10 @@ class LbmConfig:
     def __post_init__(self) -> None:
         if len(self.shape) != 3 or min(self.shape) < 2:
             raise ValueError("shape must have three axes of at least two cells")
-        if self.tau <= 0.5:
-            raise ValueError("tau must be greater than 0.5 or the scheme is unstable")
+        if self.tau < TAU_MIN:
+            raise ValueError(
+                f"tau must be at least TAU_MIN ({TAU_MIN}) or the scheme is unstable"
+            )
         if self.smagorinsky < 0.0:
             raise ValueError("smagorinsky cannot be negative")
         if self.inlet_speed < 0.0:
@@ -168,6 +170,7 @@ def _step_kernel(
     nz: int,
     tau: float,
     cs2: float,
+    tau_min: float,
     smagorinsky: float,
     gx: float,
     gy: float,
@@ -277,8 +280,8 @@ def _step_kernel(
         )
         disc = tau * tau + 18.0 * wp.sqrt(2.0) * smagorinsky * smagorinsky * pi_norm / rho
         tau_eff = 0.5 * (tau + wp.sqrt(disc))
-        if tau_eff < 0.5001:
-            tau_eff = 0.5001
+        if tau_eff < tau_min:
+            tau_eff = tau_min
 
     # --- Guo-forced BGK collision ----------------------------------------
     uxe = ux + gx / (2.0 * rho)
@@ -389,6 +392,7 @@ class LbmSolver:
                 cfg.shape[2],
                 cfg.tau,
                 CS2,
+                TAU_MIN,
                 cfg.smagorinsky,
                 gx,
                 gy,

@@ -12,6 +12,7 @@ from sstream.lattice import (
     CS2,
     DIRECTIONS,
     OPPOSITE,
+    TAU_MIN,
     WEIGHTS,
     LatticeUnits,
     equilibrium,
@@ -66,12 +67,27 @@ def test_equilibrium_broadcasts_over_a_grid():
 
 
 def test_units_convert_both_ways():
-    units = LatticeUnits.from_physical(speed=30.0, kinematic_viscosity=1.5e-5, dx=6.0 / 256)
+    # A viscosity that keeps tau above TAU_MIN, so the conversion round-trips
+    # exactly.  The clamped case is covered by test_units_floor_is_tau_min.
+    units = LatticeUnits.from_physical(
+        speed=30.0, kinematic_viscosity=1.5e-2, dx=6.0 / 256
+    )
     assert units.u_lattice == pytest.approx(0.05)
     assert units.dt == pytest.approx(0.05 * (6.0 / 256) / 30.0)
     assert units.tau > 0.5
-    assert units.nu_physical == pytest.approx(1.5e-5, rel=1e-6)
+    assert units.nu_physical == pytest.approx(1.5e-2, rel=1e-6)
     assert units.nu_lattice == pytest.approx(CS2 * (units.tau - 0.5))
+
+
+def test_units_floor_is_tau_min():
+    # Air on a fine grid wants tau ~ 0.5000007; the shared TAU_MIN floor
+    # (the same one LbmConfig validates and the step kernel clamps to)
+    # raises it, and the conversion records that it did.
+    units = LatticeUnits.from_physical(
+        speed=30.0, kinematic_viscosity=1.5e-5, dx=6.0 / 256
+    )
+    assert units.tau == pytest.approx(TAU_MIN)
+    assert units.viscosity_clamped
 
 
 def test_units_reject_nonsense():
