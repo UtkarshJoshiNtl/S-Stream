@@ -63,7 +63,7 @@ def test_car_pipeline_produces_a_non_empty_mask():
     surface = load_surface(ASSET)
     build = build_model(
         surface,
-        MeshSpec(target_size=1.2, transform=MeshTransform(roll=-90, yaw=-90)),
+        MeshSpec(fraction=0.2, transform=MeshTransform(roll=-90, yaw=-90)),
         TunnelSpec(),
     )
     tunnel = TunnelSpec().with_resolution(64)

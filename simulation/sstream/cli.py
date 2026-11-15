@@ -58,11 +58,33 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--orient",
-        choices=("auto", "none"),
-        default="auto",
-        help="auto: rotate the model so its longest axis is the wind "
-        "direction and its shortest axis is up (default); none: keep the "
-        "model's axes as imported",
+        choices=("auto-vehicle", "upright", "none"),
+        default="auto-vehicle",
+        help="auto-vehicle: longest extent along the wind, shortest up "
+        "(default, for cars/planes); upright: keep the model's up axis "
+        "(--up) and put the wind along the longer horizontal extent "
+        "(trees, buildings, people, animals); none: use the file as-is",
+    )
+    parser.add_argument(
+        "--up",
+        choices=("+Y", "+Z"),
+        default="+Y",
+        help="model up axis for --orient upright (default +Y; Blender exports Y-up)",
+    )
+    parser.add_argument(
+        "--flip",
+        action="store_true",
+        help="rotate 180 deg about up, reversing nose/tail",
+    )
+    parser.add_argument("--yaw", type=float, default=0.0, help="heading, degrees about up")
+    parser.add_argument(
+        "--pitch", type=float, default=0.0, help="angle of attack, degrees about lateral"
+    )
+    parser.add_argument(
+        "--fraction",
+        type=float,
+        default=0.2,
+        help="longest model extent as a fraction of the tunnel length (default 0.2)",
     )
     parser.add_argument(
         "--smagorinsky", type=float, default=0.12, help="LES coefficient"
@@ -88,10 +110,28 @@ def main(argv: list[str] | None = None) -> int:
     try:
         surface = load_surface(args.mesh)
         build = build_model(
-            surface, MeshSpec(auto_orient=args.orient == "auto"), tunnel
+            surface,
+            MeshSpec(
+                orient=args.orient,
+                up=args.up,
+                flip=args.flip,
+                pitch=args.pitch,
+                yaw=args.yaw,
+                fraction=args.fraction,
+            ),
+            tunnel,
         )
         for warning in build.warnings:
             print(f"warning: {warning}", file=sys.stderr)
+        placed = np.asarray(build.mesh.bounds, dtype=float).reshape(3, 2)
+        placed_extent = placed[:, 1] - placed[:, 0]
+        bbox_blockage = (
+            placed_extent[1] * placed_extent[2] / (tunnel.width * tunnel.height)
+        )
+        print(
+            f"Placed        {placed_extent[0]:.2f} x {placed_extent[1]:.2f} x "
+            f"{placed_extent[2]:.2f} m, bbox blockage {bbox_blockage:.1%}"
+        )
         mask = voxelize(build.mesh, tunnel)
         if mask.empty:
             raise ValueError("voxelization produced no solid cells")

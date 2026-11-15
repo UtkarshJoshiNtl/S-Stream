@@ -19,9 +19,28 @@ from pathlib import Path
 import numpy as np
 import pyvista as pv
 
-from .schema import MeshSpec, MeshTransform, TunnelSpec
+from .schema import MeshSpec, MeshTransform, ORIENT_MODES, TunnelSpec, UP_AXES
 
-SUPPORTED_SUFFIXES = {".obj", ".stl"}
+SUPPORTED_SUFFIXES = {".obj", ".stl", ".ply"}
+BLENDER_EXPORT_MESSAGE = (
+    "Unsupported model format: {suffix}. S-Stream does not read Blender or "
+    "FBX files; export the model from Blender as OBJ or STL and pass that "
+    "file instead."
+)
+
+
+def _proper_from_order(order: list[int]) -> np.ndarray:
+    """Row permutation of the basis as a proper rotation.
+
+    Rows are the new world axes expressed in the old ones.  If the
+    permutation is odd, the new Y axis is negated so det == +1; the model is
+    rotated, never mirrored.
+    """
+    rotation = np.eye(3)[np.asarray(order, dtype=np.int64)]
+    if np.linalg.det(rotation) < 0.0:
+        rotation = rotation.copy()
+        rotation[1] *= -1.0
+    return rotation
 
 
 def orient_to_wind(mesh: pv.PolyData) -> pv.PolyData:
@@ -43,6 +62,51 @@ def orient_to_wind(mesh: pv.PolyData) -> pv.PolyData:
     out = mesh.copy()
     out.points = points
     return out
+
+
+def upright_rotation(extents: np.ndarray, up: str = "+Y") -> np.ndarray:
+    """Proper rotation keeping ``up`` vertical, wind along the longer horizontal.
+
+    Used by the ``upright`` orientation mode for things like trees,
+    buildings, people and animals: the model's own up axis stays up, and the
+    longer of the two remaining horizontal extents becomes the wind axis.
+    """
+    if up == "+Y":
+        horizontal = (0, 2)  # old X and old Z
+        up_axis = 1
+    elif up == "+Z":
+        horizontal = (0, 1)  # old X and old Y
+        up_axis = 2
+    else:
+        raise ValueError(f"up must be one of {UP_AXES}, got {up!r}")
+    first, second = horizontal
+    if extents[second] > extents[first]:
+        first, second = second, first
+    return _proper_from_order([int(first), int(second), int(up_axis)])
+
+
+def orient_upright(mesh: pv.PolyData, up: str = "+Y") -> pv.PolyData:
+    """Apply :func:`upright_rotation` to ``mesh``."""
+    bounds = np.asarray(mesh.bounds, dtype=float).reshape(3, 2)
+    rotation = upright_rotation(bounds[:, 1] - bounds[:, 0], up)
+    out = mesh.copy()
+    out.points = np.asarray(out.points) @ rotation.T
+    return out
+
+
+def flipped_about_up(mesh: pv.PolyData) -> pv.PolyData:
+    """Rotate 180 degrees about world Z (the up axis), reversing nose/tail."""
+    return mesh.rotate_z(180.0, point=(0.0, 0.0, 0.0), inplace=False)
+
+
+def pitched(mesh: pv.PolyData, pitch_deg: float) -> pv.PolyData:
+    """Angle of attack: rotation about the lateral (world Y) axis."""
+    return mesh.rotate_y(pitch_deg, point=(0.0, 0.0, 0.0), inplace=False)
+
+
+def yawed(mesh: pv.PolyData, yaw_deg: float) -> pv.PolyData:
+    """Heading: rotation about the up (world Z) axis."""
+    return mesh.rotate_z(yaw_deg, point=(0.0, 0.0, 0.0), inplace=False)
 
 
 @dataclass
@@ -97,10 +161,13 @@ def _trim_outliers(mesh: pv.PolyData, fraction: float = 0.001) -> pv.PolyData:
 
 
 def load_surface(path: str | Path) -> pv.PolyData:
-    """Read an OBJ or STL file as one clean triangle surface."""
+    """Read an OBJ, STL or PLY file as one clean triangle surface."""
     source = Path(path)
-    if source.suffix.lower() not in SUPPORTED_SUFFIXES:
-        raise ValueError(f"Unsupported model format: {source.suffix or '(none)'}")
+    suffix = source.suffix.lower()
+    if suffix in {".blend", ".fbx"}:
+        raise ValueError(BLENDER_EXPORT_MESSAGE.format(suffix=suffix))
+    if suffix not in SUPPORTED_SUFFIXES:
+        raise ValueError(f"Unsupported model format: {suffix or '(none)'}")
     if not source.is_file():
         raise FileNotFoundError(source)
 
@@ -164,6 +231,15 @@ def yawed_about_bottom_center(mesh: pv.PolyData, angle: float) -> pv.PolyData:
     return mesh.rotate_z(angle, point=(centre[0], centre[1], bounds[2, 0]))
 
 
+def centred_in_cross_section(mesh: pv.PolyData) -> pv.PolyData:
+    """Translate so the bounding-box centre sits on the tunnel centreline."""
+    bounds = np.asarray(mesh.bounds, dtype=float).reshape(3, 2)
+    centre_y = float((bounds[1, 0] + bounds[1, 1]) * 0.5)
+    if abs(centre_y) <= 1e-12:
+        return mesh.copy()
+    return mesh.translate((0.0, -centre_y, 0.0), inplace=False)
+
+
 def clamp_inside(
     mesh: pv.PolyData,
     tunnel: TunnelSpec,
@@ -203,14 +279,25 @@ def build_model(
 ) -> ModelBuild:
     """Run the full import-to-placement contract for one surface.
 
-    When ``spec.auto_orient`` is set (the default), the model is first
-    rotated so its longest extent lies along the wind (+X) and its
-    shortest extent points up (+Z); the user's pitch/yaw/roll and the
-    tunnel yaw then compose on top of that.
+    Placement order: orientation mode, ``flip``, ``yaw`` (heading), ``pitch``
+    (angle of attack), then scale the longest extent to ``fraction`` of the
+    tunnel length, centre in the cross-section, drop to the floor, and clamp
+    inside the tunnel.  Every rotation is proper (det +1): the model is
+    rotated, never mirrored.
     """
-    if spec.auto_orient:
+    if spec.orient == "auto-vehicle":
         surface = orient_to_wind(surface)
-    mesh, base_scale = normalized(surface, spec.target_size)
+    elif spec.orient == "upright":
+        surface = orient_upright(surface, spec.up)
+    elif spec.orient != "none":
+        raise ValueError(f"orient must be one of {ORIENT_MODES}, got {spec.orient!r}")
+    if spec.flip:
+        surface = flipped_about_up(surface)
+    if spec.yaw:
+        surface = yawed(surface, spec.yaw)
+    if spec.pitch:
+        surface = pitched(surface, spec.pitch)
+    mesh, base_scale = normalized(surface, spec.fraction * tunnel.length)
     # Apply scale multiplier from transform
     if spec.transform.scale != 1.0:
         mesh = mesh.scale([spec.transform.scale] * 3, inplace=False)
@@ -218,6 +305,7 @@ def build_model(
     mesh = setup_rotated(mesh, spec.transform)
     mesh = dropped_to_floor(mesh, tunnel.z_min, spec.transform.position_z)
     mesh = yawed_about_bottom_center(mesh, spec.transform.tunnel_yaw)
+    mesh = centred_in_cross_section(mesh)
     mesh, warnings = clamp_inside(
         mesh, tunnel, (spec.transform.position_x, spec.transform.position_y), spec.margin
     )

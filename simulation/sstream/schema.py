@@ -15,6 +15,9 @@ ANGLE_FINE = 1.0
 POSITION_SNAP = 0.1
 POSITION_FINE = 0.01
 
+ORIENT_MODES = ("auto-vehicle", "upright", "none")
+UP_AXES = ("+Y", "+Z")
+
 
 def snap_value(value: float, step: float) -> float:
     """Round ``value`` to the nearest multiple of ``step``.
@@ -173,16 +176,31 @@ class MeshTransform:
 
 @dataclass(frozen=True)
 class MeshSpec:
-    """An imported surface plus the placement the user chose for it."""
+    """An imported surface plus the placement the user chose for it.
+
+    ``orient`` picks the alignment mode: ``auto-vehicle`` maps the longest
+    extent to the wind and the shortest to up, ``upright`` keeps the model's
+    up axis (``up``) and puts the wind along the longer horizontal extent,
+    ``none`` uses the file as imported.  ``fraction`` scales the longest
+    extent to that fraction of the tunnel length.
+    """
 
     path: str | None = None
-    target_size: float = 1.2
     margin: float = 0.05
-    auto_orient: bool = True
+    orient: str = "auto-vehicle"
+    up: str = "+Y"
+    flip: bool = False
+    pitch: float = 0.0
+    yaw: float = 0.0
+    fraction: float = 0.2
     transform: MeshTransform = field(default_factory=MeshTransform)
 
     def __post_init__(self) -> None:
-        if self.target_size <= 0.0:
-            raise ValueError("target_size must be positive")
         if self.margin < 0.0:
             raise ValueError("margin cannot be negative")
+        if self.orient not in ORIENT_MODES:
+            raise ValueError(f"orient must be one of {ORIENT_MODES}")
+        if self.up not in UP_AXES:
+            raise ValueError(f"up must be one of {UP_AXES}")
+        if not 0.0 < self.fraction <= 1.0:
+            raise ValueError("fraction must be in (0, 1]")
