@@ -73,15 +73,15 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     preset = next(p for p in PRESETS if p.name.lower() == args.preset)
+    tunnel = TunnelSpec().with_resolution(preset.cells_streamwise)
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     try:
         surface = load_surface(args.mesh)
-        build = build_model(surface, MeshSpec(), TunnelSpec())
+        build = build_model(surface, MeshSpec(), tunnel)
         for warning in build.warnings:
             print(f"warning: {warning}", file=sys.stderr)
-        tunnel = TunnelSpec()
         mask = voxelize(build.mesh, tunnel)
         if mask.empty:
             raise ValueError("voxelization produced no solid cells")
