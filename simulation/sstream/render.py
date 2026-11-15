@@ -519,13 +519,16 @@ def build_vortices(
     # Drop connected components smaller than q_min_voxels
     if q_min_voxels > 0 and contour.n_cells > 0:
         conn = contour.connectivity()
-        # Get region sizes
-        regions = conn.regions()
-        large_regions = [r for r in regions if r.n_cells >= q_min_voxels]
-        if large_regions:
-            contour = large_regions[0].extract_surface()
-        else:
+        # Get region IDs and count cells per region
+        region_ids = conn.cell_data["RegionId"]
+        unique_ids, counts = np.unique(region_ids, return_counts=True)
+        # Keep only regions with enough cells
+        large_ids = unique_ids[counts >= q_min_voxels]
+        if len(large_ids) == 0:
             return None
+        # Extract only large regions
+        mask = np.isin(region_ids, large_ids)
+        contour = conn.extract_cells(mask)
     
     sampler = GridSampler(field, spacing, origin)
     u = sampler(np.asarray(contour.points))

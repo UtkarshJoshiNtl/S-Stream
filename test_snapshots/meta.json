@@ -1,0 +1,96 @@
+{
+  "model": "/home/Code1/dev/Projects/S-Stream/simulation/assets/3d-files/car-model.obj",
+  "placement": {
+    "path": null,
+    "margin": 0.05,
+    "orient": "auto-vehicle",
+    "up": "+Y",
+    "flip": false,
+    "pitch": 0.0,
+    "yaw": 0.0,
+    "fraction": 0.2,
+    "transform": {
+      "pitch": 0.0,
+      "roll": 0.0,
+      "yaw": 0.0,
+      "tunnel_yaw": 0.0,
+      "position_x": 3.0,
+      "position_y": 0.0,
+      "position_z": 0.0,
+      "scale": 1.0
+    },
+    "model": "/home/Code1/dev/Projects/S-Stream/simulation/assets/3d-files/car-model.obj",
+    "placed_scale": 0.025671866850937194,
+    "placed_bounds": [
+      [
+        2.52,
+        3.48
+      ],
+      [
+        -0.23715624387535444,
+        0.23715624387535444
+      ],
+      [
+        0.0,
+        0.2439888625814651
+      ]
+    ]
+  },
+  "tunnel": {
+    "length": 4.800000000000001,
+    "width": 1.8000000000000003,
+    "height": 1.2000000000000002,
+    "floor_z": 0.0,
+    "cells_streamwise": 220,
+    "grid_shape": [
+      220,
+      82,
+      55
+    ],
+    "spacing": [
+      0.02181818181818182,
+      0.02181818181818182,
+      0.02181818181818182
+    ],
+    "bounds": [
+      0.0,
+      4.800000000000001,
+      -0.9000000000000001,
+      0.9000000000000001,
+      0.0,
+      1.2000000000000002
+    ]
+  },
+  "solid_mask": {
+    "file": "solid.npy",
+    "dtype": "uint8",
+    "shape": [
+      220,
+      82,
+      55
+    ]
+  },
+  "snapshots": {
+    "files": [
+      "velocity_step_0001100.npz",
+      "velocity_step_0001650.npz",
+      "velocity_step_0002200.npz"
+    ],
+    "steps": [
+      1100,
+      1650,
+      2200
+    ],
+    "velocity_dtype": "float16",
+    "flow_throughs": 2
+  },
+  "lattice": {
+    "u_lattice": 0.06,
+    "tau": 0.505,
+    "tau_min": 0.5001,
+    "dt": 4.3636363636363636e-05,
+    "dx": 0.02181818181818182,
+    "smagorinsky": 0.12,
+    "visual": true
+  }
+}

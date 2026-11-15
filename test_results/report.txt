@@ -1,0 +1,48 @@
+S-Stream — wind tunnel report
+
+Model          car-model.obj
+Preset         Preview (128 cells streamwise)
+Grid           220 x 82 x 55  (992,200 cells)
+Solid cells    3,238
+Frontal area   0.0876 m²
+
+Air speed      30.0 m/s
+Reynolds (nominal) 2,400,000  (reference length 1.20 m)
+Reynolds (effective) 1,980
+Mode           visualization run, effective Re = 1,980, Cd not calibrated
+Cd             -6.028
+Cl (up)        -36.454
+Cl unsteady    ±0.721  (half peak-to-peak)
+
+Lattice        u = 0.060, tau = 0.505000
+Eddy viscosity Cs = 0.12
+Peak |u|/U∞    1.37
+Steps          2,200 in 20.9 s on cuda
+
+Method
+  D3Q19 lattice Boltzmann, half-way bounce-back walls, Guo forcing,
+  Smagorinsky eddy viscosity.  Pressure is the LBM equation of state
+  p = cs² rho.  Cd uses the voxel silhouette as the reference area.
+
+Limits
+  The geometry is voxelized, so small features and thin panels are lost.
+  At this Reynolds number the boundary layer is far below the cell size;
+  the eddy-viscosity floor is doing real work.  Treat Cd/Cl as relative
+  values for comparing shapes, not as certified drag figures.
+  Cd is indicative, not calibrated: it is valid for comparing shapes and
+  orientations of the same model, not as a drag figure to quote against
+  a physical measurement.
+  The model sits in a closed tunnel with a no-slip floor and walls; both
+  confinement and floor interference are part of these numbers.
+
+Limits for this run
+  The lattice relaxation time is pinned into [0.505, 0.52], so the
+  effective viscosity is far above the physical value; the wake is
+  an artistic impression, not a measured flow.  No validation
+  claim is made anywhere in this file.
+
+Warnings
+  - Mesh is not watertight after closing small holes; the body is treated as solid.
+  - Mesh is not watertight; cells unreachable from outside were filled so the body acts as solid.
+  - The surface is not watertight; the solid mask is approximate.
+  - Visualization run: the relaxation time is pinned into [0.505, 0.52], so the lattice viscosity is far above the physical one; the reported Re is the lattice Re and Cd is not calibrated.
