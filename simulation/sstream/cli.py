@@ -21,10 +21,11 @@ from pathlib import Path
 import numpy as np
 
 from .mesh import DEFAULT_MODEL, build_model, load_surface
+from .options import add_orientation_args, mesh_spec_from_args
 from .pipeline import SolvePlan, SolveCancelled, run_case
 from .preview import PRESETS
 from .report import summary
-from .schema import FluidSpec, MeshSpec, TunnelSpec
+from .schema import FluidSpec, TunnelSpec
 from .voxelize import voxelize
 
 
@@ -38,7 +39,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "mesh",
         nargs="?",
         default=str(DEFAULT_MODEL),
-        help=f"surface mesh to solve (.obj/.stl; default: bundled car model)",
+        help=f"surface mesh to solve (.obj/.stl/.ply; default: bundled car model)",
     )
     parser.add_argument(
         "--preset",
@@ -56,36 +57,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--u-lattice", type=float, default=0.06, help="lattice inlet speed"
     )
-    parser.add_argument(
-        "--orient",
-        choices=("auto-vehicle", "upright", "none"),
-        default="auto-vehicle",
-        help="auto-vehicle: longest extent along the wind, shortest up "
-        "(default, for cars/planes); upright: keep the model's up axis "
-        "(--up) and put the wind along the longer horizontal extent "
-        "(trees, buildings, people, animals); none: use the file as-is",
-    )
-    parser.add_argument(
-        "--up",
-        choices=("+Y", "+Z"),
-        default="+Y",
-        help="model up axis for --orient upright (default +Y; Blender exports Y-up)",
-    )
-    parser.add_argument(
-        "--flip",
-        action="store_true",
-        help="rotate 180 deg about up, reversing nose/tail",
-    )
-    parser.add_argument("--yaw", type=float, default=0.0, help="heading, degrees about up")
-    parser.add_argument(
-        "--pitch", type=float, default=0.0, help="angle of attack, degrees about lateral"
-    )
-    parser.add_argument(
-        "--fraction",
-        type=float,
-        default=0.2,
-        help="longest model extent as a fraction of the tunnel length (default 0.2)",
-    )
+    add_orientation_args(parser)
     parser.add_argument(
         "--smagorinsky", type=float, default=0.12, help="LES coefficient"
     )
@@ -109,18 +81,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         surface = load_surface(args.mesh)
-        build = build_model(
-            surface,
-            MeshSpec(
-                orient=args.orient,
-                up=args.up,
-                flip=args.flip,
-                pitch=args.pitch,
-                yaw=args.yaw,
-                fraction=args.fraction,
-            ),
-            tunnel,
-        )
+        build = build_model(surface, mesh_spec_from_args(args), tunnel)
         for warning in build.warnings:
             print(f"warning: {warning}", file=sys.stderr)
         placed = np.asarray(build.mesh.bounds, dtype=float).reshape(3, 2)
