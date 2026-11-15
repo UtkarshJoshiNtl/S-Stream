@@ -462,30 +462,51 @@ Q_DOWNSAMPLE_CELLS = 4_000_000
 
 
 def build_vortices(
-    meta: dict, field: np.ndarray, q_fraction: float
+    meta: dict, field: np.ndarray, solid: np.ndarray, q_percentile: float, q_min_voxels: int
 ) -> pv.PolyData | None:
-    """Q-isosurface coloured by speed, optionally on a 2x-downsampled grid."""
+    """Q-isosurface coloured by speed, computed only in wake region."""
     spacing = np.asarray(meta["tunnel"]["spacing"], dtype=np.float64)
     origin = np.asarray(origin_of(meta), dtype=np.float64)
     cells = int(np.prod(field.shape[:3]))
     if cells > Q_DOWNSAMPLE_CELLS:
         field = field[::2, ::2, ::2].copy()
+        solid = solid[::2, ::2, ::2].copy()
         spacing = spacing * 2.0
 
-    q = q_criterion(field, tuple(float(s) for s in spacing))
+    # Get model front for Q computation region
+    placement = meta.get("placement", {})
+    mb = placement.get("placed_bounds")
+    model_front = mb[0][0] if mb else 0.0
+    
+    # Convert model front to grid index
+    model_front_idx = int((model_front - origin[0]) / spacing[0])
+    model_front_idx = max(0, min(model_front_idx, field.shape[0] - 1))
+    
+    # Compute Q only for x >= model front
+    q_full = q_criterion(field, tuple(float(s) for s in spacing))
+    q = q_full.copy()
+    q[:model_front_idx, :, :] = 0.0
+    
+    # Zero Q within 2 cells of any solid cell
+    from scipy.ndimage import binary_dilation
+    solid_mask = solid.astype(bool)
+    dilated = binary_dilation(solid_mask, iterations=2)
+    q[dilated] = 0.0
+    
+    # Smooth with sigma 1.5
     try:
         from scipy.ndimage import gaussian_filter
-
-        # A one-cell smooth suppresses single-cell spikes (which otherwise
-        # set the max and make any fraction of it nearly empty) and yields
-        # coherent isosurfaces instead of dust.
-        q = gaussian_filter(q, 1.0)
+        q = gaussian_filter(q, 1.5)
     except Exception:
         pass
-    q_max = float(q.max())
-    if not np.isfinite(q_max) or q_max <= 0.0:
+    
+    # Pick level from percentile of Q in wake region (where Q > 0)
+    q_wake = q[q > 0]
+    if q_wake.size == 0:
         return None
-    level = float(q_fraction * q_max)
+    level = float(np.percentile(q_wake, q_percentile))
+    if not np.isfinite(level) or level <= 0.0:
+        return None
 
     grid = pv.ImageData(
         dimensions=q.shape, spacing=tuple(spacing), origin=tuple(origin)
@@ -494,6 +515,18 @@ def build_vortices(
     contour = grid.contour(isosurfaces=[level], scalars="q")
     if contour.n_cells == 0:
         return None
+    
+    # Drop connected components smaller than q_min_voxels
+    if q_min_voxels > 0 and contour.n_cells > 0:
+        conn = contour.connectivity()
+        # Get region sizes
+        regions = conn.regions()
+        large_regions = [r for r in regions if r.n_cells >= q_min_voxels]
+        if large_regions:
+            contour = large_regions[0].extract_surface()
+        else:
+            return None
+    
     sampler = GridSampler(field, spacing, origin)
     u = sampler(np.asarray(contour.points))
     contour.point_data["speed"] = np.linalg.norm(u, axis=1).astype(np.float32)
@@ -603,7 +636,8 @@ def render_frames(
     preview: bool,
     orbit_deg_per_sec: float,
     tube_radius: float | None,
-    q_fraction: float,
+    q_percentile: float,
+    q_min_voxels: int,
     cmap: str,
 ) -> tuple[int, float]:
     """Render every frame; returns (n_frames, seconds_per_frame)."""
@@ -674,7 +708,7 @@ def render_frames(
         if "model" in layers:
             add_model(plotter, build)
         if "vortices" in layers:
-            vortices = build_vortices(meta, field, q_fraction)
+            vortices = build_vortices(meta, field, solid, q_percentile, q_min_voxels)
             if vortices is not None:
                 plotter.add_mesh(
                     vortices, scalars="speed", cmap=cmap, clim=(0.5 * u_inlet, 1.5 * u_inlet),
@@ -771,10 +805,16 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="colormap for speed (cividis, viridis, turbo; default turbo)",
     )
     parser.add_argument(
-        "--q-fraction",
+        "--q-percentile",
         type=float,
-        default=0.2,
-        help="vortex isosurface level as a fraction of smoothed max Q (default 0.2)",
+        default=99.0,
+        help="vortex isosurface level as a percentile of Q in the wake region (default 99th)",
+    )
+    parser.add_argument(
+        "--q-min-voxels",
+        type=int,
+        default=300,
+        help="minimum voxels for a connected vortex component (default 300)",
     )
     args = parser.parse_args(argv)
     layers = {
@@ -808,7 +848,8 @@ def main(argv: list[str] | None = None) -> int:
             preview=args.preview,
             orbit_deg_per_sec=args.orbit_deg_per_sec,
             tube_radius=args.tube_radius,
-            q_fraction=args.q_fraction,
+            q_percentile=args.q_percentile,
+            q_min_voxels=args.q_min_voxels,
             cmap=args.cmap,
         )
     except Exception as exc:  # CLI boundary: one clean message, exit code 1

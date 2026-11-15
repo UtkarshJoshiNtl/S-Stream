@@ -36,6 +36,16 @@ DISK_MARGIN = 1.2
 VELOCITY_DTYPE = np.dtype("<f2")  # float16, little-endian, portable
 
 
+def get_velocity_dtype(dtype_str: str = "float16") -> np.dtype:
+    """Get numpy dtype from string."""
+    if dtype_str == "float16":
+        return np.dtype("<f2")
+    elif dtype_str == "float32":
+        return np.dtype("<f4")
+    else:
+        raise ValueError(f"Unsupported dtype: {dtype_str}")
+
+
 def steps_per_flow_through(tunnel_length: float, speed: float, dt: float) -> float:
     """Lattice steps for the freestream to cross the tunnel once."""
     if speed <= 0.0 or dt <= 0.0:
@@ -60,9 +70,10 @@ def snapshot_steps(total_steps: int, per_flow_through: float, count: int) -> lis
     return [int(step) for step in raw]
 
 
-def snapshot_bytes(cells: int, count: int) -> int:
-    """Estimated bytes on disk for ``count`` float16 velocity fields."""
-    per_file = int(cells * 3 * VELOCITY_DTYPE.itemsize * ESTIMATE_FACTOR) + FILE_OVERHEAD
+def snapshot_bytes(cells: int, count: int, dtype_str: str = "float16") -> int:
+    """Estimated bytes on disk for ``count`` velocity fields."""
+    dtype = get_velocity_dtype(dtype_str)
+    per_file = int(cells * 3 * dtype.itemsize * ESTIMATE_FACTOR) + FILE_OVERHEAD
     return per_file * count
 
 
@@ -77,10 +88,11 @@ def check_disk(directory: Path, needed: int) -> int:
     return free
 
 
-def write_velocity(directory: Path, step: int, velocity: np.ndarray) -> int:
-    """Write one float16 velocity snapshot; returns bytes on disk."""
+def write_velocity(directory: Path, step: int, velocity: np.ndarray, dtype_str: str = "float16") -> int:
+    """Write one velocity snapshot; returns bytes on disk."""
     path = directory / f"velocity_step_{step:07d}.npz"
-    np.savez(path, velocity=np.ascontiguousarray(velocity, dtype=VELOCITY_DTYPE), step=np.int64(step))
+    dtype = get_velocity_dtype(dtype_str)
+    np.savez(path, velocity=np.ascontiguousarray(velocity, dtype=dtype), step=np.int64(step))
     return path.stat().st_size
 
 

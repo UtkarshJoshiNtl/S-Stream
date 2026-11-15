@@ -55,6 +55,7 @@ class SolvePlan:
     visual: bool = False
     snapshots_dir: str | None = None
     snapshot_count: int = 0
+    snapshot_dtype: str = "float16"
     placement: dict | None = None
 
     def __post_init__(self) -> None:
@@ -141,7 +142,7 @@ def run_case(
         snap_steps = snapshot_steps(
             max(1, int(preset.steps)), per_flow_through, plan.snapshot_count
         )
-        estimated = snapshot_bytes(cells_early, len(snap_steps))
+        estimated = snapshot_bytes(cells_early, len(snap_steps), plan.snapshot_dtype)
         free = check_disk(snap_dir, estimated)
         report(
             0,
@@ -189,7 +190,7 @@ def run_case(
         dye.step(solver.u, solver.solid)
         if snap_dir is not None and step in snap_set:
             snap_bytes_written += write_velocity(
-                snap_dir, step, solver.u.numpy()
+                snap_dir, step, solver.u.numpy(), plan.snapshot_dtype
             )
             snap_files_written += 1
         if step >= start and (step - start) % sample_every == 0:

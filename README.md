@@ -39,6 +39,10 @@ sstream-render results/snapshots --out drive.mp4 \
   --streamlines --smoke --vortices --model
 ```
 
+Note: `--snapshot-dtype float16` (default) can inject noise into Q-criterion due to
+reduced precision. Use `--snapshot-dtype float32` for quality runs where accurate
+vortex visualization is required.
+
 `--streamlines` (speed-coloured tubes, last snapshot), `--smoke`
 (RK2 particles with fading trails), `--vortices` (Q-criterion isosurface,
 `--q-fraction`, 40% opacity) and `--model` (the placed model) are

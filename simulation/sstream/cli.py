@@ -86,6 +86,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="number of snapshots, spaced over the last 2 flow-throughs",
     )
     parser.add_argument(
+        "--snapshot-dtype",
+        choices=("float16", "float32"),
+        default="float16",
+        help="dtype for velocity snapshots (default float16; use float32 for quality runs)",
+    )
+    parser.add_argument(
         "--visual",
         action="store_true",
         help="visualization run: stable lattice params (u_lattice 0.06, "
@@ -192,6 +198,7 @@ def main(argv: list[str] | None = None) -> int:
             visual=args.visual,
             snapshots_dir=args.snapshots,
             snapshot_count=args.snapshot_count,
+            snapshot_dtype=args.snapshot_dtype,
             placement=placement,
         )
 
