@@ -318,7 +318,7 @@ STREAMLINE_MAX_STEPS = 400
 
 
 def streamline_seeds(meta: dict) -> np.ndarray:
-    """2D (y,z) rake grid upstream of the placed model."""
+    """Jittered seeds within the model's silhouette (y/z bbox padded ~15%)."""
     bounds = meta["tunnel"]["bounds"]
     placement = meta.get("placement", {})
     mb = placement.get("placed_bounds")
@@ -333,17 +333,19 @@ def streamline_seeds(meta: dict) -> np.ndarray:
         model_len = mb[0][1] - mb[0][0]
         dy = mb[1][1] - mb[1][0]
         dz = mb[2][1] - mb[2][0]
+    
+    # Seed within silhouette-bbox padded ~15%
     x_rake = max(bounds[0] + 0.05, model_xmin - 0.3 * model_len)
-    spread_y = 1.5 * max(dy, 0.25)
-    spread_z = 1.5 * max(dz, 0.25)
-    y_lim = max(bounds[2] + 1e-3, -spread_y * 0.5), min(bounds[3] - 1e-3, spread_y * 0.5)
+    y_mid = 0.5 * (mb[1][0] + mb[1][1])
     z_mid = 0.5 * (mb[2][0] + mb[2][1])
-    z_lim = (
-        max(bounds[4] + 0.05, z_mid - spread_z * 0.5),
-        min(bounds[5] - 0.05, z_mid + spread_z * 0.5),
-    )
-    ys = np.linspace(y_lim[0], y_lim[1], 9)
-    zs = np.linspace(z_lim[0], z_lim[1], 7)
+    spread_y = 1.15 * max(dy, 0.25)
+    spread_z = 1.15 * max(dz, 0.25)
+    
+    # 6x5 jittered seeds
+    rng = np.random.default_rng(20240515)
+    ny, nz = 6, 5
+    ys = y_mid + (rng.random(ny) - 0.5) * spread_y
+    zs = z_mid + (rng.random(nz) - 0.5) * spread_z
     grid_y, grid_z = np.meshgrid(ys, zs, indexing="ij")
     return np.column_stack(
         [np.full(grid_y.size, x_rake), grid_y.reshape(-1), grid_z.reshape(-1)]
@@ -356,6 +358,17 @@ def integrate_pathlines(
     """RK4 integration of d(p) = u_hat(p), one polyline per seed."""
     bounds = meta["tunnel"]["bounds"]
     step = STREAMLINE_STEP_FRACTION * meta["tunnel"]["spacing"][0]
+    
+    # Get inlet speed for stop condition
+    lat = meta.get("lattice", {})
+    u_lattice = lat.get("u_lattice", 0.06)
+    dx = lat.get("dx", 0.01)
+    dt = lat.get("dt", 0.001)
+    u_inlet = u_lattice * dx / dt
+    
+    # Last 5% of outlet cells
+    outlet_start = bounds[0] + 0.95 * (bounds[1] - bounds[0])
+    
     lines = []
     for seed in seeds:
         points = [seed.astype(np.float64)]
@@ -373,13 +386,16 @@ def integrate_pathlines(
             k3, _ = direction(p + 0.5 * step * k2)
             k4, _ = direction(p + step * k3)
             p = p + step * (k1 + 2.0 * k2 + 2.0 * k3 + k4) / 6.0
+            
+            # Stop conditions: out of bounds, speed < 5% inlet, in last 5% outlet, or hit solid
             if (
                 p[0] > bounds[1]
                 or p[1] < bounds[2]
                 or p[1] > bounds[3]
                 or p[2] < bounds[4]
                 or p[2] > bounds[5]
-                or n1 < 1e-9
+                or n1 < 0.05 * u_inlet
+                or p[0] > outlet_start
             ):
                 break
             if solid_mask.inside(np.atleast_2d(p))[0]:
@@ -565,8 +581,9 @@ def render_frames(
     still_frame: int | None,
     preview: bool,
     orbit_deg_per_sec: float,
-    tube_radius: float,
+    tube_radius: float | None,
     q_fraction: float,
+    cmap: str,
 ) -> tuple[int, float]:
     """Render every frame; returns (n_frames, seconds_per_frame)."""
     meta = load_meta(snapshot_dir)
@@ -583,11 +600,15 @@ def render_frames(
 
     build = rebuild_model(meta, snapshot_dir)
     model_bounds = np.asarray(build.mesh.bounds, dtype=float).reshape(3, 2)
+    model_length = float(model_bounds[0, 1] - model_bounds[0, 0])
     tunnel = tunnel_from_meta(meta)
-
 
     # Physical inlet speed, for a fixed colour scale across all layers.
     u_inlet = float(lat["u_lattice"]) * factor
+
+    # Compute tube radius from model length if not specified
+    if tube_radius is None:
+        tube_radius = 0.0025 * model_length
 
     stream_tubes = None
     if "streamlines" in layers:
@@ -635,12 +656,12 @@ def render_frames(
             vortices = build_vortices(meta, field, q_fraction)
             if vortices is not None:
                 plotter.add_mesh(
-                    vortices, scalars="speed", cmap="turbo", clim=(0.5 * u_inlet, 1.5 * u_inlet),
+                    vortices, scalars="speed", cmap=cmap, clim=(0.5 * u_inlet, 1.5 * u_inlet),
                     opacity=0.4, smooth_shading=True, show_scalar_bar=False,
                 )
         if stream_tubes is not None:
             plotter.add_mesh(
-                stream_tubes, scalars="speed", cmap="turbo", clim=(0.5 * u_inlet, 1.5 * u_inlet),
+                stream_tubes, scalars="speed", cmap=cmap, clim=(0.5 * u_inlet, 1.5 * u_inlet),
                 smooth_shading=True, show_scalar_bar=False,
             )
         if smoke is not None:
@@ -719,8 +740,14 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--tube-radius",
         type=float,
-        default=0.007,
-        help="streamline tube radius in metres (default 0.007)",
+        default=None,
+        help="streamline tube radius in metres (default: 0.0025 * model length)",
+    )
+    parser.add_argument(
+        "--cmap",
+        type=str,
+        default="turbo",
+        help="colormap for speed (cividis, viridis, turbo; default turbo)",
     )
     parser.add_argument(
         "--q-fraction",
@@ -761,6 +788,7 @@ def main(argv: list[str] | None = None) -> int:
             orbit_deg_per_sec=args.orbit_deg_per_sec,
             tube_radius=args.tube_radius,
             q_fraction=args.q_fraction,
+            cmap=args.cmap,
         )
     except Exception as exc:  # CLI boundary: one clean message, exit code 1
         print(f"sstream-render: {exc}", file=sys.stderr)
