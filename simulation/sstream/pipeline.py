@@ -15,6 +15,7 @@ from __future__ import annotations
 import time
 import warnings as py_warnings
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Callable
 
 import numpy as np
@@ -25,8 +26,17 @@ from .dye import DyeField
 from .lattice import TAU_MIN, LatticeUnits, clamp_visual_tau
 from .lbm import LbmConfig, LbmSolver
 from .preview import RunPreset
-from .quality import WARMUP_STEPS
+from .quality import WARMUP_STEPS, format_bytes
 from .schema import FluidSpec, TunnelSpec
+from .snapshots import (
+    check_disk,
+    snapshot_bytes,
+    snapshot_steps,
+    steps_per_flow_through,
+    write_meta,
+    write_solid_mask,
+    write_velocity,
+)
 from .voxelize import VoxelResult
 
 
@@ -43,6 +53,9 @@ class SolvePlan:
     u_lattice: float = 0.06
     smagorinsky: float = 0.12
     visual: bool = False
+    snapshots_dir: str | None = None
+    snapshot_count: int = 0
+    placement: dict | None = None
 
     def __post_init__(self) -> None:
         if self.mask.dimensions != self.tunnel.grid_shape:
@@ -73,6 +86,9 @@ class SolveResult:
     device: str
     warmup_mlups: float = 0.0
     visual: bool = False
+    snapshot_dir: str | None = None
+    snapshot_steps: list[int] = field(default_factory=list)
+    snapshot_bytes: int = 0
     warnings: list[str] = field(default_factory=list)
 
     @property
@@ -111,6 +127,29 @@ def run_case(
         if pinned != units.tau:
             units = units.with_tau(pinned)
 
+    # --- Snapshot plan: decide the steps, estimate disk, refuse early. ---
+    cells_early = shape[0] * shape[1] * shape[2]
+    snap_steps: list[int] = []
+    snap_dir = Path(plan.snapshots_dir) if plan.snapshots_dir else None
+    if plan.snapshot_count and snap_dir is None:
+        raise ValueError("snapshots require a --snapshots DIR")
+    if snap_dir is not None and plan.snapshot_count < 1:
+        raise ValueError("snapshots require --snapshot-count N >= 1")
+    if snap_dir is not None:
+        snap_dir.mkdir(parents=True, exist_ok=True)
+        per_flow_through = steps_per_flow_through(tunnel.length, fluid.speed, units.dt)
+        snap_steps = snapshot_steps(
+            max(1, int(preset.steps)), per_flow_through, plan.snapshot_count
+        )
+        estimated = snapshot_bytes(cells_early, len(snap_steps))
+        free = check_disk(snap_dir, estimated)
+        report(
+            0,
+            f"Snapshots    {len(snap_steps)} files, est {format_bytes(estimated)} "
+            f"-> {snap_dir} ({format_bytes(free)} free)",
+        )
+    snap_set = set(snap_steps)
+
     report(1, "Preparing solver")
     check()
     solver = LbmSolver(
@@ -135,7 +174,9 @@ def run_case(
     clock = time.perf_counter()
     warm = min(WARMUP_STEPS, steps)
     warmup_mlups = 0.0
-    cells = shape[0] * shape[1] * shape[2]
+    cells = cells_early
+    snap_bytes_written = 0
+    snap_files_written = 0
 
     # Lattice Mach guard: past ~0.3 the weakly compressible model's errors
     # dominate, so the run is flagged instead of silently reporting garbage.
@@ -143,9 +184,14 @@ def run_case(
     mach_tripped = False
 
     def do_step(step: int) -> None:
-        nonlocal mach_tripped
+        nonlocal mach_tripped, snap_bytes_written, snap_files_written
         solver.step()
         dye.step(solver.u, solver.solid)
+        if snap_dir is not None and step in snap_set:
+            snap_bytes_written += write_velocity(
+                snap_dir, step, solver.u.numpy()
+            )
+            snap_files_written += 1
         if step >= start and (step - start) % sample_every == 0:
             force = solver.total_wall_force()
             drag.append(force[0])
@@ -227,6 +273,18 @@ def run_case(
             "Re is the lattice Re and Cd is not calibrated."
         )
 
+    if snap_dir is not None:
+        write_solid_mask(snap_dir, plan.mask.solid)
+        write_meta(
+            snap_dir, tunnel, plan.placement or {}, snap_steps,
+            plan.visual, units, plan.smagorinsky,
+        )
+        report(
+            99,
+            f"Snapshots    wrote {snap_files_written} files "
+            f"({format_bytes(snap_bytes_written)}) -> {snap_dir}",
+        )
+
     report(100, "Done")
     return SolveResult(
         tunnel=tunnel,
@@ -249,5 +307,8 @@ def run_case(
         device=solver.device,
         warmup_mlups=warmup_mlups,
         visual=plan.visual,
+        snapshot_dir=str(snap_dir) if snap_dir else None,
+        snapshot_steps=snap_steps,
+        snapshot_bytes=snap_bytes_written,
         warnings=warnings,
     )

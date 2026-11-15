@@ -23,6 +23,7 @@ import numpy as np
 from .lbm import pick_device
 from .mesh import DEFAULT_MODEL, build_model, load_surface
 from .options import add_orientation_args, mesh_spec_from_args
+from .snapshots import placement_dict
 from .pipeline import SolvePlan, SolveCancelled, run_case
 from .preview import PRESETS
 from .lattice import (
@@ -73,6 +74,18 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     add_orientation_args(parser)
     parser.add_argument(
+        "--snapshots",
+        metavar="DIR",
+        help="write velocity snapshots (float16) into DIR during the solve",
+    )
+    parser.add_argument(
+        "--snapshot-count",
+        type=int,
+        default=0,
+        metavar="N",
+        help="number of snapshots, spaced over the last 2 flow-throughs",
+    )
+    parser.add_argument(
         "--visual",
         action="store_true",
         help="visualization run: stable lattice params (u_lattice 0.06, "
@@ -106,6 +119,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
+    if bool(args.snapshots) != bool(args.snapshot_count):
+        print("sstream: --snapshots DIR and --snapshot-count N must be used together",
+              file=sys.stderr)
+        return 1
     preset = next(p for p in PRESETS if p.name.lower() == args.preset)
     device = pick_device()
     u_lattice = VISUAL_U_LATTICE if args.visual else args.u_lattice
@@ -154,6 +171,11 @@ def main(argv: list[str] | None = None) -> int:
             kinematic_viscosity=args.viscosity,
             reference_length=args.reference_length,
         )
+        placement = (
+            placement_dict(args.mesh, mesh_spec_from_args(args), build)
+            if args.snapshots
+            else None
+        )
         plan = SolvePlan(
             mask=mask,
             tunnel=tunnel,
@@ -162,6 +184,9 @@ def main(argv: list[str] | None = None) -> int:
             u_lattice=u_lattice,
             smagorinsky=smagorinsky,
             visual=args.visual,
+            snapshots_dir=args.snapshots,
+            snapshot_count=args.snapshot_count,
+            placement=placement,
         )
 
         start = time.perf_counter()
@@ -195,6 +220,12 @@ def main(argv: list[str] | None = None) -> int:
             payload["effective_reynolds"] = (
                 fluid.speed * fluid.reference_length / result.units.nu_physical
             )
+        if result.snapshot_dir:
+            payload["snapshots"] = {
+                "dir": result.snapshot_dir,
+                "steps": result.snapshot_steps,
+                "bytes": result.snapshot_bytes,
+            }
         (out_dir / "results.json").write_text(
             json.dumps(payload, indent=2), encoding="utf-8"
         )
