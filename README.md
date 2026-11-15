@@ -27,11 +27,60 @@ Outputs under `results/`: `results.json` (Cd, Cl, Reynolds, timings) and
 `report.txt` (plain-text summary with honest limits). `--save-fields`
 additionally writes `fields.npz`.
 
+## Render
+
+Snapshots come from the solver; the renderer is a separate tool and the
+solver never imports it:
+
+```sh
+sstream path/to/car.stl --preset preview --visual \
+  --snapshots results/snapshots --snapshot-count 6
+sstream-render results/snapshots --out drive.mp4 \
+  --streamlines --smoke --vortices --model
+```
+
+`--streamlines` (speed-coloured tubes, last snapshot), `--smoke`
+(RK2 particles with fading trails), `--vortices` (Q-criterion isosurface,
+`--q-fraction`, 40% opacity) and `--model` (the placed model) are
+independent toggles; at least one is required. `--still FRAME` writes a PNG
+of one frame, `--preview` renders 960x540 at every 2nd snapshot, and the
+default is 1920x1080 30 fps MP4. `--tube-radius`, `--q-fraction` and
+`--orbit-deg-per-sec` tune the look. `PYVISTA_OFF_SCREEN=true` is required
+on headless machines (see the WSL section below).
+
 ## Tests
 
 ```sh
 python -m pytest simulation/tests
 ```
+
+## Debian WSL (rendering offscreen)
+
+`sstream` itself never opens a display. The two commands that do —
+`sstream-place` and `sstream-render` — use pyvista (VTK) and need OpenGL
+system libraries. On a Debian WSL shell:
+
+```sh
+sudo apt update && sudo apt install -y \
+  xvfb libgl1 libegl1 libgl1-mesa-dri libosmesa6 libxrender1 libxkbcommon0
+```
+
+Then set the offscreen flag and run:
+
+```sh
+export PYVISTA_OFF_SCREEN=true
+sstream-render results/snapshots --out drive.mp4 --smoke --model
+```
+
+If you still get errors about a display or GL context, run under a virtual
+framebuffer instead — `xvfb-run -a sstream-render …`, or start one manually
+(`Xvfb :99 -screen 0 1920x1080x24 &` then `export DISPLAY=:99`). This is how
+the stills and movies in this README are produced: WSL has no physical
+display, so rendering is offscreen on purpose.
+
+In CI/headless pipelines where the GL packages cannot be installed, skip the
+two rendering commands and exercise the solver only; rendering will crash at
+plotter creation without a GL context.
 
 ## Windows build
 

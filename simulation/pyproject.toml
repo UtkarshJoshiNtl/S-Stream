@@ -10,6 +10,7 @@ dev = ["pytest>=8"]
 [project.scripts]
 sstream = "sstream.cli:main"
 sstream-place = "sstream.place:main"
+sstream-render = "sstream.render:main"
 
 [build-system]
 requires = ["setuptools>=68"]
