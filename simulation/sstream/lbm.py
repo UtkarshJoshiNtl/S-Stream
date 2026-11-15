@@ -46,11 +46,9 @@ def _ensure_warp() -> None:
         _INITIALISED = True
 
 
-def pick_device(preferred: str | None = None) -> str:
-    """Return a usable Warp device, preferring CUDA when it is present."""
+def pick_device() -> str:
+    """Return a usable Warp device: CUDA when present, else CPU."""
     _ensure_warp()
-    if preferred:
-        return preferred
     return "cuda" if wp.get_cuda_devices() else "cpu"
 
 
@@ -322,7 +320,7 @@ class LbmSolver:
     def __init__(self, config: LbmConfig, solid: np.ndarray | None = None) -> None:
         _ensure_warp()
         self.config = config
-        self.device = pick_device(config.device)
+        self.device = config.device if config.device else pick_device()
         self.steps = 0
 
         nx, ny, nz = config.shape

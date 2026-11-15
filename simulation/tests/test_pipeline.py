@@ -26,8 +26,8 @@ def test_force_coefficients_are_reported_from_the_wall_force(tiny_result):
     result = tiny_result
     assert np.isfinite(result.cd)
     assert np.isfinite(result.cl)
-    assert result.drag_trace.size > 10
-    assert result.drag_trace.size == result.lift_trace.size
+    assert result.cd_trace.size > 10
+    assert result.cd_trace.size == result.cl_trace.size
     assert result.reynolds == pytest.approx(result.fluid.reynolds)
 
 
@@ -117,4 +117,4 @@ def test_a_body_in_a_positive_x_flow_reports_positive_drag(tmp_path):
     result = run_case(plan)
     assert result.units.tau > 0.55
     assert result.cd > 0.0
-    assert np.mean(result.drag_trace) > 0.0
+    assert np.mean(result.cd_trace) > 0.0

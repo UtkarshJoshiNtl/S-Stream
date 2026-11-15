@@ -64,10 +64,3 @@ def test_transform_snapping_matches_the_gui_contract():
     assert fine.pitch == 17.0
     assert fine.tunnel_yaw == 38.0
     assert fine.position_x == pytest.approx(3.04)
-
-
-def test_transform_reset_only_clears_rotation():
-    transform = MeshTransform(pitch=10, roll=20, yaw=30, tunnel_yaw=40, position_x=2.5)
-    reset = transform.reset()
-    assert (reset.pitch, reset.roll, reset.yaw, reset.tunnel_yaw) == (0, 0, 0, 0)
-    assert reset.position_x == 2.5

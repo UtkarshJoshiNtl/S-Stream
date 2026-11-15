@@ -170,9 +170,6 @@ class MeshTransform:
             position_z=snap_value(self.position_z, position_step),
         )
 
-    def reset(self) -> MeshTransform:
-        return replace(self, pitch=0.0, roll=0.0, yaw=0.0, tunnel_yaw=0.0)
-
 
 @dataclass(frozen=True)
 class MeshSpec:

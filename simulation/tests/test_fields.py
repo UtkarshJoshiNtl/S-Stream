@@ -61,12 +61,3 @@ def test_force_conversion_scales_with_cell_and_time_size():
     cd, _ = fields.force_coefficients(np.array([3.0, 0.0, 0.0]), units, fluid, 1.5)
     physical = 3.0 * 2.0 * 0.5**4 / 0.25**2
     assert cd == pytest.approx(physical / (0.5 * 2.0 * 20.0**2 * 1.5))
-
-
-def test_sampling_finds_the_nearest_fluid_cell_inside_a_solid():
-    solid = np.ones((3, 3, 3), dtype=bool)
-    solid[2, 1, 1] = False
-    values = np.arange(27, dtype=np.float32).reshape((3, 3, 3))
-    points = np.array([[1.4, 1.4, 1.4]])
-    sampled = fields.sample_nearest_fluid(points, values, solid, (0.0, 0.0, 0.0), (1.0, 1.0, 1.0))
-    assert sampled[0] == pytest.approx(values[2, 1, 1])

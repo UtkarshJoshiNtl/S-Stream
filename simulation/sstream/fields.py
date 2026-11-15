@@ -1,17 +1,13 @@
 """Derived fields and the numbers reported after a solve.
 
 The LBM is weakly compressible, so pressure comes straight from density:
-``p = cs^2 * rho``.  That means a surface pressure coefficient needs no extra
-Poisson solve.  Sampling is nearest-fluid-cell, which is honest about the
-resolution: the heatmap is a cell-scale field, not sub-cell wall data.
+``p = cs^2 * rho``.
 
 Nothing here imports Qt, Warp, or PyVista, so every conversion can be tested
 with plain arrays.
 """
 
 from __future__ import annotations
-
-from itertools import product
 
 import numpy as np
 
@@ -81,59 +77,3 @@ def pressure_coefficient(density: np.ndarray, u_lattice: float) -> np.ndarray:
     if u_lattice <= 0.0:
         return np.zeros_like(density, dtype=np.float32)
     return (CS2 * (np.asarray(density, dtype=np.float32) - 1.0)) / (0.5 * u_lattice * u_lattice)
-
-
-def sample_nearest_fluid(
-    points: np.ndarray,
-    values: np.ndarray,
-    solid: np.ndarray,
-    origin: tuple[float, float, float],
-    spacing: tuple[float, float, float],
-) -> np.ndarray:
-    """Sample ``values`` at the nearest fluid cell to each point.
-
-    Surface vertices sit on the solid boundary, so rounding them into the grid
-    often lands on a solid cell.  Searching the 3 x 3 x 3 neighbourhood in
-    order of distance finds the closest fluid sample instead of inventing a
-    value.  Points that are completely buried stay zero.
-    """
-    points = np.asarray(points, dtype=float)
-    values = np.asarray(values)
-    solid = np.asarray(solid, dtype=bool)
-    shape = np.asarray(solid.shape)
-
-    index = np.rint((points - np.asarray(origin)) / np.asarray(spacing)).astype(int)
-    index = np.clip(index, 0, shape - 1)
-    tail = values.shape[3:]
-    out = np.zeros((len(points),) + tail, dtype=np.float32)
-    found = np.zeros(len(points), dtype=bool)
-
-    offsets = sorted(product((-1, 0, 1), repeat=3), key=lambda o: sum(v * v for v in o))
-    for offset in offsets:
-        if found.all():
-            break
-        cell = index + np.asarray(offset)
-        inside = np.all((cell >= 0) & (cell < shape), axis=1)
-        candidates = np.flatnonzero(~found & inside)
-        if candidates.size == 0:
-            continue
-        cells = cell[candidates]
-        fluid = ~solid[cells[:, 0], cells[:, 1], cells[:, 2]]
-        if not fluid.any():
-            continue
-        chosen = candidates[fluid]
-        cells = cells[fluid]
-        out[chosen] = values[cells[:, 0], cells[:, 1], cells[:, 2]]
-        found[chosen] = True
-    return out
-
-
-def surface_pressure(
-    points: np.ndarray,
-    mask,
-    density: np.ndarray,
-    units: LatticeUnits,
-) -> np.ndarray:
-    """``Cp`` at every surface vertex, sampled from the neighbouring fluid."""
-    cp = pressure_coefficient(density, units.u_lattice)
-    return sample_nearest_fluid(points, cp, mask.solid, mask.origin, mask.spacing)

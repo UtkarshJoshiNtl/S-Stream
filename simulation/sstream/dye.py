@@ -103,11 +103,6 @@ class DyeField:
         self.decay = decay
         self.steps = 0
 
-    def reset(self) -> None:
-        self.a.zero_()
-        self.b.zero_()
-        self.steps = 0
-
     def step(self, velocity, solid) -> None:
         """Advect one lattice step using the solver's device velocity/solid."""
         nx, ny, nz = self.a.shape

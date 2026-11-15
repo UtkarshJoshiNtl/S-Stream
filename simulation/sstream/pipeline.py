@@ -63,8 +63,8 @@ class SolveResult:
     cd: float
     cl: float
     cl_amplitude: float
-    drag_trace: np.ndarray
-    lift_trace: np.ndarray
+    cd_trace: np.ndarray
+    cl_trace: np.ndarray
     steps: int
     elapsed: float
     device: str
@@ -207,8 +207,8 @@ def run_case(
         cd=float(cd_trace.mean()) if cd_trace.size else 0.0,
         cl=float(cl_trace.mean()) if cl_trace.size else 0.0,
         cl_amplitude=float(0.5 * (cl_trace.max() - cl_trace.min())) if cl_trace.size else 0.0,
-        drag_trace=cd_trace,
-        lift_trace=cl_trace,
+        cd_trace=cd_trace,
+        cl_trace=cl_trace,
         steps=steps,
         elapsed=time.perf_counter() - clock,
         device=solver.device,
