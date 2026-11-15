@@ -1,9 +1,16 @@
-"""D3Q19 lattice-Boltzmann solver.
+"""D3Q19 lattice-Boltzmann solver (structure-of-arrays layout).
 
-The scheme is deliberately one step per launch: pull streaming with half-way
-bounce-back, then BGK collision with a Guo body force and optional
-Smagorinsky eddy viscosity.  Splitting the kernels would cost more than it
-buys, and the single launch is the part that has to be fast.
+One launch per step: pull streaming with half-way bounce-back, then BGK
+collision with a Guo body force and optional Smagorinsky eddy viscosity.
+
+Memory layout
+    Populations are stored as ``f[q, x, y, z]`` (SoA).  Warp maps the last
+    launch axis to the fastest-varying thread index, so neighbouring threads
+    (consecutive ``z``) touch consecutive addresses for every population and
+    global loads/stores coalesce.  The old ``f[x, y, z, q]`` layout put
+    neighbouring threads 76 bytes apart.  The 19 streamed populations are
+    loaded once into a register vector and reused for the moments, the
+    Smagorinsky stress and the collision, instead of re-reading global memory.
 
 Boundaries
     ``periodic`` is a per-axis flag.  A non-periodic face that is not the
@@ -18,9 +25,7 @@ Boundaries
 
 Force direction
     ``wall_force`` is the momentum handed to the *solid* by the fluid, so a
-    car's drag is the x-component summed over its cells.  In a channel the
-    walls receive the momentum the body force feeds in, which makes the
-    force balance test meaningful.
+    car's drag is the x-component summed over its cells.
 
 Warp restrictions that shaped this file: kernels may not read Python tuples
 (direction and weight tables are device arrays), and the direction loop must
@@ -37,6 +42,8 @@ import warp as wp
 from .lattice import CS2, DIRECTIONS, OPPOSITE, TAU_MIN, WEIGHTS
 
 _INITIALISED = False
+
+vec19 = wp.types.vector(length=19, dtype=wp.float32)
 
 
 def _ensure_warp() -> None:
@@ -100,16 +107,15 @@ def _init_kernel(
     rho_field[x, y, z] = 1.0
     u_field[x, y, z] = wp.vec3(ux, uy, uz)
     if solid[x, y, z] != wp.uint8(0):
-        rho_field[x, y, z] = 1.0
         u_field[x, y, z] = wp.vec3(0.0, 0.0, 0.0)
         for i in range(19):
-            f[x, y, z, i] = 0.0
+            f[i, x, y, z] = 0.0
         return
     speed2 = ux * ux + uy * uy + uz * uz
     for i in range(19):
         c = dirs[i]
         cu = float(c[0]) * ux + float(c[1]) * uy + float(c[2]) * uz
-        f[x, y, z, i] = weights[i] * (
+        f[i, x, y, z] = weights[i] * (
             1.0 + cu / cs2 + 0.5 * cu * cu / (cs2 * cs2) - 0.5 * speed2 / cs2
         )
 
@@ -132,12 +138,12 @@ def _inlet_outlet_kernel(
         for i in range(19):
             c = dirs[i]
             cu = float(c[0]) * inlet_speed
-            f[0, y, z, i] = weights[i] * (
+            f[i, 0, y, z] = weights[i] * (
                 1.0 + cu / cs2 + 0.5 * cu * cu / (cs2 * cs2) - 0.5 * speed2 / cs2
             )
     if solid[nx - 1, y, z] == wp.uint8(0):
         for i in range(19):
-            f[nx - 1, y, z, i] = f[nx - 2, y, z, i]
+            f[i, nx - 1, y, z] = f[i, nx - 2, y, z]
 
 
 @wp.kernel
@@ -187,8 +193,9 @@ def _step_kernel(
     fx = float(0.0)
     fy = float(0.0)
     fz = float(0.0)
+    fl = vec19()
 
-    # --- streaming with half-way bounce-back -----------------------------
+    # --- streaming with half-way bounce-back (into registers) ------------
     for i in range(19):
         c = dirs[i]
         sx = x - c[0]
@@ -218,18 +225,17 @@ def _step_kernel(
                 blocked = 1
                 solid_hit = 1
         if blocked == 1:
-            bounced = f_in[x, y, z, opposite[i]]
-            f_out[x, y, z, i] = bounced
+            bounced = f_in[opposite[i], x, y, z]
+            fl[i] = bounced
             # Fluid momentum changes by -2 c f_bounced, so this is the
             # momentum handed to the solid.  Reflections off the domain
-            # boundary (floor, tunnel walls, inlet, outlet) are not the
-            # model, so they are deliberately not counted.
+            # boundary are not the model, so they are not counted.
             if solid_hit == 1:
                 fx -= 2.0 * float(c[0]) * bounced
                 fy -= 2.0 * float(c[1]) * bounced
                 fz -= 2.0 * float(c[2]) * bounced
         else:
-            f_out[x, y, z, i] = f_in[sx, sy, sz, i]
+            fl[i] = f_in[i, sx, sy, sz]
 
     # --- moments ----------------------------------------------------------
     rho = float(0.0)
@@ -237,7 +243,7 @@ def _step_kernel(
     uy = float(0.0)
     uz = float(0.0)
     for i in range(19):
-        f = f_out[x, y, z, i]
+        f = fl[i]
         c = dirs[i]
         rho += f
         ux += f * float(c[0])
@@ -263,7 +269,7 @@ def _step_kernel(
             feq = weights[i] * rho * (
                 1.0 + cu / cs2 + 0.5 * cu * cu / (cs2 * cs2) - 0.5 * speed2 / cs2
             )
-            ne = f_out[x, y, z, i] - feq
+            ne = fl[i] - feq
             pxx += float(c[0]) * float(c[0]) * ne
             pyy += float(c[1]) * float(c[1]) * ne
             pzz += float(c[2]) * float(c[2]) * ne
@@ -289,7 +295,7 @@ def _step_kernel(
     source_scale = 1.0 - 0.5 / tau_eff
     for i in range(19):
         c = dirs[i]
-        f = f_out[x, y, z, i]
+        f = fl[i]
         cx = float(c[0])
         cy = float(c[1])
         cz = float(c[2])
@@ -302,7 +308,7 @@ def _step_kernel(
             ((cx - ux) * gx + (cy - uy) * gy + (cz - uz) * gz) / cs2
             + (cu / cs2) * (cx * gx + cy * gy + cz * gz) / cs2
         )
-        f_out[x, y, z, i] = f - (f - feq) / tau_eff + src
+        f_out[i, x, y, z] = f - (f - feq) / tau_eff + src
 
     rho_field[x, y, z] = rho
     u_field[x, y, z] = wp.vec3(ux, uy, uz)
@@ -337,8 +343,9 @@ class LbmSolver:
         self._solid_cells = int(mask.sum())
         self._fluid = mask == 0
 
-        self.f = wp.zeros((nx, ny, nz, 19), dtype=wp.float32, device=self.device)
-        self.f_new = wp.zeros((nx, ny, nz, 19), dtype=wp.float32, device=self.device)
+        # SoA: population index first, z fastest.
+        self.f = wp.zeros((19, nx, ny, nz), dtype=wp.float32, device=self.device)
+        self.f_new = wp.zeros((19, nx, ny, nz), dtype=wp.float32, device=self.device)
         self.rho = wp.zeros((nx, ny, nz), dtype=wp.float32, device=self.device)
         self.u = wp.zeros((nx, ny, nz), dtype=wp.vec3, device=self.device)
         self.force = wp.zeros((nx, ny, nz), dtype=wp.vec3, device=self.device)
