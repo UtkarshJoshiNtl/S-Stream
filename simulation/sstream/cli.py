@@ -25,6 +25,12 @@ from .mesh import DEFAULT_MODEL, build_model, load_surface
 from .options import add_orientation_args, mesh_spec_from_args
 from .pipeline import SolvePlan, SolveCancelled, run_case
 from .preview import PRESETS
+from .lattice import (
+    VISUAL_SMAGORINSKY,
+    VISUAL_TAU_MAX,
+    VISUAL_TAU_MIN,
+    VISUAL_U_LATTICE,
+)
 from .quality import (
     check_vram,
     cells_streamwise_for_target,
@@ -67,6 +73,13 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     add_orientation_args(parser)
     parser.add_argument(
+        "--visual",
+        action="store_true",
+        help="visualization run: stable lattice params (u_lattice 0.06, "
+        "tau pinned into [0.505, 0.52], Smagorinsky 0.12); the report "
+        "says 'visualization run, effective Re = X, Cd not calibrated'",
+    )
+    parser.add_argument(
         "--quality",
         choices=("low", "medium", "high", "ultra"),
         help="target cell count: low ~1M, medium ~3M, high ~9M, ultra ~17M "
@@ -95,6 +108,8 @@ def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     preset = next(p for p in PRESETS if p.name.lower() == args.preset)
     device = pick_device()
+    u_lattice = VISUAL_U_LATTICE if args.visual else args.u_lattice
+    smagorinsky = VISUAL_SMAGORINSKY if args.visual else args.smagorinsky
     target = resolve_target_cells(args.quality, args.cells)
     if target is not None:
         base = TunnelSpec()
@@ -134,17 +149,19 @@ def main(argv: list[str] | None = None) -> int:
         if mask.empty:
             raise ValueError("voxelization produced no solid cells")
 
+        fluid = FluidSpec(
+            speed=args.speed,
+            kinematic_viscosity=args.viscosity,
+            reference_length=args.reference_length,
+        )
         plan = SolvePlan(
             mask=mask,
             tunnel=tunnel,
-            fluid=FluidSpec(
-                speed=args.speed,
-                kinematic_viscosity=args.viscosity,
-                reference_length=args.reference_length,
-            ),
+            fluid=fluid,
             preset=preset,
-            u_lattice=args.u_lattice,
-            smagorinsky=args.smagorinsky,
+            u_lattice=u_lattice,
+            smagorinsky=smagorinsky,
+            visual=args.visual,
         )
 
         start = time.perf_counter()
@@ -171,11 +188,23 @@ def main(argv: list[str] | None = None) -> int:
             "steps": result.steps,
             "elapsed_s": round(result.elapsed, 3),
             "device": result.device,
+            "visual": bool(args.visual),
             "warnings": result.warnings,
         }
+        if args.visual:
+            payload["effective_reynolds"] = (
+                fluid.speed * fluid.reference_length / result.units.nu_physical
+            )
         (out_dir / "results.json").write_text(
             json.dumps(payload, indent=2), encoding="utf-8"
         )
+        if args.visual:
+            eff_re = fluid.speed * fluid.reference_length / result.units.nu_physical
+            print(
+                f"Visual       on · u_lattice = {VISUAL_U_LATTICE} · tau in "
+                f"[{VISUAL_TAU_MIN}, {VISUAL_TAU_MAX}] · Cs = {VISUAL_SMAGORINSKY}"
+            )
+            print(f"Visual       visualization run, effective Re = {eff_re:,.0f}, Cd not calibrated")
         if args.save_fields:
             np.savez_compressed(
                 out_dir / "fields.npz",

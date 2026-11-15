@@ -22,7 +22,7 @@ import warp as wp
 
 from . import fields
 from .dye import DyeField
-from .lattice import TAU_MIN, LatticeUnits
+from .lattice import TAU_MIN, LatticeUnits, clamp_visual_tau
 from .lbm import LbmConfig, LbmSolver
 from .preview import RunPreset
 from .quality import WARMUP_STEPS
@@ -42,6 +42,7 @@ class SolvePlan:
     preset: RunPreset
     u_lattice: float = 0.06
     smagorinsky: float = 0.12
+    visual: bool = False
 
     def __post_init__(self) -> None:
         if self.mask.dimensions != self.tunnel.grid_shape:
@@ -71,6 +72,7 @@ class SolveResult:
     elapsed: float
     device: str
     warmup_mlups: float = 0.0
+    visual: bool = False
     warnings: list[str] = field(default_factory=list)
 
     @property
@@ -104,6 +106,10 @@ def run_case(
         u_lattice=plan.u_lattice,
         smagorinsky=plan.smagorinsky,
     )
+    if plan.visual:
+        pinned = clamp_visual_tau(units.tau)
+        if pinned != units.tau:
+            units = units.with_tau(pinned)
 
     report(1, "Preparing solver")
     check()
@@ -214,6 +220,12 @@ def run_case(
         )
     if not plan.mask.watertight:
         warnings.append("The surface is not watertight; the solid mask is approximate.")
+    if plan.visual:
+        warnings.append(
+            "Visualization run: the relaxation time is pinned into [0.505, 0.52], "
+            "so the lattice viscosity is far above the physical one; the reported "
+            "Re is the lattice Re and Cd is not calibrated."
+        )
 
     report(100, "Done")
     return SolveResult(
@@ -236,5 +248,6 @@ def run_case(
         elapsed=time.perf_counter() - clock,
         device=solver.device,
         warmup_mlups=warmup_mlups,
+        visual=plan.visual,
         warnings=warnings,
     )

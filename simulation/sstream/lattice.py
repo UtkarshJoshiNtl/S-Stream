@@ -15,7 +15,7 @@ Only NumPy is used here so the conversion can be tested without a GPU.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 
@@ -25,6 +25,19 @@ CS2 = 1.0 / 3.0
 # collision operator vanishes and the scheme is unstable; the step kernel,
 # the unit conversion and the config validation all use this value.
 TAU_MIN = 0.5001
+
+# Visualisation mode pins the relaxation time into this band and fixes
+# u_lattice and the Smagorinsky coefficient, so the run is stable and the
+# wake is lively regardless of the physical viscosity.
+VISUAL_TAU_MIN = 0.505
+VISUAL_TAU_MAX = 0.52
+VISUAL_U_LATTICE = 0.06
+VISUAL_SMAGORINSKY = 0.12
+
+
+def clamp_visual_tau(tau: float) -> float:
+    """Pin a relaxation time into the visualisation band [0.505, 0.52]."""
+    return min(max(float(tau), VISUAL_TAU_MIN), VISUAL_TAU_MAX)
 
 # Rest, six face neighbours, twelve edge neighbours.
 DIRECTIONS = np.array(
@@ -108,6 +121,19 @@ class LatticeUnits:
     @property
     def nu_physical(self) -> float:
         return self.nu_lattice * self.dx * self.dx / self.dt
+
+    def with_tau(self, tau: float) -> "LatticeUnits":
+        """The same conversion with ``tau`` replaced and the clamp recorded.
+
+        Visualisation mode pins tau into the stable band
+        ``[VISUAL_TAU_MIN, VISUAL_TAU_MAX]``.  The formula chain is
+        ``nu_lattice = cs² (tau - 1/2)`` with ``cs² = 1/3``,
+        ``nu_physical = nu_lattice dx² / dt`` and
+        ``dt = u_lattice dx / speed``, so a pinned tau means a known,
+        larger effective viscosity and an effective Reynolds number
+        ``speed * length / nu_physical`` that the report states openly.
+        """
+        return replace(self, tau=float(tau), viscosity_clamped=True)
 
     @classmethod
     def from_physical(
