@@ -206,9 +206,9 @@ def frame_times(timeline: Timeline, preview: bool = False) -> list[float]:
 # Smoke layer
 # ---------------------------------------------------------------------------
 
-SMOKE_MAX_PARTICLES = 3500
+SMOKE_MAX_PARTICLES = 2500
 SMOKE_TRAIL_LENGTH = 40
-SMOKE_EMIT_PER_FRAME = 80
+SMOKE_EMIT_PER_FRAME = 40
 SMOKE_SUBSTEPS = 4
 
 
@@ -294,8 +294,8 @@ class SmokePlume:
         for trail in self.trails:
             for j in range(1, len(trail)):
                 # alpha rises along the trail; oldest point fades to 0
-                a_lo = (j - 1) / max(len(trail) - 1, 1)
-                a_hi = j / max(len(trail) - 1, 1)
+                a_lo = 0.55 * (j - 1) / max(len(trail) - 1, 1)
+                a_hi = 0.55 * j / max(len(trail) - 1, 1)
                 points[cursor * 2] = trail[j - 1]
                 points[cursor * 2 + 1] = trail[j]
                 rgba[cursor * 2] = (grey, grey, grey, a_lo)
@@ -342,8 +342,8 @@ def streamline_seeds(meta: dict) -> np.ndarray:
         max(bounds[4] + 0.05, z_mid - spread_z * 0.5),
         min(bounds[5] - 0.05, z_mid + spread_z * 0.5),
     )
-    ys = np.linspace(y_lim[0], y_lim[1], 12)
-    zs = np.linspace(z_lim[0], z_lim[1], 9)
+    ys = np.linspace(y_lim[0], y_lim[1], 9)
+    zs = np.linspace(z_lim[0], z_lim[1], 7)
     grid_y, grid_z = np.meshgrid(ys, zs, indexing="ij")
     return np.column_stack(
         [np.full(grid_y.size, x_rake), grid_y.reshape(-1), grid_z.reshape(-1)]
@@ -649,7 +649,7 @@ def render_frames(
             trail = smoke.polydata()
             if trail is not None:
                 plotter.add_mesh(
-                    trail, scalars="rgba", rgba=True, line_width=3,
+                    trail, scalars="rgba", rgba=True, line_width=2,
                     show_scalar_bar=False,
                 )
 
@@ -719,8 +719,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--tube-radius",
         type=float,
-        default=0.012,
-        help="streamline tube radius in metres (default 0.012)",
+        default=0.007,
+        help="streamline tube radius in metres (default 0.007)",
     )
     parser.add_argument(
         "--q-fraction",

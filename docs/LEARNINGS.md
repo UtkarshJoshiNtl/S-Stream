@@ -104,11 +104,26 @@ Audit facts, oldest first (see `git log` for the full messages):
   in the flood-fill voxelizer, and a low-Mach violation becomes a warning
   in the report instead of garbage numbers.
 
+- End-to-end item-9 run (`2f58b1c`, bundled car, `--quality low --visual`,
+  202x81x61 = 998,082 cells, 184.6 MB est. vs 3.5 GB free, 2,200 steps in
+  21.1 s, warm-up 107.7 MLUPs, effective Re 1,454): the first all-layers
+  still hid the model inside the stream/smoke layers, so the renderer
+  defaults were tuned for legibility on this model - rake tubes 12x9 ->
+  9x7, tube radius 0.012 -> 0.007 m, smoke 80 -> 40 particles/frame,
+  peak trail alpha 1.0 -> 0.55, smoke line_width 3 -> 2.
+
 ## Open questions (to verify)
 
 - Warm-up MLUPs measured here (~100-108 at ~1M cells) are RTX 2050 /
   Warp 1.18.0 numbers; other GPUs and the CPU fallback backend are
   **to verify**.
+- The `--visual` car run pins tau into [0.505, 0.52] and reports
+  Cd = -9.65 / Cl = -38.6 (nominal Re 2.4M, effective Re 1,454), while a
+  non-visual preview run of the same model reported Cd = +1.68 via the
+  same force code path. The known-sign test (viscous fluid, tau ~ 0.58)
+  still passes, so the sign machinery is consistent; the sign and
+  magnitude of the force at the pinned visual parameters is **to verify**.
+  The run prints "Cd not calibrated" and makes no validation claim.
 - The Q-criterion isosurface at `--q-fraction 0.2` of the smoothed max
   shows shards, not coherent rolls, because the `--visual` field is an
   effective Re 922 flow; whether coherent structures appear at a
