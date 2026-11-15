@@ -20,10 +20,18 @@ from pathlib import Path
 
 import numpy as np
 
+from .lbm import pick_device
 from .mesh import DEFAULT_MODEL, build_model, load_surface
 from .options import add_orientation_args, mesh_spec_from_args
 from .pipeline import SolvePlan, SolveCancelled, run_case
 from .preview import PRESETS
+from .quality import (
+    check_vram,
+    cells_streamwise_for_target,
+    format_bytes,
+    grid_cells,
+    resolve_target_cells,
+)
 from .report import summary
 from .schema import FluidSpec, TunnelSpec
 from .voxelize import voxelize
@@ -59,6 +67,17 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     add_orientation_args(parser)
     parser.add_argument(
+        "--quality",
+        choices=("low", "medium", "high", "ultra"),
+        help="target cell count: low ~1M, medium ~3M, high ~9M, ultra ~17M "
+        "(default: the --preset grid)",
+    )
+    parser.add_argument(
+        "--cells",
+        type=int,
+        help="exact target cell count; overrides --quality",
+    )
+    parser.add_argument(
         "--smagorinsky", type=float, default=0.12, help="LES coefficient"
     )
     parser.add_argument(
@@ -75,7 +94,14 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     preset = next(p for p in PRESETS if p.name.lower() == args.preset)
-    tunnel = TunnelSpec().with_resolution(preset.cells_streamwise)
+    device = pick_device()
+    target = resolve_target_cells(args.quality, args.cells)
+    if target is not None:
+        base = TunnelSpec()
+        tunnel = base.with_resolution(cells_streamwise_for_target(base, target))
+    else:
+        tunnel = TunnelSpec().with_resolution(preset.cells_streamwise)
+    cells = grid_cells(tunnel)
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -93,6 +119,17 @@ def main(argv: list[str] | None = None) -> int:
             f"Placed        {placed_extent[0]:.2f} x {placed_extent[1]:.2f} x "
             f"{placed_extent[2]:.2f} m, bbox blockage {bbox_blockage:.1%}"
         )
+        vram = check_vram(cells, device)
+        free_text = (
+            f" of {format_bytes(vram[1])} free on {device}"
+            if vram is not None
+            else " (free device memory unavailable)"
+        )
+        print(
+            f"Grid          {tunnel.grid_shape[0]} x {tunnel.grid_shape[1]} x "
+            f"{tunnel.grid_shape[2]}  ({cells:,} cells)"
+        )
+        print(f"VRAM est      {format_bytes(vram[0])}{free_text}" if vram else "VRAM est      unavailable")
         mask = voxelize(build.mesh, tunnel)
         if mask.empty:
             raise ValueError("voxelization produced no solid cells")

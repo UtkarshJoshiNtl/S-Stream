@@ -18,12 +18,14 @@ from dataclasses import dataclass, field
 from typing import Callable
 
 import numpy as np
+import warp as wp
 
 from . import fields
 from .dye import DyeField
 from .lattice import TAU_MIN, LatticeUnits
 from .lbm import LbmConfig, LbmSolver
 from .preview import RunPreset
+from .quality import WARMUP_STEPS
 from .schema import FluidSpec, TunnelSpec
 from .voxelize import VoxelResult
 
@@ -68,6 +70,7 @@ class SolveResult:
     steps: int
     elapsed: float
     device: str
+    warmup_mlups: float = 0.0
     warnings: list[str] = field(default_factory=list)
 
     @property
@@ -124,13 +127,17 @@ def run_case(
     sample_every = max(1, (steps - start) // 160)
     drag, lift, lateral = [], [], []
     clock = time.perf_counter()
+    warm = min(WARMUP_STEPS, steps)
+    warmup_mlups = 0.0
+    cells = shape[0] * shape[1] * shape[2]
 
     # Lattice Mach guard: past ~0.3 the weakly compressible model's errors
     # dominate, so the run is flagged instead of silently reporting garbage.
     mach_limit = 0.3
     mach_tripped = False
 
-    for step in range(1, steps + 1):
+    def do_step(step: int) -> None:
+        nonlocal mach_tripped
         solver.step()
         dye.step(solver.u, solver.solid)
         if step >= start and (step - start) % sample_every == 0:
@@ -151,6 +158,23 @@ def run_case(
         if step % 16 == 0:
             check()
             report(1 + int(94 * step / steps), f"Solving · step {step:,} / {steps:,}")
+
+    report(1, "Warming up")
+    warm_start = time.perf_counter()
+    for step in range(1, warm + 1):
+        do_step(step)
+    wp.synchronize()
+    warm_seconds = time.perf_counter() - warm_start
+    if warm and warm_seconds > 0.0:
+        warmup_mlups = cells * warm / warm_seconds / 1e6
+        report(
+            2,
+            f"Warm-up {warm} steps at {warmup_mlups:.1f} MLUPs · "
+            f"est {steps:,} steps ≈ {steps / warmup_mlups:.1f} s",
+        )
+
+    for step in range(warm + 1, steps + 1):
+        do_step(step)
 
     check()
     report(96, "Deriving fields")
@@ -176,7 +200,6 @@ def run_case(
     )
 
     warnings: list[str] = list(plan.mask.warnings)
-    cells = shape[0] * shape[1] * shape[2]
     if plan.mask.solid_count / cells > 0.10:
         warnings.append("The model blocks more than 10% of the tunnel volume; Cd is confinement-biased.")
     blockage = area / (tunnel.width * tunnel.height)
@@ -212,5 +235,6 @@ def run_case(
         steps=steps,
         elapsed=time.perf_counter() - clock,
         device=solver.device,
+        warmup_mlups=warmup_mlups,
         warnings=warnings,
     )
