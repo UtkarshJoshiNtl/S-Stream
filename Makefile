@@ -1,12 +1,7 @@
-.PHONY: help sim clean
+.PHONY: install test
 
-help:
-	@echo "make sim    Configure and build the desktop GUI"
-	@echo "make clean  Remove generated build files"
+install:
+	python3 -m pip install -e ./simulation
 
-sim:
-	cmake -B build -S simulation -DCMAKE_BUILD_TYPE=Release
-	cmake --build build --parallel
-
-clean:
-	cmake -E rm -rf build
+test:
+	python3 -m pytest simulation/tests
