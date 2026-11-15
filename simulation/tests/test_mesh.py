@@ -8,6 +8,7 @@ from sstream.mesh import (
     build_model,
     load_surface,
     normalized,
+    orient_to_wind,
     setup_rotated,
     yawed_about_bottom_center,
 )
@@ -107,3 +108,40 @@ def test_bundled_car_loads_and_keeps_a_sane_bbox():
     extent = np.asarray(mesh.bounds).reshape(3, 2)
     longest = float((extent[:, 1] - extent[:, 0]).max())
     assert 20.0 < longest < 60.0
+
+
+def test_auto_orient_maps_longest_axis_to_x_and_shortest_to_z():
+    mesh = pv.Box(bounds=(0, 1.0, 0, 4.0, 0, 2.0)).triangulate()
+    out = orient_to_wind(mesh)
+    extent = np.asarray(out.bounds).reshape(3, 2)
+    size = extent[:, 1] - extent[:, 0]
+    assert size[0] == pytest.approx(4.0)
+    assert size[2] == pytest.approx(1.0)
+    assert size[1] == pytest.approx(2.0)
+
+
+def test_auto_orient_is_a_proper_rotation():
+    mesh = pv.PolyData(
+        np.array([[1.0, 0.0, 0.0], [0.0, 4.0, 0.5], [0.0, 0.0, 2.0], [2.0, 3.0, 1.0]]),
+        np.array([3, 0, 1, 2, 3, 0, 2, 3]),
+    )
+
+    def signed_volume(points):
+        v0, v1, v2, v3 = points[:4]
+        return np.dot(np.cross(v1 - v0, v2 - v0), v3 - v0)
+
+    out = orient_to_wind(mesh)
+    assert signed_volume(np.asarray(out.points)) == pytest.approx(
+        signed_volume(np.asarray(mesh.points)), rel=1e-6
+    )
+
+
+def test_build_model_can_opt_out_of_auto_orient():
+    mesh = pv.Box(bounds=(0, 1.0, 0, 4.0, 0, 2.0)).triangulate()
+    oriented = build_model(mesh, MeshSpec(target_size=1.2), TunnelSpec())
+    untouched = build_model(mesh, MeshSpec(target_size=1.2, auto_orient=False), TunnelSpec())
+    o_size = (oriented.bounds[:, 1] - oriented.bounds[:, 0])
+    u_size = (untouched.bounds[:, 1] - untouched.bounds[:, 0])
+    assert o_size[0] == pytest.approx(1.2)
+    # longest axis stays y without auto_orient
+    assert u_size[1] == pytest.approx(1.2)

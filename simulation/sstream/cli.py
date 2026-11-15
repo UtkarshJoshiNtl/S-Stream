@@ -57,6 +57,14 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--u-lattice", type=float, default=0.06, help="lattice inlet speed"
     )
     parser.add_argument(
+        "--orient",
+        choices=("auto", "none"),
+        default="auto",
+        help="auto: rotate the model so its longest axis is the wind "
+        "direction and its shortest axis is up (default); none: keep the "
+        "model's axes as imported",
+    )
+    parser.add_argument(
         "--smagorinsky", type=float, default=0.12, help="LES coefficient"
     )
     parser.add_argument(
@@ -79,7 +87,9 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         surface = load_surface(args.mesh)
-        build = build_model(surface, MeshSpec(), tunnel)
+        build = build_model(
+            surface, MeshSpec(auto_orient=args.orient == "auto"), tunnel
+        )
         for warning in build.warnings:
             print(f"warning: {warning}", file=sys.stderr)
         mask = voxelize(build.mesh, tunnel)

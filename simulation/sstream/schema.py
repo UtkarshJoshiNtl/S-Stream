@@ -181,6 +181,7 @@ class MeshSpec:
     path: str | None = None
     target_size: float = 1.2
     margin: float = 0.05
+    auto_orient: bool = True
     transform: MeshTransform = field(default_factory=MeshTransform)
 
     def __post_init__(self) -> None:

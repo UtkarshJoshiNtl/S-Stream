@@ -162,7 +162,10 @@ def run_case(
     warnings: list[str] = list(plan.mask.warnings)
     cells = shape[0] * shape[1] * shape[2]
     if plan.mask.solid_count / cells > 0.15:
-        warnings.append("The model blocks more than 15% of the tunnel; Cd is confinement-biased.")
+        warnings.append("The model blocks more than 15% of the tunnel volume; Cd is confinement-biased.")
+    blockage = area / (tunnel.width * tunnel.height)
+    if blockage > 0.15:
+        warnings.append(f"The model blocks {blockage:.0%} of the tunnel cross-section; Cd is confinement-biased.")
     if units.tau < 0.5005:
         warnings.append("The eddy-viscosity floor is active; treat Cd as a relative LES value.")
     if not plan.mask.watertight:

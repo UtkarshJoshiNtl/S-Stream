@@ -24,6 +24,27 @@ from .schema import MeshSpec, MeshTransform, TunnelSpec
 SUPPORTED_SUFFIXES = {".obj", ".stl"}
 
 
+def orient_to_wind(mesh: pv.PolyData) -> pv.PolyData:
+    """Rotate the model so its longest extent lies along +X (the wind)
+    and its shortest extent along +Z (up).
+
+    The mapping is always a proper rotation (det = +1): when the axis
+    permutation is odd, the new Y axis is negated to restore handedness,
+    so the model is never mirrored.  Callers can opt out with
+    ``MeshSpec.auto_orient = False``.
+    """
+    bounds = np.asarray(mesh.bounds, dtype=float).reshape(3, 2)
+    extent = bounds[:, 1] - bounds[:, 0]
+    order = np.argsort(extent)  # ascending: shortest first
+    perm = np.array([order[2], order[1], order[0]], dtype=np.int64)
+    points = np.asarray(mesh.points)[:, perm]
+    if np.linalg.det(np.eye(3)[perm]) < 0.0:
+        points[:, 1] *= -1.0
+    out = mesh.copy()
+    out.points = points
+    return out
+
+
 @dataclass
 class ModelBuild:
     """The placed surface and the small facts callers need to report."""
@@ -180,7 +201,15 @@ def build_model(
     spec: MeshSpec,
     tunnel: TunnelSpec,
 ) -> ModelBuild:
-    """Run the full import-to-placement contract for one surface."""
+    """Run the full import-to-placement contract for one surface.
+
+    When ``spec.auto_orient`` is set (the default), the model is first
+    rotated so its longest extent lies along the wind (+X) and its
+    shortest extent points up (+Z); the user's pitch/yaw/roll and the
+    tunnel yaw then compose on top of that.
+    """
+    if spec.auto_orient:
+        surface = orient_to_wind(surface)
     mesh, base_scale = normalized(surface, spec.target_size)
     # Apply scale multiplier from transform
     if spec.transform.scale != 1.0:
