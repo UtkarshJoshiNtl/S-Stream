@@ -128,17 +128,23 @@ def main(argv: list[str] | None = None) -> int:
     u_lattice = VISUAL_U_LATTICE if args.visual else args.u_lattice
     smagorinsky = VISUAL_SMAGORINSKY if args.visual else args.smagorinsky
     target = resolve_target_cells(args.quality, args.cells)
+    
+    # Load surface first to get model length for tunnel sizing
+    surface = load_surface(args.mesh)
+    build_temp = build_model(surface, mesh_spec_from_args(args), TunnelSpec())
+    model_bounds = np.asarray(build_temp.mesh.bounds, dtype=float).reshape(3, 2)
+    model_length = float(model_bounds[0, 1] - model_bounds[0, 0])
+    
     if target is not None:
-        base = TunnelSpec()
+        base = TunnelSpec.from_model_length(model_length)
         tunnel = base.with_resolution(cells_streamwise_for_target(base, target))
     else:
-        tunnel = TunnelSpec().with_resolution(preset.cells_streamwise)
+        tunnel = TunnelSpec.from_model_length(model_length).with_resolution(preset.cells_streamwise)
     cells = grid_cells(tunnel)
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        surface = load_surface(args.mesh)
         build = build_model(surface, mesh_spec_from_args(args), tunnel)
         for warning in build.warnings:
             print(f"warning: {warning}", file=sys.stderr)

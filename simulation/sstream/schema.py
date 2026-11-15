@@ -37,6 +37,9 @@ class TunnelSpec:
     ``cells_streamwise`` is the number of lattice cells along X, not a cubic
     resolution.  Cells are cubes, so the cross-section is rounded to whole
     cells and may be a few millimetres smaller than the nominal tunnel.
+
+    Dimensions can be set directly or computed from a model length L using
+    ``from_model_length`` for a tunnel that is 4L long, 1.5L wide, and 1.0L tall.
     """
 
     length: float = 6.0
@@ -44,6 +47,17 @@ class TunnelSpec:
     height: float = 1.8
     floor_z: float = 0.0
     cells_streamwise: int = 256
+
+    @classmethod
+    def from_model_length(cls, model_length: float, cells_streamwise: int = 256) -> "TunnelSpec":
+        """Create a tunnel sized relative to model length L: 4L long, 1.5L wide, 1.0L tall."""
+        return cls(
+            length=4.0 * model_length,
+            width=1.5 * model_length,
+            height=1.0 * model_length,
+            floor_z=0.0,
+            cells_streamwise=cells_streamwise,
+        )
 
     def __post_init__(self) -> None:
         if self.length <= 0.0 or self.width <= 0.0 or self.height <= 0.0:

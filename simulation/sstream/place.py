@@ -58,11 +58,19 @@ def render_placement(
 ) -> None:
     """Place ``mesh_path`` in ``tunnel`` and write the scene to ``out_path``."""
     surface = load_surface(mesh_path)
+    build_temp = build_model(surface, mesh_spec_from_args(orient_args), TunnelSpec())
+    model_bounds = np.asarray(build_temp.mesh.bounds, dtype=float).reshape(3, 2)
+    model_length = float(model_bounds[0, 1] - model_bounds[0, 0])
+    tunnel = TunnelSpec.from_model_length(model_length)
     build = build_model(surface, mesh_spec_from_args(orient_args), tunnel)
 
     placed = np.asarray(build.mesh.bounds, dtype=float).reshape(3, 2)
     placed_extent = placed[:, 1] - placed[:, 0]
     bbox_blockage = placed_extent[1] * placed_extent[2] / (tunnel.width * tunnel.height)
+    print(
+        f"Tunnel        {tunnel.length:.2f} x {tunnel.width:.2f} x {tunnel.height:.2f} m "
+        f"(4L x 1.5L x 1.0L, L={model_length:.2f} m)"
+    )
     print(
         f"Placed        {placed_extent[0]:.2f} x {placed_extent[1]:.2f} x "
         f"{placed_extent[2]:.2f} m, bbox blockage {bbox_blockage:.1%}"
