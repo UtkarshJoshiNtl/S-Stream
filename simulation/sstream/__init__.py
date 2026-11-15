@@ -1,1 +1,1 @@
-"""S-Stream visual wind studio."""
+"""S-Stream headless wind-tunnel solver."""
