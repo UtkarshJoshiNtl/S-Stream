@@ -543,8 +543,8 @@ BACKGROUND_BOTTOM = (0.03, 0.04, 0.06)
 BACKGROUND_TOP = (0.10, 0.14, 0.20)
 
 CAMERA_ELEVATION_DEG = 18.0
-CAMERA_AZIMUTH_START_DEG = 225.0   # three-quarter view, upstream-left
-CAMERA_DISTANCE_FACTOR = 3.4       # x model length
+CAMERA_AZIMUTH_DEG = 35.0   # from wind axis (+X)
+CAMERA_FILL_FRACTION = 0.6  # model + 1.5L wake fills 60% of frame width
 
 
 def tunnel_from_meta(meta: dict) -> TunnelSpec:
@@ -615,16 +615,32 @@ def add_ground(plotter: pv.Plotter, tunnel: TunnelSpec) -> None:
 
 def camera_for(model_bounds: np.ndarray, tau: float, t0: float, orbit_deg_per_sec: float):
     """[position, focal, view_up] for time tau, orbiting the model centre."""
-    focal = model_bounds.mean(axis=1)
     model_len = float(model_bounds[0, 1] - model_bounds[0, 0])
-    distance = CAMERA_DISTANCE_FACTOR * max(model_len, 1e-3)
+    model_center = model_bounds.mean(axis=1)
+    
+    # Wake centroid estimate: 1.5L downstream of model center
+    wake_centroid = model_center + np.array([1.5 * model_len, 0.0, 0.0])
+    
+    # Aim at midpoint between model center and wake centroid
+    focal = (model_center + wake_centroid) * 0.5
+    
+    # Distance so model + 1.5L wake fills 60% of frame width
+    # Approximate scene width as model length + 1.5L wake = 2.5L
+    scene_width = 2.5 * model_len
+    # For 60% fill: scene_width / distance = 0.6 * tan(fov/2)
+    # Assuming typical FOV ~ 60 degrees, tan(30) ~ 0.577
+    # distance = scene_width / (0.6 * 0.577) ≈ scene_width / 0.346
+    distance = scene_width / CAMERA_FILL_FRACTION / 0.577
+    
+    # Fixed elevation and azimuth (no orbit for now)
     el = math.radians(CAMERA_ELEVATION_DEG)
-    az = math.radians(
-        CAMERA_AZIMUTH_START_DEG + orbit_deg_per_sec * (tau - t0)
-    )
+    az = math.radians(CAMERA_AZIMUTH_DEG)
+    
+    # Position camera
     pos = focal + distance * np.array(
         [math.cos(el) * math.cos(az), math.cos(el) * math.sin(az), math.sin(el)]
     )
+    
     return [tuple(pos), tuple(focal), (0.0, 0.0, 1.0)]
 
 
@@ -705,8 +721,7 @@ def render_frames(
         # clear actors only; clear() would delete the default light kit
         plotter.clear_actors()
         add_ground(plotter, tunnel)
-        if "model" in layers:
-            add_model(plotter, build)
+        # Draw transparent layers first (vortices, streamlines, smoke)
         if "vortices" in layers:
             vortices = build_vortices(meta, field, solid, q_percentile, q_min_voxels)
             if vortices is not None:
@@ -728,6 +743,9 @@ def render_frames(
                     trail, scalars="speed", cmap=cmap, clim=(0.5 * u_inlet, 1.5 * u_inlet),
                     opacity=0.25, line_width=1, show_scalar_bar=False,
                 )
+        # Draw model last so it's not hidden by transparent layers
+        if "model" in layers:
+            add_model(plotter, build)
 
         plotter.camera_position = camera_for(
             model_bounds, tau, t0, orbit_deg_per_sec
