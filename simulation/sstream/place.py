@@ -39,7 +39,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "mesh",
         nargs="?",
         default=str(DEFAULT_MODEL),
-        help=f"surface mesh to place (.obj/.stl/.ply; default: bundled car model)",
+        help=f"surface mesh to place (.obj/.stl/.ply; default: bundled Ahmed body)",
     )
     add_orientation_args(parser)
     parser.add_argument("--out", required=True, help="output PNG path")

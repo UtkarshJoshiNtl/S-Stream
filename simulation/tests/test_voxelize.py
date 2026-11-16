@@ -7,7 +7,8 @@ from sstream.mesh import build_model, load_surface
 from sstream.schema import MeshSpec, MeshTransform, TunnelSpec
 from sstream.voxelize import voxelize
 
-ASSET = Path(__file__).resolve().parents[1] / "assets" / "3d-files" / "car-model.obj"
+ASSETS = Path(__file__).resolve().parents[1] / "assets" / "3d-files"
+AHMED_BOX = ASSETS / "ahmed_box.stl"
 NO_WALL = TunnelSpec(length=2.0, width=2.0, height=2.0, cells_streamwise=40)
 
 
@@ -57,15 +58,9 @@ def test_open_mesh_warns_without_crashing():
     assert result.dimensions == NO_WALL.grid_shape
 
 
-def test_car_pipeline_produces_a_non_empty_mask():
-    if not ASSET.exists():
-        return
-    surface = load_surface(ASSET)
-    build = build_model(
-        surface,
-        MeshSpec(fraction=0.2, transform=MeshTransform(roll=-90, yaw=-90)),
-        TunnelSpec(),
-    )
+def test_ahmed_box_pipeline_produces_a_non_empty_mask():
+    surface = load_surface(AHMED_BOX)
+    build = build_model(surface, MeshSpec(orient="auto-vehicle"), TunnelSpec())
     tunnel = TunnelSpec().with_resolution(64)
     result = voxelize(build.mesh, tunnel)
     assert result.solid_count > 0
@@ -73,7 +68,6 @@ def test_car_pipeline_produces_a_non_empty_mask():
     assert result.boundary.sum() > 0
     image = result.to_image()
     assert image.dimensions == result.dimensions
-
 
 def test_flood_outside_marks_a_closed_shell_interior_unreachable():
     from sstream.voxelize import _flood_outside

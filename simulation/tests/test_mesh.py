@@ -15,7 +15,8 @@ from sstream.mesh import (
 )
 from sstream.schema import MeshSpec, MeshTransform, TunnelSpec
 
-ASSET = Path(__file__).resolve().parents[1] / "assets" / "3d-files" / "car-model.obj"
+ASSETS = Path(__file__).resolve().parents[1] / "assets" / "3d-files"
+AHMED = ASSETS / "ahmed_1.stl"
 
 
 def _save_cube(tmp_path: Path, suffix: str) -> Path:
@@ -108,16 +109,15 @@ def test_build_clamps_inside_the_tunnel_and_touches_the_floor():
     assert not build.warnings
 
 
-def test_bundled_car_loads_and_keeps_a_sane_bbox():
-    assert ASSET.exists(), f"missing bundled asset: {ASSET}"
-    mesh = load_surface(ASSET)
+def test_bundled_ahmed_loads_and_keeps_a_sane_bbox():
+    assert AHMED.exists(), f"missing bundled asset: {AHMED}"
+    mesh = load_surface(AHMED)
     assert mesh.n_points > 1000
     assert mesh.n_cells > 1000
     assert np.isfinite(np.asarray(mesh.points)).all()
     extent = np.asarray(mesh.bounds).reshape(3, 2)
     longest = float((extent[:, 1] - extent[:, 0]).max())
-    assert 20.0 < longest < 60.0
-
+    assert 1.0 < longest < 1.3
 
 def test_auto_orient_maps_longest_axis_to_x_and_shortest_to_z():
     mesh = pv.Box(bounds=(0, 1.0, 0, 4.0, 0, 2.0)).triangulate()

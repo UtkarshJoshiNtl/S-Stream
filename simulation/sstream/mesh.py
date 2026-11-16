@@ -360,4 +360,4 @@ def resource_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
-DEFAULT_MODEL = resource_root() / "assets" / "3d-files" / "car-model.obj"
+DEFAULT_MODEL = resource_root() / "assets" / "3d-files" / "ahmed_1.stl"

@@ -50,7 +50,7 @@ CI verifies packaging only — runtime is exercised on a real machine.
   `%LOCALAPPDATA%\warp`; subsequent runs are fast.
 - **Startup errors** land in `%TEMP%\sstream_error.log` and a message box
   (see `entry.py`). Common causes: missing NVIDIA driver.
-- **Default model** is bundled (`assets/3d-files/car-model.obj`, resolved
+- **Default model** is bundled (`assets/3d-files/ahmed_1.stl`, resolved
   via `sys._MEIPASS` when frozen); pass a `.obj`/`.stl` path to use your own.
 
 ## Invocation

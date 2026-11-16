@@ -48,7 +48,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "mesh",
         nargs="?",
         default=str(DEFAULT_MODEL),
-        help=f"surface mesh to solve (.obj/.stl/.ply; default: bundled car model)",
+        help=f"surface mesh to solve (.obj/.stl/.ply; default: bundled Ahmed body)",
     )
     parser.add_argument(
         "--preset",
