@@ -26,12 +26,6 @@ from .options import add_orientation_args, mesh_spec_from_args
 from .snapshots import placement_dict
 from .pipeline import SolvePlan, SolveCancelled, run_case
 from .preview import PRESETS
-from .lattice import (
-    VISUAL_SMAGORINSKY,
-    VISUAL_TAU_MAX,
-    VISUAL_TAU_MIN,
-    VISUAL_U_LATTICE,
-)
 from .quality import (
     check_vram,
     cells_streamwise_for_target,
@@ -89,14 +83,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--snapshot-dtype",
         choices=("float16", "float32"),
         default="float16",
-        help="dtype for velocity snapshots (default float16; use float32 for quality runs)",
-    )
-    parser.add_argument(
-        "--visual",
-        action="store_true",
-        help="visualization run: stable lattice params (u_lattice 0.06, "
-        "tau pinned into [0.505, 0.52], Smagorinsky 0.12); the report "
-        "says 'visualization run, effective Re = X, Cd not calibrated'",
+        help="dtype for velocity snapshots (default float16; use float32 for higher precision)",
     )
     parser.add_argument(
         "--quality",
@@ -131,8 +118,8 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     preset = next(p for p in PRESETS if p.name.lower() == args.preset)
     device = pick_device()
-    u_lattice = VISUAL_U_LATTICE if args.visual else args.u_lattice
-    smagorinsky = VISUAL_SMAGORINSKY if args.visual else args.smagorinsky
+    u_lattice = args.u_lattice
+    smagorinsky = args.smagorinsky
     target = resolve_target_cells(args.quality, args.cells)
     
     # Load surface first to get model length for tunnel sizing
@@ -195,7 +182,6 @@ def main(argv: list[str] | None = None) -> int:
             preset=preset,
             u_lattice=u_lattice,
             smagorinsky=smagorinsky,
-            visual=args.visual,
             snapshots_dir=args.snapshots,
             snapshot_count=args.snapshot_count,
             snapshot_dtype=args.snapshot_dtype,
@@ -226,13 +212,8 @@ def main(argv: list[str] | None = None) -> int:
             "steps": result.steps,
             "elapsed_s": round(result.elapsed, 3),
             "device": result.device,
-            "visual": bool(args.visual),
             "warnings": result.warnings,
         }
-        if args.visual:
-            payload["effective_reynolds"] = (
-                fluid.speed * fluid.reference_length / result.units.nu_physical
-            )
         if result.snapshot_dir:
             payload["snapshots"] = {
                 "dir": result.snapshot_dir,
@@ -242,13 +223,6 @@ def main(argv: list[str] | None = None) -> int:
         (out_dir / "results.json").write_text(
             json.dumps(payload, indent=2), encoding="utf-8"
         )
-        if args.visual:
-            eff_re = fluid.speed * fluid.reference_length / result.units.nu_physical
-            print(
-                f"Visual       on · u_lattice = {VISUAL_U_LATTICE} · tau in "
-                f"[{VISUAL_TAU_MIN}, {VISUAL_TAU_MAX}] · Cs = {VISUAL_SMAGORINSKY}"
-            )
-            print(f"Visual       visualization run, effective Re = {eff_re:,.0f}, Cd not calibrated")
         if args.save_fields:
             np.savez_compressed(
                 out_dir / "fields.npz",

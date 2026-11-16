@@ -108,7 +108,6 @@ def write_meta(
     tunnel,
     placement: dict,
     snapshot_steps: list[int],
-    visual: bool,
     units,
     smagorinsky: float,
 ) -> Path:
@@ -144,7 +143,6 @@ def write_meta(
             "dt": units.dt,
             "dx": units.dx,
             "smagorinsky": smagorinsky,
-            "visual": bool(visual),
         },
     }
     path = directory / "meta.json"

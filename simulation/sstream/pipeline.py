@@ -23,7 +23,7 @@ import warp as wp
 
 from . import fields
 from .dye import DyeField
-from .lattice import TAU_MIN, LatticeUnits, clamp_visual_tau
+from .lattice import TAU_MIN, LatticeUnits
 from .lbm import LbmConfig, LbmSolver
 from .preview import RunPreset
 from .quality import WARMUP_STEPS, format_bytes
@@ -52,7 +52,6 @@ class SolvePlan:
     preset: RunPreset
     u_lattice: float = 0.06
     smagorinsky: float = 0.12
-    visual: bool = False
     snapshots_dir: str | None = None
     snapshot_count: int = 0
     snapshot_dtype: str = "float16"
@@ -86,7 +85,6 @@ class SolveResult:
     elapsed: float
     device: str
     warmup_mlups: float = 0.0
-    visual: bool = False
     snapshot_dir: str | None = None
     snapshot_steps: list[int] = field(default_factory=list)
     snapshot_bytes: int = 0
@@ -123,10 +121,6 @@ def run_case(
         u_lattice=plan.u_lattice,
         smagorinsky=plan.smagorinsky,
     )
-    if plan.visual:
-        pinned = clamp_visual_tau(units.tau)
-        if pinned != units.tau:
-            units = units.with_tau(pinned)
 
     # --- Snapshot plan: decide the steps, estimate disk, refuse early. ---
     cells_early = shape[0] * shape[1] * shape[2]
@@ -267,18 +261,12 @@ def run_case(
         )
     if not plan.mask.watertight:
         warnings.append("The surface is not watertight; the solid mask is approximate.")
-    if plan.visual:
-        warnings.append(
-            "Visualization run: the relaxation time is pinned into [0.505, 0.52], "
-            "so the lattice viscosity is far above the physical one; the reported "
-            "Re is the lattice Re and Cd is not calibrated."
-        )
 
     if snap_dir is not None:
         write_solid_mask(snap_dir, plan.mask.solid)
         write_meta(
             snap_dir, tunnel, plan.placement or {}, snap_steps,
-            plan.visual, units, plan.smagorinsky,
+            units, plan.smagorinsky,
         )
         report(
             99,
@@ -307,7 +295,6 @@ def run_case(
         elapsed=time.perf_counter() - clock,
         device=solver.device,
         warmup_mlups=warmup_mlups,
-        visual=plan.visual,
         snapshot_dir=str(snap_dir) if snap_dir else None,
         snapshot_steps=snap_steps,
         snapshot_bytes=snap_bytes_written,

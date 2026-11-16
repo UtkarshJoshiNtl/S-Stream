@@ -56,34 +56,13 @@ def summary(result: SolveResult, model_name: str) -> str:
         "  The model sits in a closed tunnel with a no-slip floor and walls; both",
         "  confinement and floor interference are part of these numbers.",
     ]
-    if result.visual:
-        rows += [
-            "",
-            "Limits for this run",
-            "  The lattice relaxation time is pinned into [0.505, 0.52], so the",
-            "  effective viscosity is far above the physical value; the wake is",
-            "  an artistic impression, not a measured flow.  No validation",
-            "  claim is made anywhere in this file.",
-        ]
     if result.warnings:
         rows.extend(["", "Warnings"] + [f"  - {line}" for line in result.warnings])
     return "\n".join(rows)
 
 
-def _effective_reynolds(result: SolveResult) -> float:
-    fluid = result.fluid
-    return fluid.speed * fluid.reference_length / result.units.nu_physical
-
-
 def _reynolds_rows(result: SolveResult) -> list[str]:
     fluid = result.fluid
-    if not getattr(result, "visual", False):
-        return [
-            f"Reynolds       {result.reynolds:,.0f}  (reference length {fluid.reference_length:.2f} m)"
-        ]
-    eff_re = _effective_reynolds(result)
     return [
-        f"Reynolds (nominal) {result.reynolds:,.0f}  (reference length {fluid.reference_length:.2f} m)",
-        f"Reynolds (effective) {eff_re:,.0f}",
-        f"Mode           visualization run, effective Re = {eff_re:,.0f}, Cd not calibrated",
+        f"Reynolds       {result.reynolds:,.0f}  (reference length {fluid.reference_length:.2f} m)"
     ]
