@@ -206,9 +206,9 @@ def frame_times(timeline: Timeline, preview: bool = False) -> list[float]:
 # Smoke layer
 # ---------------------------------------------------------------------------
 
-SMOKE_MAX_PARTICLES = 600  # ~1/4 of original 2500
-SMOKE_TRAIL_LENGTH = 25
-SMOKE_EMIT_PER_FRAME = 10
+SMOKE_MAX_PARTICLES = 8000  # Maximum density smoke for FluidX3D-level visualization
+SMOKE_TRAIL_LENGTH = 50
+SMOKE_EMIT_PER_FRAME = 80
 SMOKE_SUBSTEPS = 4
 
 
@@ -356,21 +356,33 @@ def streamline_seeds(meta: dict) -> np.ndarray:
         dz = mb[2][1] - mb[2][0]
     
     # Seed within silhouette-bbox padded ~15%
-    x_rake = max(bounds[0] + 0.05, model_xmin - 0.3 * model_len)
     y_mid = 0.5 * (mb[1][0] + mb[1][1])
     z_mid = 0.5 * (mb[2][0] + mb[2][1])
     spread_y = 1.15 * max(dy, 0.25)
     spread_z = 1.15 * max(dz, 0.25)
     
-    # 6x5 jittered seeds
+    # Multiple seeding planes for volumetric flow visualization
     rng = np.random.default_rng(20240515)
-    ny, nz = 6, 5
-    ys = y_mid + (rng.random(ny) - 0.5) * spread_y
-    zs = z_mid + (rng.random(nz) - 0.5) * spread_z
-    grid_y, grid_z = np.meshgrid(ys, zs, indexing="ij")
-    return np.column_stack(
-        [np.full(grid_y.size, x_rake), grid_y.reshape(-1), grid_z.reshape(-1)]
-    )
+    ny, nz = 30, 25
+    seeds = []
+    
+    # Seed at 3 different X positions for volume
+    x_positions = [
+        max(bounds[0] + 0.05, model_xmin - 0.3 * model_len),
+        max(bounds[0] + 0.15, model_xmin - 0.15 * model_len),
+        max(bounds[0] + 0.25, model_xmin + 0.0 * model_len),
+    ]
+    
+    for x_rake in x_positions:
+        ys = y_mid + (rng.random(ny) - 0.5) * spread_y
+        zs = z_mid + (rng.random(nz) - 0.5) * spread_z
+        grid_y, grid_z = np.meshgrid(ys, zs, indexing="ij")
+        plane_seeds = np.column_stack(
+            [np.full(grid_y.size, x_rake), grid_y.reshape(-1), grid_z.reshape(-1)]
+        )
+        seeds.append(plane_seeds)
+    
+    return np.vstack(seeds)
 
 
 def integrate_pathlines(
@@ -487,16 +499,16 @@ def build_vortices(
     q = q_full.copy()
     q[:model_front_idx, :, :] = 0.0
     
-    # Zero Q within 2 cells of any solid cell
-    from scipy.ndimage import binary_dilation
-    solid_mask = solid.astype(bool)
-    dilated = binary_dilation(solid_mask, iterations=2)
-    q[dilated] = 0.0
+    # Skip zeroing near solids for more vortex detail
+    # from scipy.ndimage import binary_dilation
+    # solid_mask = solid.astype(bool)
+    # dilated = binary_dilation(solid_mask, iterations=1)
+    # q[dilated] = 0.0
     
-    # Smooth with sigma 1.5
+    # Minimal smoothing for maximum detail
     try:
         from scipy.ndimage import gaussian_filter
-        q = gaussian_filter(q, 1.5)
+        q = gaussian_filter(q, 0.5)
     except Exception:
         pass
     
@@ -504,7 +516,9 @@ def build_vortices(
     q_wake = q[q > 0]
     if q_wake.size == 0:
         return None
-    level = float(np.percentile(q_wake, q_percentile))
+    # Use even lower percentile for maximum visibility (80th)
+    effective_percentile = min(q_percentile, 80.0)
+    level = float(np.percentile(q_wake, effective_percentile))
     if not np.isfinite(level) or level <= 0.0:
         return None
 
@@ -680,9 +694,9 @@ def render_frames(
     # Physical inlet speed, for a fixed colour scale across all layers.
     u_inlet = float(lat["u_lattice"]) * factor
 
-    # Compute tube radius from model length if not specified
+    # Compute tube radius from model length if not specified (increased for visibility)
     if tube_radius is None:
-        tube_radius = 0.0025 * model_length
+        tube_radius = 0.012 * model_length  # Increased for more visible tubes
 
     stream_tubes = None
     if "streamlines" in layers:
@@ -730,7 +744,7 @@ def render_frames(
             if vortices is not None:
                 plotter.add_mesh(
                     vortices, scalars="speed", cmap=cmap, clim=(0.5 * u_inlet, 1.5 * u_inlet),
-                    opacity=0.4, smooth_shading=True, show_scalar_bar=False,
+                    opacity=0.85, smooth_shading=True, show_scalar_bar=False,
                 )
         if stream_tubes is not None:
             plotter.add_mesh(
@@ -744,7 +758,7 @@ def render_frames(
             if trail is not None:
                 plotter.add_mesh(
                     trail, scalars="speed", cmap=cmap, clim=(0.5 * u_inlet, 1.5 * u_inlet),
-                    opacity=0.25, line_width=1, show_scalar_bar=False,
+                    opacity=0.75, line_width=2, show_scalar_bar=False,
                 )
         # Draw model last so it's not hidden by transparent layers
         if "model" in layers:

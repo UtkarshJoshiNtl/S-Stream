@@ -1,30 +1,31 @@
 {
   "mesh": "/home/Code1/dev/Projects/S-Stream/simulation/assets/3d-files/car-model.obj",
-  "preset": "Preview",
-  "cells": 992200,
-  "solid_cells": 3238,
-  "cd": -6.027819590345325,
-  "cl": -36.45422099468414,
-  "cl_amplitude": 0.7207958018722174,
+  "preset": "Final",
+  "cells": 8980464,
+  "solid_cells": 31182,
+  "cd": 0.4841888551293759,
+  "cl": -23.728101545047668,
+  "cl_amplitude": 2.3550934327074966,
   "reynolds": 2400000.0,
-  "steps": 2200,
-  "elapsed_s": 20.867,
+  "steps": 12000,
+  "elapsed_s": 977.893,
   "device": "cuda",
-  "visual": true,
+  "visual": false,
   "warnings": [
     "Mesh is not watertight after closing small holes; the body is treated as solid.",
     "Mesh is not watertight; cells unreachable from outside were filled so the body acts as solid.",
-    "The surface is not watertight; the solid mask is approximate.",
-    "Visualization run: the relaxation time is pinned into [0.505, 0.52], so the lattice viscosity is far above the physical one; the reported Re is the lattice Re and Cd is not calibrated."
+    "The eddy-viscosity floor is active; treat Cd as a relative LES value.",
+    "The surface is not watertight; the solid mask is approximate."
   ],
-  "effective_reynolds": 1979.9999999999977,
   "snapshots": {
     "dir": "test_snapshots",
     "steps": [
-      1100,
-      1650,
-      2200
+      6000,
+      7500,
+      9000,
+      10500,
+      12000
     ],
-    "bytes": 17861154
+    "bytes": 269416510
   }
 }

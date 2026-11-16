@@ -1,23 +1,21 @@
 S-Stream — wind tunnel report
 
 Model          car-model.obj
-Preset         Preview (128 cells streamwise)
-Grid           220 x 82 x 55  (992,200 cells)
-Solid cells    3,238
-Frontal area   0.0876 m²
+Preset         Final (384 cells streamwise)
+Grid           458 x 172 x 114  (8,980,464 cells)
+Solid cells    31,182
+Frontal area   0.0891 m²
 
 Air speed      30.0 m/s
-Reynolds (nominal) 2,400,000  (reference length 1.20 m)
-Reynolds (effective) 1,980
-Mode           visualization run, effective Re = 1,980, Cd not calibrated
-Cd             -6.028
-Cl (up)        -36.454
-Cl unsteady    ±0.721  (half peak-to-peak)
+Reynolds       2,400,000  (reference length 1.20 m)
+Cd             0.484
+Cl (up)        -23.728
+Cl unsteady    ±2.355  (half peak-to-peak)
 
-Lattice        u = 0.060, tau = 0.505000
+Lattice        u = 0.060, tau = 0.500100
 Eddy viscosity Cs = 0.12
-Peak |u|/U∞    1.37
-Steps          2,200 in 20.9 s on cuda
+Peak |u|/U∞    1.76
+Steps          12,000 in 977.9 s on cuda
 
 Method
   D3Q19 lattice Boltzmann, half-way bounce-back walls, Guo forcing,
@@ -35,14 +33,8 @@ Limits
   The model sits in a closed tunnel with a no-slip floor and walls; both
   confinement and floor interference are part of these numbers.
 
-Limits for this run
-  The lattice relaxation time is pinned into [0.505, 0.52], so the
-  effective viscosity is far above the physical value; the wake is
-  an artistic impression, not a measured flow.  No validation
-  claim is made anywhere in this file.
-
 Warnings
   - Mesh is not watertight after closing small holes; the body is treated as solid.
   - Mesh is not watertight; cells unreachable from outside were filled so the body acts as solid.
+  - The eddy-viscosity floor is active; treat Cd as a relative LES value.
   - The surface is not watertight; the solid mask is approximate.
-  - Visualization run: the relaxation time is pinned into [0.505, 0.52], so the lattice viscosity is far above the physical one; the reported Re is the lattice Re and Cd is not calibrated.
