@@ -33,6 +33,7 @@ VISUAL_TAU_MIN = 0.505
 VISUAL_TAU_MAX = 0.52
 VISUAL_U_LATTICE = 0.06
 VISUAL_SMAGORINSKY = 0.12
+VISUAL_EFFECTIVE_NOTE = "Visual mode: tau pinned and parameters chosen for stability/visuals; Cd not calibrated."
 
 
 def clamp_visual_tau(tau: float) -> float:

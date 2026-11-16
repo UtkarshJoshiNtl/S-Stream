@@ -23,7 +23,13 @@ import warp as wp
 
 from . import fields
 from .dye import DyeField
-from .lattice import TAU_MIN, LatticeUnits
+from .lattice import (
+    TAU_MIN,
+    VISUAL_SMAGORINSKY,
+    VISUAL_U_LATTICE,
+    LatticeUnits,
+    clamp_visual_tau,
+)
 from .lbm import LbmConfig, LbmSolver
 from .preview import RunPreset
 from .quality import WARMUP_STEPS, format_bytes
@@ -52,6 +58,7 @@ class SolvePlan:
     preset: RunPreset
     u_lattice: float = 0.06
     smagorinsky: float = 0.12
+    visual: bool = False
     snapshots_dir: str | None = None
     snapshot_count: int = 0
     snapshot_dtype: str = "float16"
@@ -114,13 +121,17 @@ def run_case(
 
     tunnel, fluid, preset = plan.tunnel, plan.fluid, plan.preset
     shape = tunnel.grid_shape
+    u_lattice = VISUAL_U_LATTICE if plan.visual else plan.u_lattice
+    smagorinsky = VISUAL_SMAGORINSKY if plan.visual else plan.smagorinsky
     units = LatticeUnits.from_physical(
         fluid.speed,
         fluid.kinematic_viscosity,
         tunnel.cell_size,
-        u_lattice=plan.u_lattice,
-        smagorinsky=plan.smagorinsky,
+        u_lattice=u_lattice,
+        smagorinsky=smagorinsky,
     )
+    if plan.visual:
+        units = units.with_tau(clamp_visual_tau(units.tau))
 
     # --- Snapshot plan: decide the steps, estimate disk, refuse early. ---
     cells_early = shape[0] * shape[1] * shape[2]
@@ -151,13 +162,13 @@ def run_case(
         LbmConfig(
             shape=shape,
             tau=units.tau,
-            smagorinsky=plan.smagorinsky,
+            smagorinsky=smagorinsky,
             periodic=(False, False, False),
-            inlet_speed=units.u_lattice,
+            inlet_speed=u_lattice,
         ),
         plan.mask.solid,
     )
-    solver.initialize(ux=units.u_lattice)
+    solver.initialize(ux=u_lattice)
 
     stripe = max(3, min(shape[1], shape[2]) // 8)
     dye = DyeField(shape, solver.device, stripe=stripe, decay=0.99995)
@@ -261,6 +272,11 @@ def run_case(
         )
     if not plan.mask.watertight:
         warnings.append("The surface is not watertight; the solid mask is approximate.")
+    if plan.visual:
+        warnings.append(
+            "Visual mode: tau pinned and parameters chosen for stability/visuals; "
+            "Cd not calibrated."
+        )
 
     if snap_dir is not None:
         write_solid_mask(snap_dir, plan.mask.solid)

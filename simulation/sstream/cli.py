@@ -100,6 +100,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--smagorinsky", type=float, default=0.12, help="LES coefficient"
     )
     parser.add_argument(
+        "--visual",
+        action="store_true",
+        help="visual mode: pin tau/u_lattice/Smagorinsky for stable visuals (Cd not calibrated)",
+    )
+    parser.add_argument(
         "--out", default="results", help="output directory (default: ./results)"
     )
     parser.add_argument(
@@ -190,6 +195,7 @@ def main(argv: list[str] | None = None) -> int:
             preset=preset,
             u_lattice=u_lattice,
             smagorinsky=smagorinsky,
+            visual=args.visual,
             snapshots_dir=args.snapshots,
             snapshot_count=args.snapshot_count,
             snapshot_dtype=args.snapshot_dtype,
