@@ -59,6 +59,8 @@ class SolvePlan:
     u_lattice: float = 0.06
     smagorinsky: float = 0.12
     visual: bool = False
+    convergence_tol: float | None = None
+    convergence_window: int = 40
     snapshots_dir: str | None = None
     snapshot_count: int = 0
     snapshot_dtype: str = "float16"
@@ -69,6 +71,10 @@ class SolvePlan:
             raise ValueError("the mask and tunnel grids do not match")
         if not 0.02 <= self.u_lattice <= 0.12:
             raise ValueError("u_lattice must stay in the weakly compressible range")
+        if self.convergence_tol is not None and self.convergence_tol <= 0.0:
+            raise ValueError("convergence_tol must be positive when set")
+        if self.convergence_window < 5:
+            raise ValueError("convergence_window must be >= 5")
 
 
 @dataclass
@@ -92,6 +98,9 @@ class SolveResult:
     elapsed: float
     device: str
     warmup_mlups: float = 0.0
+    converged: bool | None = None
+    convergence_change: float | None = None
+    convergence_tol: float | None = None
     snapshot_dir: str | None = None
     snapshot_steps: list[int] = field(default_factory=list)
     snapshot_bytes: int = 0
@@ -183,14 +192,34 @@ def run_case(
     cells = cells_early
     snap_bytes_written = 0
     snap_files_written = 0
+    converged: bool | None = None
+    convergence_change: float | None = None
+    converged_step = steps
 
     # Lattice Mach guard: past ~0.3 the weakly compressible model's errors
     # dominate, so the run is flagged instead of silently reporting garbage.
     mach_limit = 0.3
     mach_tripped = False
 
-    def do_step(step: int) -> None:
-        nonlocal mach_tripped, snap_bytes_written, snap_files_written
+    def _check_convergence() -> bool:
+        nonlocal converged, convergence_change
+        if plan.convergence_tol is None:
+            return False
+        w = plan.convergence_window
+        if len(drag) < 2 * w:
+            return False
+        window = np.asarray(drag[-2 * w :], dtype=np.float64)
+        prev = window[:w].mean()
+        curr = window[w:].mean()
+        change = abs(float(curr) - float(prev)) / max(abs(float(curr)), abs(float(prev)), 1e-12)
+        convergence_change = change
+        if change < float(plan.convergence_tol):
+            converged = True
+            return True
+        return False
+
+    def do_step(step: int) -> bool:
+        nonlocal mach_tripped, snap_bytes_written, snap_files_written, converged_step
         solver.step()
         dye.step(solver.u, solver.solid)
         if snap_dir is not None and step in snap_set:
@@ -203,6 +232,15 @@ def run_case(
             drag.append(force[0])
             lateral.append(force[1])
             lift.append(force[2])
+            if _check_convergence():
+                converged_step = step
+                check()
+                report(
+                    1 + int(94 * step / steps),
+                    f"Converged · step {step:,} / {steps:,} "
+                    f"(ΔCd window {convergence_change:.3%} < {plan.convergence_tol:.3%})",
+                )
+                return True
         if step % 64 == 0 and not mach_tripped:
             if solver.max_speed() > mach_limit:
                 mach_tripped = True
@@ -216,23 +254,32 @@ def run_case(
         if step % 16 == 0:
             check()
             report(1 + int(94 * step / steps), f"Solving · step {step:,} / {steps:,}")
+        return False
 
     report(1, "Warming up")
     warm_start = time.perf_counter()
     for step in range(1, warm + 1):
-        do_step(step)
+        if do_step(step):
+            break
     wp.synchronize()
     warm_seconds = time.perf_counter() - warm_start
-    if warm and warm_seconds > 0.0:
-        warmup_mlups = cells * warm / warm_seconds / 1e6
+    warm_done = min(warm, converged_step)
+    if warm_done and warm_seconds > 0.0:
+        warmup_mlups = cells * warm_done / warm_seconds / 1e6
         report(
             2,
-            f"Warm-up {warm} steps at {warmup_mlups:.1f} MLUPs · "
+            f"Warm-up {warm_done} steps at {warmup_mlups:.1f} MLUPs · "
             f"est {steps:,} steps ≈ {steps / warmup_mlups:.1f} s",
         )
 
-    for step in range(warm + 1, steps + 1):
-        do_step(step)
+    final_step = converged_step
+    if converged_step == steps:
+        for step in range(warm + 1, steps + 1):
+            if do_step(step):
+                final_step = converged_step
+                break
+        else:
+            final_step = steps
 
     check()
     report(96, "Deriving fields")
@@ -257,6 +304,9 @@ def run_case(
         ]
     )
 
+    if plan.convergence_tol is not None and converged is not True:
+        converged = False
+
     warnings: list[str] = list(plan.mask.warnings)
     if plan.mask.solid_count / cells > 0.10:
         warnings.append("The model blocks more than 10% of the tunnel volume; Cd is confinement-biased.")
@@ -277,6 +327,23 @@ def run_case(
             "Visual mode: tau pinned and parameters chosen for stability/visuals; "
             "Cd not calibrated."
         )
+    if plan.convergence_tol is not None:
+        if converged:
+            warnings.append(
+                f"Convergence: reached at step {final_step} "
+                f"(drag-window change {convergence_change:.3%} < tolerance {plan.convergence_tol:.3%})."
+            )
+        else:
+            if convergence_change is None:
+                warnings.append(
+                    "Convergence: never converged (insufficient drag samples to evaluate "
+                    f"tolerance {plan.convergence_tol:.3%} within {final_step} steps)."
+                )
+            else:
+                warnings.append(
+                    f"Convergence: never converged within {final_step} steps "
+                    f"(drag-window change {convergence_change:.3%} >= tolerance {plan.convergence_tol:.3%})."
+                )
 
     if snap_dir is not None:
         write_solid_mask(snap_dir, plan.mask.solid)
@@ -307,10 +374,13 @@ def run_case(
         cl_amplitude=float(0.5 * (cl_trace.max() - cl_trace.min())) if cl_trace.size else 0.0,
         cd_trace=cd_trace,
         cl_trace=cl_trace,
-        steps=steps,
+        steps=final_step,
         elapsed=time.perf_counter() - clock,
         device=solver.device,
         warmup_mlups=warmup_mlups,
+        converged=converged,
+        convergence_change=convergence_change,
+        convergence_tol=plan.convergence_tol,
         snapshot_dir=str(snap_dir) if snap_dir else None,
         snapshot_steps=snap_steps,
         snapshot_bytes=snap_bytes_written,

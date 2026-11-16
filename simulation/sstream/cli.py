@@ -105,6 +105,18 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="visual mode: pin tau/u_lattice/Smagorinsky for stable visuals (Cd not calibrated)",
     )
     parser.add_argument(
+        "--convergence-tol",
+        type=float,
+        default=None,
+        help="stop when relative drag-window change falls below this tolerance (e.g. 0.01)",
+    )
+    parser.add_argument(
+        "--convergence-window",
+        type=int,
+        default=40,
+        help="number of drag samples per convergence window (default: 40)",
+    )
+    parser.add_argument(
         "--out", default="results", help="output directory (default: ./results)"
     )
     parser.add_argument(
@@ -196,6 +208,8 @@ def main(argv: list[str] | None = None) -> int:
             u_lattice=u_lattice,
             smagorinsky=smagorinsky,
             visual=args.visual,
+            convergence_tol=args.convergence_tol,
+            convergence_window=args.convergence_window,
             snapshots_dir=args.snapshots,
             snapshot_count=args.snapshot_count,
             snapshot_dtype=args.snapshot_dtype,

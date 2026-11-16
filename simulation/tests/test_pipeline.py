@@ -118,3 +118,33 @@ def test_a_body_in_a_positive_x_flow_reports_positive_drag(tmp_path):
     assert result.units.tau > 0.55
     assert result.cd > 0.0
     assert np.mean(result.cd_trace) > 0.0
+
+
+def test_convergence_detector_reports_never_converged_when_tolerance_unmet():
+    tunnel = TunnelSpec(cells_streamwise=48)
+    shape = tunnel.grid_shape
+    x, y, z = np.indices(shape)
+    solid = (
+        (x - shape[0] * 0.35) ** 2
+        + (y - shape[1] * 0.5) ** 2
+        + (z - shape[2] * 0.45) ** 2
+    ) < (min(shape) * 0.18) ** 2
+    mask = VoxelResult(
+        solid=solid,
+        boundary=solid,
+        origin=tunnel.grid_origin,
+        spacing=tunnel.grid_spacing,
+        dimensions=shape,
+    )
+    plan = SolvePlan(
+        mask=mask,
+        tunnel=tunnel,
+        fluid=FluidSpec(kinematic_viscosity=1.0),
+        preset=RunPreset("Test", 48, 400, "convergence test"),
+        u_lattice=0.1,
+        convergence_tol=1e-9,
+        convergence_window=10,
+    )
+    result = run_case(plan)
+    assert result.converged is False
+    assert any("Convergence: never converged" in w for w in result.warnings)
