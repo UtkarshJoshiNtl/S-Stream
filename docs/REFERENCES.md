@@ -34,7 +34,18 @@ This document summarizes reference material and open-source LBM implementation n
 | General LBM stability note (BGK, low viscosity): as Re increases for fixed grid/velocity, kinematic viscosity ν decreases and BGK relaxation time τ = ν/c_s² + Δt/2 approaches 0.5 from above; near τ ≈ 0.5 BGK becomes prone to numerical instability/oscillations. Common mitigations: Smagorinsky/LES eddy viscosity (raises effective τ locally), TRT/MRT/cascaded/entropic/cumulant collisions, higher resolution, lower Ma, and robust/non-reflecting inlet/outlet BCs. | Directly relevant to S-Stream external-aero robustness targets and to interpreting "stability near tau = 0.5" in solver experiments. | Core τ-relation and qualitative instability/mitigation statements are standard LBM theory but **specific recommendations should be treated as `to verify` against the chosen model/implementation and cited primary sources before use as design constraints.** |
 | FluidX3D README/features (https://github.com/ProjectPhysX/FluidX3D) — lists "Smagorinsky-Lilly subgrid turbulence LES model to keep simulations with very large Reynolds number stable" and documents collision/operator/precision options. | Practical example of an open GPU LBM code exposing Smagorinsky LES for high-Re stability; useful implementation reference (ideas only). | Feature presence confirmed from README; implementation details/effectiveness for a given setup `to verify`. |
 
-## 4. Lookups / follow-ups to verify (actionable)
+## 4. Low-Re quantitative validation references (sphere/cylinder)
+
+These are appropriate for solver acceptance at Reynolds numbers reachable by the present setup (unlike published high-Re Ahmed-body Cd values).
+
+| Case | Source | Reynolds number | Reference drag / notes | Relevance | Status |
+|---|---|---:|---|---|---|
+| Smooth sphere, steady laminar wake | Johnson, T. A., & Patel, V. C. (1999). *Flow past a sphere up to a Reynolds number of 300*. Journal of Fluid Mechanics, 378, 19–70. https://doi.org/10.1017/S0022112098003206 | Re = 100 (based on sphere diameter and freestream velocity) | Reported total drag coefficient **C<sub>D</sub> = 1.087** at Re = 100 (steady, axisymmetric regime; `to verify` exact figure/table location in the primary text during this pass, but value/DOI widely cited) | Standard low-Re benchmark for sphere drag/convergence checks in external-flow solvers. | `to verify` (DOI/citation recorded; numeric value taken from commonly cited result for this paper, not re-extracted from the full text here) |
+| Smooth sphere (correlations, context) | Clift, R., Grace, J. R., & Weber, M. E. (1978). *Bubbles, Drops, and Particles*. Academic Press. (see also standard drag correlations/compilations) | Re = 100 | Standard correlations give C<sub>D</sub> ≈ 1.087–1.10 at Re = 100 depending on correlation/data (`to verify` exact recommended value from source) | Context/cross-check for sphere drag at Re ≈ 100. | `to verify` |
+
+**Acceptance note:** comparisons must account for domain/blockage, inlet/outlet placement, numerical resolution, and whether any blockage correction is applied (state explicitly in tests/reports). No blockage correction is implied unless documented.
+
+## 5. Lookups / follow-ups to verify (actionable)
 
 - Extract exact Ahmed-body reference C<sub>D</sub> values (with slant angle, Reynolds number definition/value, ground clearance, blockage, yaw) from the primary texts: Ahmed et al. SAE 840300 and Lienhart & Becker SAE 2003-01-0656.
 - For `ahmed_1.stl` (AhmedML run 1), record run-specific slant/geometry parameters and reported Cd/Cl from dataset files (`geo_parameters*.csv`, `force_mom_1.csv`) to tie the bundled validation mesh to a concrete condition.
@@ -42,4 +53,4 @@ This document summarizes reference material and open-source LBM implementation n
 - Collect primary references for LBM high-Re external-aero setups (inlet turbulence, sponge/convective outlets, grid resolution/y⁺ analogs in LBM units, Mach/τ limits) and validate the τ→0.5 stability guidance against MRT/TRT/entropic/cumulant variants.
 - If using FluidX3D as an ideas reference, re-check license terms for the exact version/date before any closer study beyond public docs (custom non-commercial restrictions apply).
 
-*Compiled 2026-11-16; web research performed for ideas only (no code copied).*
+*Compiled 2026-11-16; updated 2026-11-17 with low-Re sphere validation reference notes. Web research performed for ideas only (no code copied).*
