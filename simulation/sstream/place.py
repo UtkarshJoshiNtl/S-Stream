@@ -43,6 +43,13 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     add_orientation_args(parser)
     parser.add_argument("--out", required=True, help="output PNG path")
+    parser.add_argument(
+        "--decimate",
+        type=int,
+        default=None,
+        metavar="TARGET_FACES",
+        help="optionally decimate the input mesh toward TARGET_FACES triangles (default: off)",
+    )
     parser.add_argument("--width", type=int, default=1600, help="image width in px")
     parser.add_argument("--height", type=int, default=900, help="image height in px")
     return parser.parse_args(argv)
@@ -55,9 +62,10 @@ def render_placement(
     orient_args: argparse.Namespace,
     width: int = 1600,
     height: int = 900,
+    decimate: int | None = None,
 ) -> None:
     """Place ``mesh_path`` in ``tunnel`` and write the scene to ``out_path``."""
-    surface = load_surface(mesh_path)
+    surface = load_surface(mesh_path, decimate=decimate)
     build_temp = build_model(surface, mesh_spec_from_args(orient_args), TunnelSpec())
     model_bounds = np.asarray(build_temp.mesh.bounds, dtype=float).reshape(3, 2)
     model_length = float(model_bounds[0, 1] - model_bounds[0, 0])
@@ -146,7 +154,7 @@ def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     out = Path(args.out)
     try:
-        render_placement(args.mesh, TunnelSpec(), out, args, args.width, args.height)
+        render_placement(args.mesh, TunnelSpec(), out, args, args.width, args.height, args.decimate)
         return 0
     except Exception as exc:  # CLI boundary: one clean message, exit code 1
         print(f"sstream-place: {exc}", file=sys.stderr)

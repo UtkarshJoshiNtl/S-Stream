@@ -160,8 +160,48 @@ def _trim_outliers(mesh: pv.PolyData, fraction: float = 0.001) -> pv.PolyData:
     return pv.PolyData(points[used], faces_out).clean()
 
 
-def load_surface(path: str | Path) -> pv.PolyData:
-    """Read an OBJ, STL or PLY file as one clean triangle surface."""
+def decimate_surface(mesh: pv.PolyData, target_faces: int | None) -> pv.PolyData:
+    """Optionally reduce triangle count toward ``target_faces`` (default off).
+
+    Uses VTK/PyVista decimation. If the mesh already has at most
+    ``target_faces`` triangles, it is returned unchanged. The original
+    axis-aligned bounding box is preserved by refitting the decimated mesh
+    to the input bounds.
+    """
+    if target_faces is None:
+        return mesh
+    if target_faces < 4:
+        raise ValueError("target_faces must be at least 4")
+    current = int(mesh.n_cells)
+    if current <= target_faces:
+        return mesh
+    reduction = 1.0 - (float(target_faces) / float(current))
+    reduction = float(np.clip(reduction, 0.0, 0.999))
+    decimated = mesh.decimate(reduction).triangulate().clean()
+    if decimated.n_cells < 1 or decimated.n_points < 3:
+        return mesh
+    # Preserve bounding box exactly in extent/position.
+    src = np.asarray(mesh.bounds, dtype=float).reshape(3, 2)
+    dst = np.asarray(decimated.bounds, dtype=float).reshape(3, 2)
+    src_extent = src[:, 1] - src[:, 0]
+    dst_extent = dst[:, 1] - dst[:, 0]
+    pts = np.asarray(decimated.points, dtype=float).copy()
+    for axis in range(3):
+        if dst_extent[axis] > 1e-12 and src_extent[axis] > 1e-12:
+            t = (pts[:, axis] - dst[axis, 0]) / dst_extent[axis]
+            pts[:, axis] = src[axis, 0] + t * src_extent[axis]
+        else:
+            pts[:, axis] += (src[axis].mean() - dst[axis].mean())
+    out = decimated.copy()
+    out.points = pts
+    return out
+
+
+def load_surface(path: str | Path, decimate: int | None = None) -> pv.PolyData:
+    """Read an OBJ, STL or PLY file as one clean triangle surface.
+
+    ``decimate`` optionally targets a maximum triangle count using VTK/PyVista.
+    """
     source = Path(path)
     suffix = source.suffix.lower()
     if suffix in {".blend", ".fbx"}:
@@ -181,6 +221,7 @@ def load_surface(path: str | Path) -> pv.PolyData:
         raise ValueError("The file did not contain a triangle surface.")
     if not np.isfinite(np.asarray(mesh.points)).all():
         raise ValueError("The model contains invalid coordinates.")
+    mesh = decimate_surface(mesh, decimate)
     return mesh
 
 

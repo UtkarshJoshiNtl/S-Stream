@@ -103,6 +103,14 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--out", default="results", help="output directory (default: ./results)"
     )
     parser.add_argument(
+        "--decimate",
+        type=int,
+        default=None,
+        metavar="TARGET_FACES",
+        help="optionally decimate the input mesh toward TARGET_FACES triangles "
+        "(default: off)",
+    )
+    parser.add_argument(
         "--save-fields",
         action="store_true",
         help="also write velocity/density/force fields as .npz",
@@ -123,7 +131,7 @@ def main(argv: list[str] | None = None) -> int:
     target = resolve_target_cells(args.quality, args.cells)
     
     # Load surface first to get model length for tunnel sizing
-    surface = load_surface(args.mesh)
+    surface = load_surface(args.mesh, decimate=args.decimate)
     build_temp = build_model(surface, mesh_spec_from_args(args), TunnelSpec())
     model_bounds = np.asarray(build_temp.mesh.bounds, dtype=float).reshape(3, 2)
     model_length = float(model_bounds[0, 1] - model_bounds[0, 0])
