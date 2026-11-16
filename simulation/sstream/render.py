@@ -206,9 +206,9 @@ def frame_times(timeline: Timeline, preview: bool = False) -> list[float]:
 # Smoke layer
 # ---------------------------------------------------------------------------
 
-SMOKE_MAX_PARTICLES = 8000  # Maximum density smoke for FluidX3D-level visualization
+SMOKE_MAX_PARTICLES = 12000  # Ultra-high density smoke for FluidX3D-level visualization
 SMOKE_TRAIL_LENGTH = 50
-SMOKE_EMIT_PER_FRAME = 80
+SMOKE_EMIT_PER_FRAME = 100
 SMOKE_SUBSTEPS = 4
 
 
@@ -363,14 +363,15 @@ def streamline_seeds(meta: dict) -> np.ndarray:
     
     # Multiple seeding planes for volumetric flow visualization
     rng = np.random.default_rng(20240515)
-    ny, nz = 30, 25
+    ny, nz = 40, 30
     seeds = []
     
-    # Seed at 3 different X positions for volume
+    # Seed at 4 different X positions for more volume
     x_positions = [
         max(bounds[0] + 0.05, model_xmin - 0.3 * model_len),
         max(bounds[0] + 0.15, model_xmin - 0.15 * model_len),
         max(bounds[0] + 0.25, model_xmin + 0.0 * model_len),
+        max(bounds[0] + 0.35, model_xmin + 0.15 * model_len),
     ]
     
     for x_rake in x_positions:
@@ -758,7 +759,7 @@ def render_frames(
             if trail is not None:
                 plotter.add_mesh(
                     trail, scalars="speed", cmap=cmap, clim=(0.5 * u_inlet, 1.5 * u_inlet),
-                    opacity=0.75, line_width=2, show_scalar_bar=False,
+                    opacity=0.85, line_width=2.5, show_scalar_bar=False,
                 )
         # Draw model last so it's not hidden by transparent layers
         if "model" in layers:
