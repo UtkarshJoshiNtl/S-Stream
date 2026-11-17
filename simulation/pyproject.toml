@@ -21,3 +21,6 @@ include = ["sstream*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+markers = [
+    "slow: long-running solver/regression check (still run by default)",
+]

@@ -30,7 +30,12 @@ from .lattice import (
     LatticeUnits,
     clamp_visual_tau,
 )
-from .lbm import LbmConfig, LbmSolver
+from .lbm import (
+    TUNNEL_OUTLET_MODE,
+    TUNNEL_WALL_MODES,
+    LbmConfig,
+    LbmSolver,
+)
 from .preview import RunPreset
 from .quality import WARMUP_STEPS, format_bytes
 from .schema import FluidSpec, TunnelSpec
@@ -174,6 +179,8 @@ def run_case(
             smagorinsky=smagorinsky,
             periodic=(False, False, False),
             inlet_speed=u_lattice,
+            wall_modes=TUNNEL_WALL_MODES,
+            outlet_mode=TUNNEL_OUTLET_MODE,
         ),
         plan.mask.solid,
     )

@@ -50,3 +50,38 @@ the combined side/top-free-slip, floor-no-slip configuration directly.
 ## GATE
 
 Only variant A drifts; B–E are steady.  GATE passed — continue to Step 2.
+
+## Step 2 — the configured tunnel (variant F)
+
+The adopted tunnel default is **F**: specular y/z side and top faces, a no-slip
+floor, and the fixed-density outlet.  It was measured on the same grid and
+window as A–E:
+
+| Variant | Setup | Final rho | Final \|u\|/U | Max drift, steps 2000–20000 |
+|---|---|---:|---:|---:|
+| F | slip sides/roof, no-slip floor, fixed-density outlet | 1.000286 | 0.9924 | 0.217 % |
+
+Rationale:
+
+- `fixed_density` is non-negotiable: A → D removes the 3.8 % density rise and
+  the 24.7 % speed drift without changing the walls.
+- Free-slip on the four transverse faces removes the boundary layer that
+  makes a zero-gradient outlet drift (A → C).  The sides and roof carry no
+  validation body, so there is no physical reason to keep their no-slip layers.
+- The floor stays no-slip: the sphere and cylinder validation cases rest on
+  it, so floor shear is part of the configuration being validated.  F shows
+  that one no-slip face plus the fixed-density outlet is still steady to
+  0.22 %, far inside the 2 % speed / 0.5 % density band.  The full-slip variant
+  E is marginally steadier (0.002 %) but changes the physical floor.
+
+`LbmConfig` keeps the historical no-slip/zero-gradient defaults for generic
+use; the tunnel-specific selection lives in `TUNNEL_WALL_MODES` /
+`TUNNEL_OUTLET_MODE` and is applied by `pipeline.run_case`.  Two solver tests
+cover it: specular walls preserve tangential momentum in a shear-free stream,
+and the empty tunnel stays within 2 % speed / 0.5 % density from step 2000 to
+20000 (marked `slow`).
+
+## GATE
+
+`test_empty_tunnel_is_steady` passes: density and speed stay inside their
+bands for the whole window.  Continue to Step 3.

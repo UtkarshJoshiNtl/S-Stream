@@ -11,6 +11,8 @@ the *same* empty tunnel under five configurations:
     C  free-slip (specular) y/z walls, zero-gradient outlet
     D  no-slip walls, fixed-density equilibrium outlet
     E  free-slip y/z walls, fixed-density equilibrium outlet
+    F  the tunnel default chosen from A-E: free-slip sides and roof, no-slip
+       floor, fixed-density outlet
 
 Every variant uses the sphere-test grid, relaxation time, Smagorinsky
 coefficient and inlet speed, and runs 20,000 steps.  State is logged every 100
@@ -51,6 +53,7 @@ STEPS = 20_000
 SAMPLE_EVERY = 100
 
 _FREE_YZ = {face: "free_slip" for face in ("y0", "y1", "z0", "z1")}
+_TUNNEL = {"y0": "free_slip", "y1": "free_slip", "z0": "no_slip", "z1": "free_slip"}
 
 VARIANTS = {
     "A": {
@@ -81,6 +84,12 @@ VARIANTS = {
         "description": "free-slip y/z walls, fixed-density equilibrium outlet",
         "periodic": (False, False, False),
         "wall_modes": _FREE_YZ,
+        "outlet_mode": "fixed_density",
+    },
+    "F": {
+        "description": "tunnel default: slip sides/roof, no-slip floor, fixed-density outlet",
+        "periodic": (False, False, False),
+        "wall_modes": _TUNNEL,
         "outlet_mode": "fixed_density",
     },
 }
@@ -214,7 +223,8 @@ def main() -> None:
         _write_csv(DATA_DIR / f"tunnel_variant_{name}.csv", rows)
         summaries.append(summarize(name, rows))
 
-    _write_csv(DATA_DIR / "tunnel_variant_summary.csv", summaries)
+    if set(args.variants) == set(VARIANTS):
+        _write_csv(DATA_DIR / "tunnel_variant_summary.csv", summaries)
     headers = [
         "variant", "final rho", "final |u|/U", "rho drift %", "speed drift %",
         "center drift %", "station drift %", "max drift %", "drifts",
@@ -236,8 +246,11 @@ def main() -> None:
     print()
     print_table(table, headers)
 
-    _make_plot(traces)
-    print(f"\nwrote variant traces and {DATA_DIR / 'tunnel_variant_summary.csv'}")
+    if set(args.variants) == set(VARIANTS):
+        _make_plot(traces)
+        print(f"\nwrote variant traces and {DATA_DIR / 'tunnel_variant_summary.csv'}")
+    else:
+        print(f"\nwrote variant traces for {args.variants}")
 
 
 def _make_plot(traces: dict[str, list[dict[str, float]]]) -> None:

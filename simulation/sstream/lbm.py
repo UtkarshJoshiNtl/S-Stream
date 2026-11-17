@@ -58,6 +58,19 @@ WALL_FACES = ("x0", "x1", "y0", "y1", "z0", "z1")
 WALL_MODE_CODES = {"no_slip": 0, "free_slip": 1}
 OUTLET_MODE_CODES = {"zero_gradient": 0, "fixed_density": 1}
 
+# Wind-tunnel defaults chosen from the empty-tunnel sweep in
+# docs/diag_data/tunnel_variant_summary.md.  The floor stays no-slip because
+# the validation bodies rest on it; the sides and roof are specular so they do
+# not build a slowly growing boundary layer, and the outlet pins rho = 1 so
+# mass cannot accumulate in a closed tunnel.
+TUNNEL_WALL_MODES = {
+    "y0": "free_slip",
+    "y1": "free_slip",
+    "z0": "no_slip",
+    "z1": "free_slip",
+}
+TUNNEL_OUTLET_MODE = "fixed_density"
+
 
 def _ensure_warp() -> None:
     global _INITIALISED
