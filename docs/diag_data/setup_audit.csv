@@ -1,0 +1,31 @@
+quantity,test_sphere_re100 (default x=3.0),test_outlet_reflection 1x (x=1.0),"test_outlet_reflection 2x (x=1.0, L=6)",test_cylinder
+"grid shape (nx, ny, nz)","(96, 58, 58)","(96, 58, 58)","(144, 58, 58)","(80, 60, 4)"
+dx (m),0.0417,0.0417,0.0417,1.0000
+sphere D bbox mean (m),0.3991,0.3991,0.3991,-
+D bbox mean (cells),9.5795,9.5795,9.5795,8.0000
+D bbox x extent (cells),9.5693,9.5693,9.5693,-
+u_lattice,0.0500,0.0500,0.0500,0.0500
+tau (molecular),0.5144,0.5144,0.5144,0.5120
+nu_lattice = cs2(tau-1/2),0.0048,0.0048,0.0048,0.0040
+Smagorinsky Cs,0.1200,0.1200,0.1200,0.0000
+tunnel L x W x H (m),4 x 2.4 x 2.4,4 x 2.4 x 2.4,6 x 2.4 x 2.4,"80 x 60 x 4 cells, periodic y and z, open x"
+silhouette blockage,0.0220,0.0220,0.0220,0.1333
+inlet speed SI (m/s),0.0500,0.0500,0.0500,0.0500
+viscosity SI (m^2/s),1.9957e-04,1.9957e-04,1.9957e-04,0.0040
+density SI (kg/m^3),1.2250,1.2250,1.2250,1 (lattice)
+steps run,"12,000","8,000","8,000","30,000"
+force-window start step,"6,000","4,000","4,000","10,000"
+force-window last step,"11,994","8,000","8,000","30,000"
+force sample interval (steps),37,25,25,4
+force samples in window,163,161,161,"5,001"
+Re = u_lat D_cells / nu_lat,100.0000,100.0000,100.0000,100.0000
+Re using bbox x extent,99.8932,99.8932,99.8932,-
+Re from SI speed/D/nu,100.0000,100.0000,100.0000,100.0000
+body x/L,0.7500,0.2500,0.1667,0.2800
+upstream distance to body (D),7.0160,2.0053,2.0053,2.3000
+downstream distance from body (D),2.0053,7.0160,12.0267,6.7000
+outlet distance from centre (D),2.5053,7.5160,12.5267,7.2000
+solid cells,464,464,464,200
+effective D / bbox D,1.0027,1.0027,1.0027,0.9974
+frontal area used for Cd (cells^2),73,73,73,32.0000
+Cd force scale (2/(u^2 A)),10.9589,10.9589,10.9589,25.0000
