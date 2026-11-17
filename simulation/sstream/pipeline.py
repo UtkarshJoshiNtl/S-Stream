@@ -110,6 +110,8 @@ class SolveResult:
     snapshot_steps: list[int] = field(default_factory=list)
     snapshot_bytes: int = 0
     warnings: list[str] = field(default_factory=list)
+    freestream_lattice: float = 0.0
+    freestream_probe_x: int = 0
 
     @property
     def cells(self) -> int:
@@ -118,6 +120,23 @@ class SolveResult:
     @property
     def reynolds(self) -> float:
         return self.fluid.reynolds
+
+
+def freestream_probe_x(solid: np.ndarray, upstream_body_lengths: float = 1.5) -> int:
+    """x index of the freestream probe plane, ahead of the body's leading edge.
+
+    The plane sits ``upstream_body_lengths`` body lengths in front of the
+    first occupied x index, clamped to the interior of the grid.  A mask with
+    no solid cells has no body to measure against, so its mid-plane is used.
+    """
+    solid = np.asarray(solid, dtype=bool)
+    nx = solid.shape[0]
+    if not solid.any():
+        return nx // 2
+    occupied = np.where(solid.any(axis=(1, 2)))[0]
+    front = int(occupied.min())
+    length = int(occupied.max() - occupied.min() + 1)
+    return int(np.clip(round(front - upstream_body_lengths * length), 2, nx - 3))
 
 
 def run_case(
@@ -192,7 +211,8 @@ def run_case(
     steps = max(1, int(preset.steps))
     start = steps // 2
     sample_every = max(1, (steps - start) // 160)
-    drag, lift, lateral = [], [], []
+    x_probe = freestream_probe_x(plan.mask.solid)
+    drag, lift, lateral, probe_speeds = [], [], [], []
     clock = time.perf_counter()
     warm = min(WARMUP_STEPS, steps)
     warmup_mlups = 0.0
@@ -239,6 +259,7 @@ def run_case(
             drag.append(force[0])
             lateral.append(force[1])
             lift.append(force[2])
+            probe_speeds.append(solver.plane_speed(x_probe))
             if _check_convergence():
                 converged_step = step
                 check()
@@ -296,7 +317,16 @@ def run_case(
     dye_field = dye.numpy()
 
     area = fields.frontal_area(plan.mask.solid, tunnel.grid_spacing)
-    scale = fluid.density * units.dx**4 / units.dt**2 / (fluid.dynamic_pressure * area)
+    # Cd uses the *measured* freestream at the upstream probe, averaged over
+    # the same force window as the force samples.  The nominal inlet speed is
+    # only a setup parameter: a boundary layer or an unsettled tunnel makes it
+    # differ from the flow the body actually sees.
+    u_ref = float(np.mean(probe_speeds)) if probe_speeds else u_lattice
+    if not np.isfinite(u_ref) or u_ref <= 0.0:
+        u_ref = u_lattice
+    u_ref_physical = u_ref * units.dx / units.dt
+    dynamic_pressure_ref = 0.5 * fluid.density * u_ref_physical**2
+    scale = fluid.density * units.dx**4 / units.dt**2 / (dynamic_pressure_ref * area)
     drag = np.asarray(drag, dtype=np.float64)
     lift = np.asarray(lift, dtype=np.float64)
     # A body in a +x-going flow is pushed downstream: force on the body in
@@ -379,6 +409,8 @@ def run_case(
         cd=float(cd_trace.mean()) if cd_trace.size else 0.0,
         cl=float(cl_trace.mean()) if cl_trace.size else 0.0,
         cl_amplitude=float(0.5 * (cl_trace.max() - cl_trace.min())) if cl_trace.size else 0.0,
+        freestream_lattice=u_ref,
+        freestream_probe_x=x_probe,
         cd_trace=cd_trace,
         cl_trace=cl_trace,
         steps=final_step,

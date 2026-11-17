@@ -28,8 +28,15 @@ if str(SIM_ROOT) not in sys.path:
 
 from sstream.fields import frontal_area  # noqa: E402
 from sstream.lattice import CS2, TAU_MIN, LatticeUnits  # noqa: E402
-from sstream.lbm import LbmConfig, LbmSolver, pick_device  # noqa: E402
+from sstream.lbm import (  # noqa: E402
+    TUNNEL_OUTLET_MODE,
+    TUNNEL_WALL_MODES,
+    LbmConfig,
+    LbmSolver,
+    pick_device,
+)
 from sstream.mesh import build_model, load_surface  # noqa: E402
+from sstream.pipeline import freestream_probe_x  # noqa: E402
 from sstream.schema import FluidSpec, MeshSpec, MeshTransform, TunnelSpec  # noqa: E402
 from sstream.voxelize import VoxelResult, voxelize  # noqa: E402
 
@@ -113,19 +120,23 @@ class SphereCase:
     def effective_diameter_ratio(self) -> float:
         return self.effective_diameter_cells / self.diameter_cells
 
-    def cd_from_force(self, force_lattice) -> float:
-        """Cd from a lattice force and the voxel silhouette area."""
+    def cd_from_force(self, force_lattice, u: float | None = None) -> float:
+        """Cd from a lattice force and the voxel silhouette area.
+
+        ``u`` is the measured upstream freestream; when omitted the nominal
+        inlet speed is used (kept for old traces and cross-checks only).
+        """
         area = self.area_lattice
         if area <= 0:
             return float("nan")
-        u = self.units.u_lattice
+        u = self.units.u_lattice if u is None else u
         return float(force_lattice[0] * 2.0 / (u * u * area))
 
-    def lateral_from_force(self, force_lattice) -> tuple[float, float]:
+    def lateral_from_force(self, force_lattice, u: float | None = None) -> tuple[float, float]:
         area = self.area_lattice
         if area <= 0:
             return (float("nan"), float("nan"))
-        u = self.units.u_lattice
+        u = self.units.u_lattice if u is None else u
         scale = 2.0 / (u * u * area)
         return (float(force_lattice[1] * scale), float(force_lattice[2] * scale))
 
@@ -428,16 +439,20 @@ def run_sphere(
             smagorinsky=case.smagorinsky,
             periodic=(False, False, False),
             inlet_speed=case.units.u_lattice,
+            wall_modes=TUNNEL_WALL_MODES,
+            outlet_mode=TUNNEL_OUTLET_MODE,
             device=DEVICE,
         ),
         case.mask.solid,
     )
     solver.initialize(ux=case.units.u_lattice)
+    x_probe = freestream_probe_x(case.mask.solid)
 
     out_steps: list[int] = []
     out_cd: list[float] = []
     out_cy: list[float] = []
     out_cz: list[float] = []
+    probe_speeds: list[float] = []
     max_speed_seen = 0.0
     finite = True
     completed = 0
@@ -448,8 +463,10 @@ def run_sphere(
         completed = step
         if step % sample_every == 0:
             force = solver.total_wall_force()
-            cd = case.cd_from_force(force)
-            cy, cz = case.lateral_from_force(force)
+            u_ref = solver.plane_speed(x_probe)
+            probe_speeds.append(u_ref)
+            cd = case.cd_from_force(force, u_ref)
+            cy, cz = case.lateral_from_force(force, u_ref)
             if not (math.isfinite(cd) and math.isfinite(cy) and math.isfinite(cz)):
                 finite = False
                 break
@@ -485,6 +502,8 @@ def run_sphere(
         "density": density,
         "shape": case.shape,
         "device": solver.device,
+        "freestream_probe_x": x_probe,
+        "freestream_lattice": float(np.mean(probe_speeds)) if probe_speeds else case.units.u_lattice,
         **bl,
     }
     trace = Trace(

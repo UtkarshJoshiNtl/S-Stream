@@ -29,7 +29,10 @@ def summary(result: SolveResult, model_name: str) -> str:
         f"Solid cells    {result.mask.solid_count:,}",
         f"Frontal area   {area:.4f} m²",
         "",
-        f"Air speed      {fluid.speed:.1f} m/s",
+        f"Air speed      {fluid.speed:.1f} m/s  (nominal inlet)",
+        f"Freestream     {result.freestream_lattice * result.units.dx / result.units.dt:.3f} m/s "
+        f"(u={result.freestream_lattice:.4f}) from probe plane x={result.freestream_probe_x}, "
+        "1.5 body lengths upstream, averaged over the force window; used for Cd/Cl",
         *_reynolds_rows(result),
         f"Cd             {result.cd:.3f}",
         f"Cl (up)        {result.cl:+.3f}",
@@ -41,9 +44,11 @@ def summary(result: SolveResult, model_name: str) -> str:
         f"Steps          {result.steps:,} in {result.elapsed:.1f} s on {result.device}",
         "",
         "Method",
-        "  D3Q19 lattice Boltzmann, half-way bounce-back walls, Guo forcing,",
-        "  Smagorinsky eddy viscosity.  Pressure is the LBM equation of state",
-        "  p = cs² rho.  Cd uses the voxel silhouette as the reference area.",
+        "  D3Q19 lattice Boltzmann, Guo forcing, Smagorinsky eddy viscosity.",
+        "  Tunnel walls: slip sides/roof, no-slip floor, fixed-density outlet.",
+        "  Pressure is the LBM equation of state p = cs² rho.  Cd uses the voxel",
+        "  silhouette as the reference area and the probe freestream above, not",
+        "  the nominal inlet speed.",
         "",
         "Limits",
         "  The geometry is voxelized, so small features and thin panels are lost.",
@@ -53,8 +58,8 @@ def summary(result: SolveResult, model_name: str) -> str:
         "  Cd is indicative, not calibrated: it is valid for comparing shapes and",
         "  orientations of the same model, not as a drag figure to quote against",
         "  a physical measurement.",
-        "  The model sits in a closed tunnel with a no-slip floor and walls; both",
-        "  confinement and floor interference are part of these numbers.",
+        "  The model sits in a tunnel with a no-slip floor and slip sides/roof;",
+        "  both confinement and floor interference are part of these numbers.",
     ]
     if result.warnings:
         rows.extend(["", "Warnings"] + [f"  - {line}" for line in result.warnings])

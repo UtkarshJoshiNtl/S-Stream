@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from sstream.pipeline import SolveCancelled, SolvePlan, run_case
+from sstream.pipeline import SolveCancelled, SolvePlan, freestream_probe_x, run_case
 from sstream.preview import RunPreset
 from sstream.schema import FluidSpec, TunnelSpec
 from sstream.voxelize import VoxelResult
@@ -118,6 +118,41 @@ def test_a_body_in_a_positive_x_flow_reports_positive_drag(tmp_path):
     assert result.units.tau > 0.55
     assert result.cd > 0.0
     assert np.mean(result.cd_trace) > 0.0
+
+
+def test_freestream_probe_sits_upstream_of_the_body():
+    solid = np.zeros((100, 20, 20), dtype=bool)
+    solid[25:35, 8:12, 4:8] = True
+    # Leading edge at x=25, body 10 cells long: 1.5 L upstream is x=10.
+    assert freestream_probe_x(solid) == 10
+    assert freestream_probe_x(np.zeros_like(solid)) == 50
+
+
+def test_cd_is_normalized_by_the_measured_freestream(monkeypatch, tiny_result):
+    """Doubling the probe speed must quarter Cd (force is unchanged)."""
+    from sstream.lbm import LbmSolver
+    from sstream.report import summary
+
+    def plan_for(u):
+        return SolvePlan(
+            mask=tiny_result.mask,
+            tunnel=tiny_result.tunnel,
+            fluid=tiny_result.fluid,
+            preset=RunPreset("Tiny", 48, 32, "freestream test"),
+            u_lattice=u,
+        )
+
+    base = run_case(plan_for(0.06))
+    assert base.freestream_lattice > 0.0
+    assert base.freestream_probe_x == freestream_probe_x(tiny_result.mask.solid)
+    text = summary(base, "tiny")
+    assert "probe plane" in text and "nominal inlet speed" in text
+
+    monkeypatch.setattr(LbmSolver, "plane_speed", lambda self, x: 0.12)
+    scaled = run_case(plan_for(0.06))
+    assert scaled.freestream_lattice == pytest.approx(0.12)
+    expected = base.cd * (base.freestream_lattice / 0.12) ** 2
+    assert scaled.cd == pytest.approx(expected, rel=1e-3)
 
 
 def test_convergence_detector_reports_never_converged_when_tolerance_unmet():

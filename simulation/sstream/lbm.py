@@ -609,6 +609,24 @@ class LbmSolver:
         )
         return self._force_total.numpy().astype(np.float64)
 
+    def plane_speed(self, x: int) -> float:
+        """Mean speed over a y-z plane, recomputed from live populations.
+
+        Used for the Cd freestream probe: it must be the actual local flow,
+        not the nominal inlet speed (nor the cached field at an overwritten
+        boundary plane).
+        """
+        x = int(np.clip(x, 0, self.shape[0] - 1))
+        f = np.asarray(self.f[:, x, :, :].numpy(), dtype=np.float64)
+        rho = f.sum(axis=0)
+        speed2 = np.zeros_like(rho)
+        for k in range(3):
+            component = np.einsum(
+                "i,iyz->yz", DIRECTIONS[:, k].astype(np.float64), f
+            ) / rho
+            speed2 += component * component
+        return float(np.sqrt(speed2).mean())
+
     def total_mass(self) -> float:
         """Sum of density over fluid cells; a conservation check."""
         density = self.rho.numpy()
