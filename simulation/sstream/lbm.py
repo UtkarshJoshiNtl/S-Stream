@@ -103,6 +103,12 @@ class LbmConfig:
     # "zero_gradient" copies the upstream populations to the outlet;
     # "fixed_density" rebuilds equilibrium at rho=1 with the upstream velocity.
     outlet_mode: str = "zero_gradient"
+    # Subtract the rest-state equilibrium population w_i * rho_ref from each
+    # bounce-back force link.  Without it a body resting on a wall sees an
+    # unbalanced ambient pressure of cs2*rho ~ 0.33 (a dynamic pressure of
+    # ~0.0012), which swamps Cl/Cz.  The net drag of a closed body is
+    # unchanged to floating-point precision.
+    gauge_pressure: bool = True
     device: str | None = None
 
     def __post_init__(self) -> None:
@@ -275,6 +281,7 @@ def _step_kernel(
     wall_y1: int,
     wall_z0: int,
     wall_z1: int,
+    gauge_pressure: int,
 ):
     x, y, z = wp.tid()
     if solid[x, y, z] != wp.uint8(0):
@@ -321,12 +328,20 @@ def _step_kernel(
             if solid_hit == 1:
                 bounced = f_in[opposite[i], x, y, z]
                 fl[i] = bounced
-                # Fluid momentum changes by -2 c f_bounced, so this is the
-                # momentum handed to the solid.  Reflections off the domain
-                # boundary are not the model, so they are not counted.
-                fx -= 2.0 * float(c[0]) * bounced
-                fy -= 2.0 * float(c[1]) * bounced
-                fz -= 2.0 * float(c[2]) * bounced
+                # Fluid momentum changes by -2 c (f_bounced - w_i rho_ref),
+                # i.e. subtract the rest-state equilibrium population w_i
+                # times the reference density (rho=1) from the bounce-back term.
+                # This removes the unbalanced ambient pressure cs2*rho acting on
+                # walls and gives gauge drag; for a closed body it leaves the net
+                # force unchanged (to floating-point precision).
+                if gauge_pressure == 1:
+                    fx -= 2.0 * float(c[0]) * (bounced - float(weights[i]))
+                    fy -= 2.0 * float(c[1]) * (bounced - float(weights[i]))
+                    fz -= 2.0 * float(c[2]) * (bounced - float(weights[i]))
+                else:
+                    fx -= 2.0 * float(c[0]) * bounced
+                    fy -= 2.0 * float(c[1]) * bounced
+                    fz -= 2.0 * float(c[2]) * bounced
             else:
                 # Domain boundary.  No-slip is the historical full
                 # bounce-back; free-slip is specular reflection (only the
@@ -558,6 +573,7 @@ class LbmSolver:
                 self._spec_y,
                 self._spec_z,
                 *cfg._wall_codes,
+                cfg.gauge_pressure,
             ],
             device=self.device,
         )
