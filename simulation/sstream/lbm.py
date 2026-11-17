@@ -14,13 +14,20 @@ Memory layout
 
 Boundaries
     ``periodic`` is a per-axis flag.  A non-periodic face that is not the
-    inlet or outlet is a no-slip wall: streaming from outside the grid is
-    replaced by the opposite population from the current cell, which places
-    the wall half a cell outside the face.
+    inlet or outlet has a wall treatment selected by ``wall_modes`` (a mapping
+    from ``x0/x1/y0/y1/z0/z1`` to ``"no_slip"`` or ``"free_slip"``).  The
+    default is no-slip half-way bounce-back: streaming from outside the grid
+    is replaced by the opposite population from the current cell, which places
+    the wall half a cell outside the face.  ``"free_slip"`` uses specular
+    reflection (only the normal component flips), which conserves tangential
+    momentum.  The x faces are overwritten by the inlet/outlet kernel when
+    ``inlet_speed > 0``.
 
-    With ``inlet_speed > 0`` the x=0 face is reset to equilibrium every step
-    and the x=nx-1 face copies its neighbour (zero-gradient outlet).  ``tau``
-    is a relaxation time, not a physical viscosity; see
+    With ``inlet_speed > 0`` the x=0 face is reset to equilibrium every step.
+    The x=nx-1 face either copies its neighbour (``outlet_mode="zero_gradient"``,
+    the historical behaviour) or is rebuilt as equilibrium at rho=1 with the
+    neighbour's velocity (``outlet_mode="fixed_density"``).  ``tau`` is a
+    relaxation time, not a physical viscosity; see
     :class:`sstream.lattice.LatticeUnits` for the conversion.
 
 Force direction
@@ -34,7 +41,7 @@ be a plain ``range(19)``.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 import warp as wp
@@ -44,6 +51,12 @@ from .lattice import CS2, DIRECTIONS, OPPOSITE, TAU_MIN, WEIGHTS
 _INITIALISED = False
 
 vec19 = wp.types.vector(length=19, dtype=wp.float32)
+
+# Boundary configuration.  Faces are named by axis and low/high side; the
+# order below is the order of the integer codes passed to the kernels.
+WALL_FACES = ("x0", "x1", "y0", "y1", "z0", "z1")
+WALL_MODE_CODES = {"no_slip": 0, "free_slip": 1}
+OUTLET_MODE_CODES = {"zero_gradient": 0, "fixed_density": 1}
 
 
 def _ensure_warp() -> None:
@@ -69,6 +82,14 @@ class LbmConfig:
     body_force: tuple[float, float, float] = (0.0, 0.0, 0.0)
     periodic: tuple[bool, bool, bool] = (True, False, True)
     inlet_speed: float = 0.0
+    # Per-face wall treatment.  Keys are a subset of WALL_FACES; omitted faces
+    # keep the historical half-way bounce-back (no-slip) behaviour.  The x
+    # faces are only relevant when ``inlet_speed == 0``: with an inlet the
+    # inlet/outlet kernel overwrites them every step.
+    wall_modes: dict[str, str] = field(default_factory=dict)
+    # "zero_gradient" copies the upstream populations to the outlet;
+    # "fixed_density" rebuilds equilibrium at rho=1 with the upstream velocity.
+    outlet_mode: str = "zero_gradient"
     device: str | None = None
 
     def __post_init__(self) -> None:
@@ -84,6 +105,24 @@ class LbmConfig:
             raise ValueError("inlet_speed cannot be negative")
         if self.inlet_speed > 0.0 and self.periodic[0]:
             raise ValueError("an inlet and x-periodicity describe two different tunnels")
+
+        self.wall_modes = dict(self.wall_modes)
+        unknown = set(self.wall_modes) - set(WALL_FACES)
+        if unknown:
+            raise ValueError(f"unknown wall faces {sorted(unknown)}; expected {WALL_FACES}")
+        for face, mode in self.wall_modes.items():
+            if mode not in WALL_MODE_CODES:
+                raise ValueError(
+                    f"wall mode for '{face}' must be one of {sorted(WALL_MODE_CODES)}, got {mode!r}"
+                )
+        if self.outlet_mode not in OUTLET_MODE_CODES:
+            raise ValueError(
+                f"outlet_mode must be one of {sorted(OUTLET_MODE_CODES)}, got {self.outlet_mode!r}"
+            )
+        self._wall_codes = tuple(
+            WALL_MODE_CODES[self.wall_modes.get(face, "no_slip")] for face in WALL_FACES
+        )
+        self._outlet_code = OUTLET_MODE_CODES[self.outlet_mode]
 
     @property
     def use_inlet(self) -> bool:
@@ -130,6 +169,7 @@ def _inlet_outlet_kernel(
     ny: int,
     nz: int,
     inlet_speed: float,
+    outlet_mode: int,
     cs2: float,
 ):
     y, z = wp.tid()
@@ -142,8 +182,39 @@ def _inlet_outlet_kernel(
                 1.0 + cu / cs2 + 0.5 * cu * cu / (cs2 * cs2) - 0.5 * speed2 / cs2
             )
     if solid[nx - 1, y, z] == wp.uint8(0):
-        for i in range(19):
-            f[i, nx - 1, y, z] = f[i, nx - 2, y, z]
+        if outlet_mode == 1:
+            # Fixed-density equilibrium outlet: take the velocity from the
+            # upstream cell but reset the density to one.  A zero-gradient
+            # outlet copies the accumulated density as well, which lets mass
+            # pile up in a closed tunnel (see docs/DIAGNOSIS_SPHERE.md).
+            rho = float(0.0)
+            ux = float(0.0)
+            uy = float(0.0)
+            uz = float(0.0)
+            for i in range(19):
+                fn = f[i, nx - 2, y, z]
+                c = dirs[i]
+                rho += fn
+                ux += fn * float(c[0])
+                uy += fn * float(c[1])
+                uz += fn * float(c[2])
+            if rho > 0.0:
+                ux /= rho
+                uy /= rho
+                uz /= rho
+                speed2 = ux * ux + uy * uy + uz * uz
+                for i in range(19):
+                    c = dirs[i]
+                    cu = float(c[0]) * ux + float(c[1]) * uy + float(c[2]) * uz
+                    f[i, nx - 1, y, z] = weights[i] * (
+                        1.0 + cu / cs2 + 0.5 * cu * cu / (cs2 * cs2) - 0.5 * speed2 / cs2
+                    )
+            else:
+                for i in range(19):
+                    f[i, nx - 1, y, z] = f[i, nx - 2, y, z]
+        else:
+            for i in range(19):
+                f[i, nx - 1, y, z] = f[i, nx - 2, y, z]
 
 
 @wp.kernel
@@ -182,6 +253,15 @@ def _step_kernel(
     per_x: int,
     per_y: int,
     per_z: int,
+    spec_x: wp.array1d(dtype=wp.int32),
+    spec_y: wp.array1d(dtype=wp.int32),
+    spec_z: wp.array1d(dtype=wp.int32),
+    wall_x0: int,
+    wall_x1: int,
+    wall_y0: int,
+    wall_y1: int,
+    wall_z0: int,
+    wall_z1: int,
 ):
     x, y, z = wp.tid()
     if solid[x, y, z] != wp.uint8(0):
@@ -225,15 +305,56 @@ def _step_kernel(
                 blocked = 1
                 solid_hit = 1
         if blocked == 1:
-            bounced = f_in[opposite[i], x, y, z]
-            fl[i] = bounced
-            # Fluid momentum changes by -2 c f_bounced, so this is the
-            # momentum handed to the solid.  Reflections off the domain
-            # boundary are not the model, so they are not counted.
             if solid_hit == 1:
+                bounced = f_in[opposite[i], x, y, z]
+                fl[i] = bounced
+                # Fluid momentum changes by -2 c f_bounced, so this is the
+                # momentum handed to the solid.  Reflections off the domain
+                # boundary are not the model, so they are not counted.
                 fx -= 2.0 * float(c[0]) * bounced
                 fy -= 2.0 * float(c[1]) * bounced
                 fz -= 2.0 * float(c[2]) * bounced
+            else:
+                # Domain boundary.  No-slip is the historical full
+                # bounce-back; free-slip is specular reflection (only the
+                # normal velocity component flips), which conserves
+                # tangential momentum.  If any violated face is no-slip we
+                # use full bounce-back; otherwise the specular maps compose.
+                ref = i
+                bounce = int(0)
+                if sy < 0:
+                    if wall_y0 == 0:
+                        bounce = 1
+                    else:
+                        ref = spec_y[ref]
+                elif sy >= ny:
+                    if wall_y1 == 0:
+                        bounce = 1
+                    else:
+                        ref = spec_y[ref]
+                if sz < 0:
+                    if wall_z0 == 0:
+                        bounce = 1
+                    else:
+                        ref = spec_z[ref]
+                elif sz >= nz:
+                    if wall_z1 == 0:
+                        bounce = 1
+                    else:
+                        ref = spec_z[ref]
+                if sx < 0:
+                    if wall_x0 == 0:
+                        bounce = 1
+                    else:
+                        ref = spec_x[ref]
+                elif sx >= nx:
+                    if wall_x1 == 0:
+                        bounce = 1
+                    else:
+                        ref = spec_x[ref]
+                if bounce == 1:
+                    ref = opposite[i]
+                fl[i] = f_in[ref, x, y, z]
         else:
             fl[i] = f_in[i, sx, sy, sz]
 
@@ -339,6 +460,12 @@ class LbmSolver:
         self._dirs = wp.array(DIRECTIONS, dtype=wp.vec3i, device=self.device)
         self._opposite = wp.array(OPPOSITE, dtype=wp.int32, device=self.device)
         self._weights = wp.array(WEIGHTS, dtype=wp.float32, device=self.device)
+        # Specular maps: direction index after reflecting one coordinate.
+        # D3Q19 is closed under these reflections, so every entry exists.
+        by_direction = {tuple(int(v) for v in d): i for i, d in enumerate(DIRECTIONS)}
+        self._spec_x = self._specular_map(by_direction, 0)
+        self._spec_y = self._specular_map(by_direction, 1)
+        self._spec_z = self._specular_map(by_direction, 2)
         self.solid = wp.array(mask, dtype=wp.uint8, device=self.device)
         self._solid_cells = int(mask.sum())
         self._fluid = mask == 0
@@ -352,6 +479,15 @@ class LbmSolver:
         self._force_total = wp.zeros(3, dtype=wp.float32, device=self.device)
 
         self.initialize()
+
+    def _specular_map(self, by_direction: dict[tuple[int, int, int], int], axis: int):
+        """Population index after reflecting the given coordinate axis."""
+        mapped = []
+        for d in DIRECTIONS:
+            c = [int(v) for v in d]
+            c[axis] = -c[axis]
+            mapped.append(by_direction[tuple(c)])
+        return wp.array(np.asarray(mapped, dtype=np.int32), dtype=wp.int32, device=self.device)
 
     # -- state -------------------------------------------------------------
     @property
@@ -405,6 +541,10 @@ class LbmSolver:
                 1 if cfg.periodic[0] else 0,
                 1 if cfg.periodic[1] else 0,
                 1 if cfg.periodic[2] else 0,
+                self._spec_x,
+                self._spec_y,
+                self._spec_z,
+                *cfg._wall_codes,
             ],
             device=self.device,
         )
@@ -421,6 +561,7 @@ class LbmSolver:
                     cfg.shape[1],
                     cfg.shape[2],
                     cfg.inlet_speed,
+                    cfg._outlet_code,
                     CS2,
                 ],
                 device=self.device,
