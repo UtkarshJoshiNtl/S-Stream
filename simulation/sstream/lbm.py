@@ -55,18 +55,33 @@ vec19 = wp.types.vector(length=19, dtype=wp.float32)
 # Boundary configuration.  Faces are named by axis and low/high side; the
 # order below is the order of the integer codes passed to the kernels.
 WALL_FACES = ("x0", "x1", "y0", "y1", "z0", "z1")
-WALL_MODE_CODES = {"no_slip": 0, "free_slip": 1}
+# "no_slip": half-way bounce-back (code 0).  "free_slip": specular reflection,
+# normal velocity component flipped (code 1).  "moving": bounce-back plus an
+# injection of the wall's tangential momentum,
+#   f_i -> f_opposite + 2 * w_i * rho * (c_i . u_wall) / cs2,
+# with u_wall = (moving_wall_speed, 0, 0) (code 2).  The moving wall is a domain
+# boundary, so it never contributes to the body force.
+WALL_MODE_CODES = {"no_slip": 0, "free_slip": 1, "moving": 2}
 OUTLET_MODE_CODES = {"zero_gradient": 0, "fixed_density": 1}
 
 # Wind-tunnel defaults chosen from the empty-tunnel sweep in
-# docs/diag_data/tunnel_variant_summary.md.  The floor stays no-slip because
-# the validation bodies rest on it; the sides and roof are specular so they do
-# not build a slowly growing boundary layer, and the outlet pins rho = 1 so
-# mass cannot accumulate in a closed tunnel.
+# docs/diag_data/tunnel_variant_summary.md.  The floor is a moving wall that
+# travels with the inlet stream so the vehicle does not sit in a thick no-slip
+# boundary layer; the sides and roof are specular so they do not build a slowly
+# growing boundary layer, and the outlet pins rho = 1 so mass cannot accumulate
+# in a closed tunnel.
 TUNNEL_WALL_MODES = {
     "y0": "free_slip",
     "y1": "free_slip",
-    "z0": "no_slip",
+    "z0": "moving",
+    "z1": "free_slip",
+}
+# Validation tunnels: every wall free-slip so a centred body sees textbook-like
+# confinement with no floor boundary layer at all.
+VALIDATION_WALL_MODES = {
+    "y0": "free_slip",
+    "y1": "free_slip",
+    "z0": "free_slip",
     "z1": "free_slip",
 }
 TUNNEL_OUTLET_MODE = "fixed_density"
@@ -109,6 +124,10 @@ class LbmConfig:
     # ~0.0012), which swamps Cl/Cz.  The net drag of a closed body is
     # unchanged to floating-point precision.
     gauge_pressure: bool = True
+    # Tangential speed of a "moving" wall (the floor) in +x, in lattice units.
+    # Set this to the inlet speed for a vehicle tunnel; a "moving" face with
+    # speed 0 degenerates to no-slip.  Used only for faces tagged "moving".
+    moving_wall_speed: float = 0.0
     device: str | None = None
 
     def __post_init__(self) -> None:
@@ -124,6 +143,8 @@ class LbmConfig:
             raise ValueError("inlet_speed cannot be negative")
         if self.inlet_speed > 0.0 and self.periodic[0]:
             raise ValueError("an inlet and x-periodicity describe two different tunnels")
+        if self.moving_wall_speed < 0.0:
+            raise ValueError("moving_wall_speed cannot be negative")
 
         self.wall_modes = dict(self.wall_modes)
         unknown = set(self.wall_modes) - set(WALL_FACES)
@@ -282,6 +303,7 @@ def _step_kernel(
     wall_z0: int,
     wall_z1: int,
     gauge_pressure: int,
+    moving_wall_speed: float,
 ):
     x, y, z = wp.tid()
     if solid[x, y, z] != wp.uint8(0):
@@ -346,43 +368,75 @@ def _step_kernel(
                 # Domain boundary.  No-slip is the historical full
                 # bounce-back; free-slip is specular reflection (only the
                 # normal velocity component flips), which conserves
-                # tangential momentum.  If any violated face is no-slip we
-                # use full bounce-back; otherwise the specular maps compose.
+                # tangential momentum.  A moving wall bounces back plus the
+                # momentum of the wall itself, 2 w_i rho (c_i . u_wall)/cs2,
+                # which drives the fluid at the wall speed.  If any violated
+                # face is no-slip we use full bounce-back; otherwise the
+                # specular maps compose.  The moving wall is a boundary
+                # reflection, not a solid, so it never contributes to the
+                # body force accumulated in fx/fy/fz.
                 ref = i
                 bounce = int(0)
+                moving = int(0)
                 if sy < 0:
                     if wall_y0 == 0:
                         bounce = 1
+                    elif wall_y0 == 2:
+                        moving = 1
                     else:
                         ref = spec_y[ref]
                 elif sy >= ny:
                     if wall_y1 == 0:
                         bounce = 1
+                    elif wall_y1 == 2:
+                        moving = 1
                     else:
                         ref = spec_y[ref]
                 if sz < 0:
                     if wall_z0 == 0:
                         bounce = 1
+                    elif wall_z0 == 2:
+                        moving = 1
                     else:
                         ref = spec_z[ref]
                 elif sz >= nz:
                     if wall_z1 == 0:
                         bounce = 1
+                    elif wall_z1 == 2:
+                        moving = 1
                     else:
                         ref = spec_z[ref]
                 if sx < 0:
                     if wall_x0 == 0:
                         bounce = 1
+                    elif wall_x0 == 2:
+                        moving = 1
                     else:
                         ref = spec_x[ref]
                 elif sx >= nx:
                     if wall_x1 == 0:
                         bounce = 1
+                    elif wall_x1 == 2:
+                        moving = 1
                     else:
                         ref = spec_x[ref]
-                if bounce == 1:
+                if moving == 1:
+                    # Local density from the pre-collision populations; the
+                    # wall correction is 2 w_i rho (c_i . u_wall) / cs2 with
+                    # u_wall = (moving_wall_speed, 0, 0).
+                    rho_local = float(0.0)
+                    for j in range(19):
+                        rho_local += f_in[j, x, y, z]
+                    fl[i] = (
+                        f_in[opposite[i], x, y, z]
+                        + 2.0 * weights[i] * rho_local
+                        * (float(c[0]) * moving_wall_speed) / cs2
+                    )
+                elif bounce == 1:
                     ref = opposite[i]
-                fl[i] = f_in[ref, x, y, z]
+                    fl[i] = f_in[ref, x, y, z]
+                else:
+                    fl[i] = f_in[ref, x, y, z]
         else:
             fl[i] = f_in[i, sx, sy, sz]
 
@@ -398,9 +452,21 @@ def _step_kernel(
         ux += f * float(c[0])
         uy += f * float(c[1])
         uz += f * float(c[2])
-    ux /= rho
-    uy /= rho
-    uz /= rho
+    inv_rho = 1.0 / rho
+    ux *= inv_rho
+    uy *= inv_rho
+    uz *= inv_rho
+
+    # Pre-compute common subexpressions for CSE optimization
+    inv_cs2 = 1.0 / cs2
+    inv_cs2_sq = inv_cs2 * inv_cs2
+    speed2 = ux * ux + uy * uy + uz * uz
+
+    # Pre-compute all cu values once (CSE)
+    cu_vals = vec19()
+    for i in range(19):
+        c = dirs[i]
+        cu_vals[i] = float(c[0]) * ux + float(c[1]) * uy + float(c[2]) * uz
 
     # --- Smagorinsky eddy viscosity --------------------------------------
     tau_eff = tau
@@ -411,37 +477,50 @@ def _step_kernel(
         pxy = float(0.0)
         pxz = float(0.0)
         pyz = float(0.0)
-        speed2 = ux * ux + uy * uy + uz * uz
+        w_rho = weights[0] * rho
         for i in range(19):
             c = dirs[i]
-            cu = float(c[0]) * ux + float(c[1]) * uy + float(c[2]) * uz
-            feq = weights[i] * rho * (
-                1.0 + cu / cs2 + 0.5 * cu * cu / (cs2 * cs2) - 0.5 * speed2 / cs2
-            )
+            cu = cu_vals[i]
+            cu_sq = cu * cu
+            w = weights[i] * rho
+            feq = w * (1.0 + cu * inv_cs2 + 0.5 * cu_sq * inv_cs2_sq - 0.5 * speed2 * inv_cs2)
             ne = fl[i] - feq
-            pxx += float(c[0]) * float(c[0]) * ne
-            pyy += float(c[1]) * float(c[1]) * ne
-            pzz += float(c[2]) * float(c[2]) * ne
-            pxy += float(c[0]) * float(c[1]) * ne
-            pxz += float(c[0]) * float(c[2]) * ne
-            pyz += float(c[1]) * float(c[2]) * ne
-        pi_norm = wp.sqrt(
-            pxx * pxx
-            + pyy * pyy
-            + pzz * pzz
-            + 2.0 * (pxy * pxy + pxz * pxz + pyz * pyz)
-        )
-        disc = tau * tau + 18.0 * wp.sqrt(2.0) * smagorinsky * smagorinsky * pi_norm / rho
+            cx = float(c[0])
+            cy = float(c[1])
+            cz = float(c[2])
+            cxx = cx * cx
+            cyy = cy * cy
+            czz = cz * cz
+            cxy = cx * cy
+            cxz = cx * cz
+            cyz = cy * cz
+            pxx += cxx * ne
+            pyy += cyy * ne
+            pzz += czz * ne
+            pxy += cxy * ne
+            pxz += cxz * ne
+            pyz += cyz * ne
+        pxx2 = pxx * pxx
+        pyy2 = pyy * pyy
+        pzz2 = pzz * pzz
+        pxy2 = pxy * pxy
+        pxz2 = pxz * pxz
+        pyz2 = pyz * pyz
+        pi_norm = wp.sqrt(pxx2 + pyy2 + pzz2 + 2.0 * (pxy2 + pxz2 + pyz2))
+        smag_const = 18.0 * wp.sqrt(2.0) * smagorinsky * smagorinsky
+        disc = tau * tau + smag_const * pi_norm * inv_rho
         tau_eff = 0.5 * (tau + wp.sqrt(disc))
         if tau_eff < tau_min:
             tau_eff = tau_min
 
     # --- Guo-forced BGK collision ----------------------------------------
-    uxe = ux + gx / (2.0 * rho)
-    uye = uy + gy / (2.0 * rho)
-    uze = uz + gz / (2.0 * rho)
-    speed2 = uxe * uxe + uye * uye + uze * uze
+    inv_2rho = 0.5 * inv_rho
+    uxe = ux + gx * inv_2rho
+    uye = uy + gy * inv_2rho
+    uze = uz + gz * inv_2rho
+    speed2_e = uxe * uxe + uye * uye + uze * uze
     source_scale = 1.0 - 0.5 / tau_eff
+    half_speed2_e = 0.5 * speed2_e
     for i in range(19):
         c = dirs[i]
         f = fl[i]
@@ -449,14 +528,12 @@ def _step_kernel(
         cy = float(c[1])
         cz = float(c[2])
         cue = cx * uxe + cy * uye + cz * uze
-        feq = weights[i] * rho * (
-            1.0 + cue / cs2 + 0.5 * cue * cue / (cs2 * cs2) - 0.5 * speed2 / cs2
-        )
-        cu = cx * ux + cy * uy + cz * uz
-        src = source_scale * weights[i] * (
-            ((cx - ux) * gx + (cy - uy) * gy + (cz - uz) * gz) / cs2
-            + (cu / cs2) * (cx * gx + cy * gy + cz * gz) / cs2
-        )
+        cue_sq = cue * cue
+        w = weights[i] * rho
+        feq = w * (1.0 + cue * inv_cs2 + 0.5 * cue_sq * inv_cs2_sq - half_speed2_e * inv_cs2)
+        cu = cu_vals[i]
+        cg = cx * gx + cy * gy + cz * gz
+        src = source_scale * weights[i] * (((cx - ux) * gx + (cy - uy) * gy + (cz - uz) * gz) * inv_cs2 + cu * cg * inv_cs2_sq)
         f_out[i, x, y, z] = f - (f - feq) / tau_eff + src
 
     rho_field[x, y, z] = rho
@@ -574,6 +651,7 @@ class LbmSolver:
                 self._spec_z,
                 *cfg._wall_codes,
                 cfg.gauge_pressure,
+                cfg.moving_wall_speed,
             ],
             device=self.device,
         )

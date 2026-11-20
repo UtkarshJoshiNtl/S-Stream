@@ -136,3 +136,90 @@ Audit facts, oldest first (see `git log` for the full messages):
   case is **to verify**.
 - FP16S DDF storage and esoteric pull/push streaming remain open from
   `credit.md`'s future-work list; neither is part of Phase 3.
+
+## LBM Solver Optimization Research (2025)
+
+Research conducted on FluidX3D and other production LBM solvers for weak hardware:
+
+**FluidX3D optimizations (reference implementation):**
+- **DDF-shifting**: Store `f_shifted = f - w_i` instead of raw populations. This reduces numerical error significantly, especially for FP16. The equilibrium computation uses a specific order of operations following Skordos (1993).
+- **Esoteric-Pull in-place streaming**: Eliminates double-buffering by alternating memory access patterns based on time step parity, cutting VRAM by 50%.
+- **FP16 support**: Half-precision DDF storage reduces memory bandwidth by ~50%.
+
+**Current solver status (measured):**
+- Correctness: All 101 tests pass (verified 2025-01)
+- Memory layout: SoA `f[q, x, y, z]` already optimized for coalescing ✓
+- Double-buffering: Uses 2 copies (f and f_new arrays)
+- DDF-shifting: Not used in GPU kernels (CPU function added 2025-01)
+- Precision: FP32 throughout
+- Performance: 177.6 MLUPs on RTX 2050 (256x102x77 empty tunnel, tau 0.56, Smagorinsky 0.12) - after Phase 1 optimizations
+
+**Phase 1 Optimizations Implemented (2025-01):**
+- **Common Subexpression Elimination (CSE)**: Pre-computed `inv_cs2`, `inv_cs2_sq`, `inv_rho`, `cu_vals` array, `speed2`, and reused throughout collision and Smagorinsky calculations. Reduced redundant floating-point operations.
+- **Register Reduction**: Reused variables (`w = weights[i] * rho`, `cxx = cx * cx`, etc.) instead of recomputing, pre-computed squares (`pxx2`, `pyy2`, etc.) and constants (`smag_const`, `half_speed2_e`).
+- **Result**: Performance improved from 108.7 MLUPs to 177.6 MLUPs (63.4% improvement) on RTX 2050. All 101 tests pass.
+
+**Implementation notes:**
+- Added `equilibrium_shifted()` function to `lattice.py` following FluidX3D's operation order
+- Added tests verifying `f_shifted = f_eq - w_i` and density recovery
+- The CPU function is a foundation; GPU kernel integration would require:
+  - Modifying `_step_kernel` to use shifted populations
+  - Adjusting initialization and boundary condition kernels
+  - Adding a config flag to enable/disable DDF-shifting
+
+**Trade-offs for future optimization:**
+- **DDF-shifting**: Improves numerical accuracy (especially for low tau/FP16), but requires kernel changes. Benefit depends on target precision.
+- **Esoteric-Pull**: 50% VRAM reduction, but adds complexity to streaming logic. High value for memory-constrained GPUs.
+- **FP16**: 50% memory bandwidth reduction, but may require careful handling of precision-sensitive operations. Best combined with DDF-shifting.
+
+## Validation Framework (2026-11-20)
+
+**Status**: Complete. Both validation cases pass.
+
+**Validation cases:**
+- **Poiseuille flow**: Exact solution comparison, 0.38% max error (threshold 1.5%). Grid 4×20×4, 12k steps, ~4 MLUPs (tiny grid, not perf-representative).
+- **Cylinder Re=100**: Matches `tests/test_cylinder.py` setup. Grid 80×60×4, D=8, 30k steps. **Cd=1.583, St=0.184, Cl=0.324** — all within expected bands (Cd 1.35-1.85, St 0.16-0.21, Cl 0.15-0.60). ~100 MLUPs.
+
+**CLI**: `python -m sstream.cli --validate --out DIR` runs both cases, saves JSON, prints summary.
+
+**CSV export**: `--export-csv` flag writes `force_history.csv` with step, cd, cl, cl_amplitude.
+
+## Profiling Findings (2026-11-20)
+
+**Hardware**: RTX 2050 (4GB VRAM, sm_86, ~192 GB/s theoretical bandwidth)
+
+**Baseline**: 176.7 MLUPs on 256×102×77 empty tunnel (tau=0.56, smag=0.12, inlet=0.06)
+
+**Achievable bandwidth** (copy kernel): 105.2 GB/s
+
+**LBM kernel bandwidth usage**: ~32 GB/s (30% of achievable)
+
+**Bottleneck analysis:**
+- **Memory-bound, not compute-bound**: Smagorinsky=0 vs 0.12 only 3% difference
+- **Occupancy-limited**: `vec19` register vector (19 floats/thread) causes ~15% occupancy
+- **Register limiting hurts**: cuda_max_registers=128/192/224 all worse (spills)
+- **Inlet/outlet overhead**: ~9% (172.5 vs 188.7 MLUPs periodic)
+- **VRAM not limiting**: 364 MB / 4 GB for benchmark grid
+
+**Kernel is fused**: Single launch per step (streaming + collision). No loop fusion gain available.
+
+**Optimization candidates:**
+1. **FP16 storage**: TESTED AND REJECTED (see below).
+2. **Esoteric-pull**: NOT needed (VRAM not limiting).
+3. **Occupancy improvement**: Hard without restructuring vec19 or using shared memory.
+4. **Boundary check optimization**: Minor gain, complex refactor.
+
+## FP16 Experiment: Failed (2026-11-20)
+
+**Status**: Reverted. FP32 is the only supported precision.
+
+**What was tried**: Store populations as float16, compute in float32. Halves memory traffic.
+
+**Results**:
+- Performance: Only 7% gain (184 vs 173 MLUPs) — kernel is occupancy-limited, not bandwidth-bound
+- Poiseuille: 100% error (body force ~5e-5 lost in FP16 precision at f~0.01)
+- Cylinder Re=100: Cd=1.42 vs 1.58 (10% low), St=0.008 vs 0.184 (no vortex shedding), Cl=0.000
+
+**Root cause**: LBM populations need ~4-5 decimal digits of precision; FP16 has ~3. Small forces and instabilities are lost.
+
+**Path forward** (if ever needed): DDF-shifting (store f_i - f_eq_i) plus a custom 16-bit format like FluidX3D's FP16C (Lehmann et al., Phys. Rev. E 2022). Not worth the complexity for 7% gain on this hardware.
