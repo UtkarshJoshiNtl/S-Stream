@@ -269,7 +269,7 @@ def _force_sum_kernel(
     wp.atomic_add(total, 2, f[2])
 
 
-@wp.kernel
+@wp.kernel(launch_bounds=32)
 def _step_kernel(
     f_in: wp.array4d(dtype=wp.float32),
     f_out: wp.array4d(dtype=wp.float32),
