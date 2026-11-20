@@ -39,14 +39,6 @@ Outputs under `results/`:
 - `report.txt` — plain-text summary with honest limits
 - `snapshots/` — velocity fields as `.npz` (if `--snapshots` specified)
 
-### View a snapshot
-
-```sh
-python scripts/slice_view.py results/snapshots wake.png --field vorticity
-```
-
-Generates a 2D midplane slice PNG showing vorticity or speed magnitude.
-
 ## Validation
 
 | Case | Metric | Measured | Reference | Status |
@@ -103,7 +95,7 @@ Development-time diagnostic scripts are in `simulation/scripts/diagnostics/`. Th
 - **Low-Re validation only:** Ahmed body and DrivAer cases are not yet validated against literature.
 - **Grid resolution:** Sphere drag is ~10-18% high due to coarse grid and wall effects.
 - **No visual mode calibration:** The solver does not claim quantitative accuracy for vehicle-scale flows.
-- **Windows target:** Developed on Linux, must run on Windows (PyInstaller bundle in `simulation/packaging/`).
+- **Windows target:** Developed on Linux, must run on Windows.
 
 ## Lessons Learned
 
@@ -112,14 +104,10 @@ See `docs/LEARNINGS.md` for a development journal covering:
 - Performance tuning (occupancy, block dimensions — null results)
 - Validation methodology (blockage correction, reference selection)
 
-## Windows build
-
-See `simulation/packaging/README.md` (PyInstaller bundle, one command).
-
 ## Credits
 
 The solver's design (D3Q19 + SRT, GPU residency, fixed color scales,
 Q-criterion thinking, live-loop lessons) was informed by
 [ProjectPhysX/FluidX3D](https://github.com/ProjectPhysX/FluidX3D).
-No FluidX3D source was copied; see `credit.md` for the full record and the
-license compliance rules S-Stream follows.
+No FluidX3D source was copied; see `docs/REFERENCES.md` for the full record
+and the license compliance rules S-Stream follows.
