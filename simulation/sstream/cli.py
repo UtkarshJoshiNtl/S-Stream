@@ -24,7 +24,7 @@ from .lbm import pick_device
 from .mesh import DEFAULT_MODEL, build_model, load_surface
 from .options import add_orientation_args, mesh_spec_from_args
 from .snapshots import placement_dict
-from .pipeline import SolvePlan, SolveCancelled, run_case
+from .pipeline import SolvePlan, SolveCancelled, export_force_csv, run_case
 from .preview import PRESETS
 from .quality import (
     check_vram,
@@ -35,6 +35,7 @@ from .quality import (
 )
 from .report import summary
 from .schema import FluidSpec, TunnelSpec
+from .validation import run_all_validations, save_validation_results, print_validation_summary
 from .voxelize import voxelize
 
 
@@ -132,6 +133,16 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="also write velocity/density/force fields as .npz",
     )
+    parser.add_argument(
+        "--export-csv",
+        action="store_true",
+        help="export force history as CSV file",
+    )
+    parser.add_argument(
+        "--validate",
+        action="store_true",
+        help="run validation cases (Poiseuille, cylinder) instead of solving",
+    )
     return parser.parse_args(argv)
 
 
@@ -141,6 +152,25 @@ def main(argv: list[str] | None = None) -> int:
         print("sstream: --snapshots DIR and --snapshot-count N must be used together",
               file=sys.stderr)
         return 1
+
+    # Validation mode
+    if args.validate:
+        device = pick_device()
+        print(f"Running validation cases on {device}...")
+
+        out_dir = Path(args.out)
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        results = run_all_validations(device=device, output_dir=out_dir)
+        print_validation_summary(results)
+
+        output_file = save_validation_results(results, out_dir)
+        print(f"\nValidation results saved to {output_file}")
+        print(f"Force history CSV: {out_dir / 'cylinder_force_history.csv'}")
+
+        # Return 0 if all passed, 1 if any failed
+        return 0 if all(r.passed for r in results) else 1
+
     preset = next(p for p in PRESETS if p.name.lower() == args.preset)
     device = pick_device()
     u_lattice = args.u_lattice
@@ -259,6 +289,9 @@ def main(argv: list[str] | None = None) -> int:
                 vorticity=result.vorticity,
                 force=result.force,
             )
+        if args.export_csv:
+            csv_path = export_force_csv(result, out_dir / "force_history.csv")
+            print(f"Wrote {csv_path}")
         print(text)
         print(f"\nWrote {out_dir / 'results.json'} and {out_dir / 'report.txt'}")
         return 0
