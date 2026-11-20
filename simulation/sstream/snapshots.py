@@ -88,11 +88,20 @@ def check_disk(directory: Path, needed: int) -> int:
     return free
 
 
-def write_velocity(directory: Path, step: int, velocity: np.ndarray, dtype_str: str = "float16") -> int:
-    """Write one velocity snapshot; returns bytes on disk."""
+def write_velocity(directory: Path, step: int, velocity: np.ndarray, dtype_str: str = "float16", density: np.ndarray | None = None) -> int:
+    """Write one velocity snapshot; returns bytes on disk.
+
+    If density is provided, it is saved alongside velocity in the same NPZ.
+    """
     path = directory / f"velocity_step_{step:07d}.npz"
     dtype = get_velocity_dtype(dtype_str)
-    np.savez(path, velocity=np.ascontiguousarray(velocity, dtype=dtype), step=np.int64(step))
+    data = {
+        "velocity": np.ascontiguousarray(velocity, dtype=dtype),
+        "step": np.int64(step),
+    }
+    if density is not None:
+        data["density"] = np.ascontiguousarray(density, dtype=dtype)
+    np.savez(path, **data)
     return path.stat().st_size
 
 

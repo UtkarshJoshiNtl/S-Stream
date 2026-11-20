@@ -33,6 +33,8 @@ from .lattice import (
 from .lbm import (
     TUNNEL_OUTLET_MODE,
     TUNNEL_WALL_MODES,
+    WALL_FACES,
+    WALL_MODE_CODES,
     LbmConfig,
     LbmSolver,
 )
@@ -70,6 +72,8 @@ class SolvePlan:
     snapshot_count: int = 0
     snapshot_dtype: str = "float16"
     placement: dict | None = None
+    wall_modes: dict[str, str] | None = None
+    moving_wall_speed: float | None = None
 
     def __post_init__(self) -> None:
         if self.mask.dimensions != self.tunnel.grid_shape:
@@ -80,6 +84,15 @@ class SolvePlan:
             raise ValueError("convergence_tol must be positive when set")
         if self.convergence_window < 5:
             raise ValueError("convergence_window must be >= 5")
+        if self.wall_modes is not None:
+            unknown = set(self.wall_modes) - set(WALL_FACES)
+            if unknown:
+                raise ValueError(f"unknown wall faces {sorted(unknown)}; expected {WALL_FACES}")
+            for face, mode in self.wall_modes.items():
+                if mode not in WALL_MODE_CODES:
+                    raise ValueError(
+                        f"wall mode for '{face}' must be one of {sorted(WALL_MODE_CODES)}, got {mode!r}"
+                    )
 
 
 @dataclass
@@ -198,8 +211,13 @@ def run_case(
             smagorinsky=smagorinsky,
             periodic=(False, False, False),
             inlet_speed=u_lattice,
-            wall_modes=TUNNEL_WALL_MODES,
+            wall_modes=plan.wall_modes if plan.wall_modes is not None else TUNNEL_WALL_MODES,
             outlet_mode=TUNNEL_OUTLET_MODE,
+            moving_wall_speed=(
+                plan.moving_wall_speed
+                if plan.moving_wall_speed is not None
+                else u_lattice
+            ),
         ),
         plan.mask.solid,
     )
@@ -251,7 +269,8 @@ def run_case(
         dye.step(solver.u, solver.solid)
         if snap_dir is not None and step in snap_set:
             snap_bytes_written += write_velocity(
-                snap_dir, step, solver.u.numpy(), plan.snapshot_dtype
+                snap_dir, step, solver.u.numpy(), plan.snapshot_dtype,
+                density=solver.density()
             )
             snap_files_written += 1
         if step >= start and (step - start) % sample_every == 0:
@@ -425,3 +444,35 @@ def run_case(
         snapshot_bytes=snap_bytes_written,
         warnings=warnings,
     )
+
+
+def export_force_csv(result: SolveResult, output_path: Path) -> Path:
+    """Export force history as CSV for analysis.
+
+    Writes drag, lift, and lateral force traces with step numbers.
+    """
+    import csv
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with open(output_path, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["step", "cd", "cl", "cl_amplitude"])
+
+        # Reconstruct step numbers from trace length
+        n_samples = len(result.cd_trace)
+        if n_samples > 0:
+            # Samples are taken every sample_every steps starting from start
+            # We don't have direct access to sample_every, so use uniform spacing
+            steps_per_sample = result.steps / n_samples if n_samples > 0 else 1
+
+            for i in range(n_samples):
+                step = int((i + 1) * steps_per_sample)
+                writer.writerow([
+                    step,
+                    f"{result.cd_trace[i]:.6f}",
+                    f"{result.cl_trace[i]:.6f}",
+                    f"{result.cl_amplitude:.6f}",
+                ])
+
+    return output_path

@@ -59,7 +59,8 @@ def load_snapshots(snapshot_dir: Path) -> tuple[list[SnapshotData], dict]:
         elif velocity.ndim == 3:
             # Might be stored as separate components
             velocity = velocity.reshape(*velocity.shape[:3], 3)
-        snapshots.append(SnapshotData(step=step, velocity=velocity, solid=solid))
+        density = data["density"].astype(np.float32) if "density" in data else None
+        snapshots.append(SnapshotData(step=step, velocity=velocity, density=density, solid=solid))
 
     return snapshots, meta
 
