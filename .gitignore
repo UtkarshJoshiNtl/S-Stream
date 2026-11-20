@@ -12,6 +12,9 @@ dist/
 simulation/output/
 simulation/validation_results/
 
+# Large 3D assets (>100MB GitHub limit)
+simulation/assets/3d-files/drivaer_1.stl
+
 # Python helper caches
 __pycache__/
 *.py[cod]
