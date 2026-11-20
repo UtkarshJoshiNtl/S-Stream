@@ -31,6 +31,7 @@ from sstream.lattice import CS2, TAU_MIN, LatticeUnits  # noqa: E402
 from sstream.lbm import (  # noqa: E402
     TUNNEL_OUTLET_MODE,
     TUNNEL_WALL_MODES,
+    VALIDATION_WALL_MODES,
     LbmConfig,
     LbmSolver,
     pick_device,
@@ -417,13 +418,17 @@ def run_sphere(
     save_crop: Path | None = None,
     check_every: int | None = None,
     log_prefix: str = "",
+    wall_modes: dict | None = None,
+    outlet_mode: str | None = None,
+    moving_wall_speed: float | None = None,
 ):
     """Run one case directly on :class:`LbmSolver` and sample the wall force.
 
     Returns ``(trace, info)``.  ``info`` contains the final velocity/density
     arrays and the wall time.  ``sample_every`` defaults to about 400 samples
     over the run, which keeps the CSV/PNG readable while still resolving the
-    approach to steady state.
+    approach to steady state.  Validation runs should pass ``wall_modes=
+    VALIDATION_WALL_MODES`` so every wall is slip.
     """
     steps = int(steps)
     if sample_every is None:
@@ -431,6 +436,13 @@ def run_sphere(
     sample_every = max(1, int(sample_every))
     if check_every is None:
         check_every = max(1000, steps // 20)
+    if wall_modes is None:
+        wall_modes = TUNNEL_WALL_MODES
+    if outlet_mode is None:
+        outlet_mode = TUNNEL_OUTLET_MODE
+    implies_moving = any(mode == "moving" for mode in wall_modes.values())
+    if moving_wall_speed is None:
+        moving_wall_speed = case.units.u_lattice if implies_moving else 0.0
 
     solver = LbmSolver(
         LbmConfig(
@@ -439,8 +451,9 @@ def run_sphere(
             smagorinsky=case.smagorinsky,
             periodic=(False, False, False),
             inlet_speed=case.units.u_lattice,
-            wall_modes=TUNNEL_WALL_MODES,
-            outlet_mode=TUNNEL_OUTLET_MODE,
+            wall_modes=wall_modes,
+            outlet_mode=outlet_mode,
+            moving_wall_speed=moving_wall_speed,
             device=DEVICE,
         ),
         case.mask.solid,

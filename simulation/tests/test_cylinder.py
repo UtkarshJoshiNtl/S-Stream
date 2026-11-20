@@ -3,14 +3,14 @@
 The cylinder is generated analytically so the validation has no meshing or
 import step hiding in it.  The wake is periodic in y and z and open along x.
 At Re = 100 the well-known benchmarks are ``Cd ~ 1.3-1.4`` and ``St ~ 0.165``
-for an unconfined cylinder; this short domain has about 13% blockage, which
-raises both numbers.  The bands below are deliberately wider than the measured
-values so the test detects a broken solver rather than a slightly different
-convection scheme.
+for an unconfined cylinder (Williamson 1996, Zdravkovich 1997); this short
+domain has about 13% blockage, which raises both numbers.  The bands below
+are deliberately wider than the measured values so the test detects a broken
+solver rather than a slightly different convection scheme.
 
-Measured on this implementation (80 x 60 x 4, D = 8): Cd 1.59, St 0.184,
-lift amplitude 0.32 in the same normalization.  The test takes about 20 s on
-the RTX 2050 and is the slowest case in the suite.
+Measured on this implementation (80 x 60 x 4, D = 8, fixed_density outlet):
+Cd 1.587, St 0.184, lift amplitude 0.31 in the same normalization.  The test
+takes about 20 s on the RTX 2050 and is the slowest case in the suite.
 """
 
 import numpy as np
@@ -38,6 +38,7 @@ def test_cylinder_wake_has_correct_drag_and_shedding():
             tau=tau,
             periodic=(False, True, True),
             inlet_speed=speed,
+            outlet_mode="fixed_density",  # Prevent mass accumulation at outlet
             device=DEVICE,
         ),
         solid,

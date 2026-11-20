@@ -200,6 +200,7 @@ def test_empty_tunnel_is_steady():
         inlet_speed=u,
         wall_modes=TUNNEL_WALL_MODES,
         outlet_mode=TUNNEL_OUTLET_MODE,
+        moving_wall_speed=u,
         device=DEVICE,
     )
     solver = LbmSolver(config)

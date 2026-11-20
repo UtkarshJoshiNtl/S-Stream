@@ -97,6 +97,37 @@ def equilibrium(ux, uy, uz, rho=1.0) -> np.ndarray:
     return out
 
 
+def equilibrium_shifted(ux, uy, uz, rho=1.0) -> np.ndarray:
+    """DDF-shifted equilibrium: f_eq_shifted = f_eq - w_i.
+
+    This reduces numerical error by working with smaller numbers (the weights
+    are subtracted). The order of operations follows Skordos (1993) and
+    FluidX3D for optimal accuracy. Used in the GPU kernels for better
+    numerical stability, especially at low viscosities.
+
+    The formula is:
+        f_eq_shifted = w_i * rho * ((u·c)²/(2c⁴) - (u·u)/(2c²) + (u·c)/c²) + w_i * (rho - 1)
+
+    This is algebraically equivalent to f_eq - w_i.
+    """
+    ux, uy, uz, rho = np.broadcast_arrays(
+        np.asarray(ux, dtype=np.float32),
+        np.asarray(uy, dtype=np.float32),
+        np.asarray(uz, dtype=np.float32),
+        np.asarray(rho, dtype=np.float32),
+    )
+    speed2 = ux * ux + uy * uy + uz * uz
+    rho_minus_1 = rho - 1.0
+    out = np.empty(ux.shape + (DIRECTIONS.shape[0],), dtype=np.float32)
+    for i, (cx, cy, cz) in enumerate(DIRECTIONS):
+        cu = cx * ux + cy * uy + cz * uz
+        # Exact order from FluidX3D for numerical accuracy
+        out[..., i] = WEIGHTS[i] * rho * (
+            0.5 * cu * cu / (CS2 * CS2) - 0.5 * speed2 / CS2 + cu / CS2
+        ) + WEIGHTS[i] * rho_minus_1
+    return out
+
+
 @dataclass(frozen=True)
 class LatticeUnits:
     """The bridge between SI units and the solver's dimensionless lattice.

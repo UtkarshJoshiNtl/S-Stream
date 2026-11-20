@@ -16,6 +16,7 @@ from sstream.lattice import (
     WEIGHTS,
     LatticeUnits,
     equilibrium,
+    equilibrium_shifted,
 )
 
 
@@ -64,6 +65,26 @@ def test_equilibrium_broadcasts_over_a_grid():
     f = equilibrium(ux, 0.0, 0.0)
     assert f.shape == (4, 5, 6, 19)
     assert f.sum(axis=-1) == pytest.approx(1.0, abs=1e-6)
+
+
+def test_equilibrium_shifted_matches_definition():
+    """DDF-shifted equilibrium must equal f_eq - w_i."""
+    u = np.array([0.01, -0.02, 0.03])
+    rho = 1.2
+    f_eq = equilibrium(u[0], u[1], u[2], rho)
+    f_shifted = equilibrium_shifted(u[0], u[1], u[2], rho)
+    # f_shifted = f_eq - w_i
+    expected = f_eq - WEIGHTS
+    assert np.allclose(f_shifted, expected, atol=1e-6)
+
+
+def test_equilibrium_shifted_recovers_density():
+    """Sum of shifted populations plus sum of weights equals rho."""
+    u = np.array([0.01, -0.02, 0.03])
+    rho = 1.2
+    f_shifted = equilibrium_shifted(u[0], u[1], u[2], rho)
+    # rho = sum(f_shifted) + sum(weights) = sum(f_shifted) + 1
+    assert f_shifted.sum() + WEIGHTS.sum() == pytest.approx(rho, abs=1e-6)
 
 
 def test_units_convert_both_ways():

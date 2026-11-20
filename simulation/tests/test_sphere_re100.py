@@ -19,6 +19,7 @@ import numpy as np
 import pytest
 
 from sstream.fields import frontal_area
+from sstream.lbm import VALIDATION_WALL_MODES
 from sstream.mesh import load_surface, build_model
 from sstream.pipeline import SolvePlan, run_case
 from sstream.preview import RunPreset
@@ -55,6 +56,8 @@ def test_sphere_re100_drag_and_force_window_convergence():
         preset=preset,
         u_lattice=0.05,
         smagorinsky=0.12,
+        wall_modes=VALIDATION_WALL_MODES,
+        moving_wall_speed=0.0,
     )
     result = run_case(plan)
 

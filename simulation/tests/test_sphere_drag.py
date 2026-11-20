@@ -10,13 +10,12 @@ References:
   Powder Technology, 244, 1-5. https://doi.org/10.1016/j.powtec.2013.04.016
   Correlation gives C_D ≈ 0.78 at Re=200, C_D ≈ 0.65 at Re=300 (unconfined).
 
-IMPORTANT: These tests use a confined tunnel with floor contact and coarse
-resolution (16 cells/diameter). Measured Cd values are systematically higher
-than unconfined literature values due to:
-- Blockage effects (sphere in tunnel, not free stream)
-- Floor boundary layer (sphere touches bottom wall)
+IMPORTANT: These tests use periodic y,z boundaries (wind tunnel) with
+fixed_density outlet and coarse resolution (16 cells/diameter). Measured Cd
+values are systematically higher than unconfined literature values due to:
 - Coarse resolution (16 cells vs typical 32+ for sphere)
-- Inlet/outlet effects (velocity inlet, zero-gradient outlet)
+- Voxel stair-stepping on sphere surface
+- Inlet/outlet effects (velocity inlet, fixed-density outlet)
 
 These are REGRESSION TESTS checking solver consistency, not absolute
 validation against literature. Baselines are measured values from this
@@ -51,9 +50,10 @@ def run_sphere_case(
     zs = np.arange(nz)[None, None, :]
     solid = (xs - centre_x) ** 2 + (ys - centre_y) ** 2 + (zs - centre_z) ** 2 <= (diameter * 0.5) ** 2
 
-    # tau = 0.5 + 3*nu/cs2, nu = u*D/Re, cs2 = 1/3
+    # tau = 0.5 + nu/CS2, nu = u*D/Re, CS2 = 1/3
+    # Correct: tau = 0.5 + 3*nu (since 1/CS2 = 3)
     nu = speed * diameter / reynolds
-    tau = 0.5 + 3.0 * nu / (1.0 / 3.0)
+    tau = 0.5 + 3.0 * nu
 
     solver = LbmSolver(
         LbmConfig(
@@ -61,8 +61,8 @@ def run_sphere_case(
             tau=tau,
             smagorinsky=0.0,
             inlet_speed=speed,
-            outlet_mode="zero_gradient",
-            periodic=(False, False, False),
+            outlet_mode="fixed_density",  # Prevent mass accumulation at outlet
+            periodic=(False, True, True),  # Periodic in y,z for wind tunnel (no wall effects)
             device=device,
         ),
         solid,
@@ -107,16 +107,17 @@ def run_sphere_case(
     }
 
 
-# Measured baselines from this implementation (confined tunnel, floor contact)
+# Measured baselines from this implementation (periodic y,z, fixed_density outlet)
 # These are regression baselines, not literature values
-BASELINE_RE100_CD = 1.4235  # Measured on 80x60x40, D=16
-BASELINE_RE200_CD = 1.2722  # Measured on 80x60x40, D=16
-BASELINE_RE300_CD = 1.1602  # Measured on 80x60x40, D=16
+# Updated after fixing tau bug (was 0.5+9*nu, now 0.5+3*nu) and boundary conditions
+BASELINE_RE100_CD = 1.4558  # Measured on 80x60x40, D=16, periodic y,z
+BASELINE_RE200_CD = 1.0713  # Measured on 80x60x40, D=16, periodic y,z
+BASELINE_RE300_CD = 0.9123  # Measured on 80x60x40, D=16, periodic y,z
 
 
 @pytest.mark.slow
 def test_sphere_re100_drag():
-    """Sphere drag at Re=100, regression baseline Cd=1.4235."""
+    """Sphere drag at Re=100, regression baseline Cd=1.4558."""
     result = run_sphere_case(
         nx=80, ny=60, nz=40,
         diameter=16.0,
@@ -140,7 +141,7 @@ def test_sphere_re100_drag():
 
 @pytest.mark.slow
 def test_sphere_re200_drag():
-    """Sphere drag at Re=200, regression baseline Cd=1.2722."""
+    """Sphere drag at Re=200, regression baseline Cd=1.0713."""
     result = run_sphere_case(
         nx=80, ny=60, nz=40,
         diameter=16.0,
@@ -164,7 +165,7 @@ def test_sphere_re200_drag():
 
 @pytest.mark.slow
 def test_sphere_re300_drag():
-    """Sphere drag at Re=300, regression baseline Cd=1.1602."""
+    """Sphere drag at Re=300, regression baseline Cd=0.9123."""
     result = run_sphere_case(
         nx=80, ny=60, nz=40,
         diameter=16.0,

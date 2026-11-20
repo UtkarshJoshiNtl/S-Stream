@@ -27,7 +27,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from sstream.lbm import TUNNEL_OUTLET_MODE, TUNNEL_WALL_MODES, LbmConfig, LbmSolver, pick_device
+from sstream.lbm import TUNNEL_OUTLET_MODE, LbmConfig, LbmSolver, pick_device
 from sstream.mesh import build_model, load_surface
 from sstream.pipeline import freestream_probe_x
 from sstream.schema import FluidSpec, MeshSpec, MeshTransform, TunnelSpec
@@ -41,6 +41,15 @@ SMAGORINSKY = 0.12
 STEPS = 6000
 SAMPLE_EVERY = 100
 ALL_NOSLIP = {face: "no_slip" for face in ("x0", "x1", "y0", "y1", "z0", "z1")}
+# The Step 1 gauge comparison was calibrated with the historical floor
+# (no-slip, free-slip sides/roof); pin it so the moving floor's extra underbody
+# shear does not change what these tests measure.
+GAUGE_TEST_WALL_MODES = {
+    "y0": "free_slip",
+    "y1": "free_slip",
+    "z0": "no_slip",
+    "z1": "free_slip",
+}
 
 
 def _still_block_force(gauge: bool) -> np.ndarray:
@@ -117,9 +126,10 @@ def _run_sphere(tunnel, mask, fluid, area, gauge: bool):
             smagorinsky=SMAGORINSKY,
             periodic=(False, False, False),
             inlet_speed=units.u_lattice,
-            wall_modes=TUNNEL_WALL_MODES,
+            wall_modes=GAUGE_TEST_WALL_MODES,
             outlet_mode=TUNNEL_OUTLET_MODE,
             gauge_pressure=gauge,
+            moving_wall_speed=0.0,
             device=DEVICE,
         ),
         mask.solid,

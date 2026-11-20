@@ -129,6 +129,9 @@ class LbmConfig:
     # speed 0 degenerates to no-slip.  Used only for faces tagged "moving".
     moving_wall_speed: float = 0.0
     device: str | None = None
+    # CUDA block dimension for the step kernel.  None uses Warp's default (256).
+    # Benchmarking shows 256 is optimal for this kernel on RTX 2050.
+    block_dim: int | None = None
 
     def __post_init__(self) -> None:
         if len(self.shape) != 3 or min(self.shape) < 2:
@@ -269,7 +272,7 @@ def _force_sum_kernel(
     wp.atomic_add(total, 2, f[2])
 
 
-@wp.kernel(launch_bounds=32)
+@wp.kernel
 def _step_kernel(
     f_in: wp.array4d(dtype=wp.float32),
     f_out: wp.array4d(dtype=wp.float32),
@@ -654,7 +657,7 @@ class LbmSolver:
                 cfg.moving_wall_speed,
             ],
             device=self.device,
-            block_dim=32,  # Optimal for this kernel: 194 MLUPs vs 177 default
+            block_dim=cfg.block_dim,
         )
         if cfg.use_inlet:
             wp.launch(

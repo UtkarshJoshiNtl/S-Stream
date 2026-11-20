@@ -8,6 +8,10 @@ dist/
 !simulation/packaging/sstream.spec
 *.log
 
+# Test outputs
+simulation/output/
+simulation/validation_results/
+
 # Python helper caches
 __pycache__/
 *.py[cod]
