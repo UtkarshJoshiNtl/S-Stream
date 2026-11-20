@@ -654,6 +654,7 @@ class LbmSolver:
                 cfg.moving_wall_speed,
             ],
             device=self.device,
+            block_dim=32,  # Optimal for this kernel: 194 MLUPs vs 177 default
         )
         if cfg.use_inlet:
             wp.launch(
